@@ -37,11 +37,11 @@ function requireStringField(value: unknown, key: string): string {
   return field;
 }
 
-// Read from package.json rather than hardcoding the bootstrap-substituted name
-// literally: a `const packageName = "<name>";` assignment is reformatted by
-// Prettier onto two lines once the substituted name is long enough to push the
-// line past printWidth, and the checked-in single-line form would then no
-// longer match what `prettier --check` expects (see #113).
+// Read from package.json rather than hardcoding the package name literally: a
+// `const packageName = "<name>";` assignment is reformatted by Prettier onto
+// two lines once the name is long enough to push the line past printWidth,
+// and the checked-in single-line form would then no longer match what
+// `prettier --check` expects (see #113).
 const packageManifest = parseJson(
   readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );

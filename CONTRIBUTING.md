@@ -14,41 +14,11 @@ pnpm check
 
 The first command must report Node 24.x. `devEngines.runtime.onFail` is an intentional
 hard error for normal development; use the documented `--config.runtime-on-fail=ignore`
-override only for the minimum-Node compatibility check below.
+override only for the `package-floor` CI job's artifact-consumption step (see
+"Dependency cooldown" below).
 
 Useful focused commands are `pnpm check:quick`, `pnpm test`, `pnpm test:coverage`,
 `pnpm build`, `pnpm docs:build`, and `pnpm package:smoke`.
-
-<!-- template-only:start -->
-
-## Bootstrap profiles
-
-The template starts as the `node-library` profile. Bootstrap makes one irreversible
-choice for the generated repository:
-
-| Profile             | Runtime contract                                   | `sideEffects` |
-| ------------------- | -------------------------------------------------- | ------------- |
-| `node-library`      | The `--node-engines` range (default `>=24`)        | `false`       |
-| `universal-library` | ES and DOM APIs; Node built-ins fail the src build | `false`       |
-
-The universal profile omits `engines.node`, sets build `types` to an empty array, and is
-exercised by the bundler-resolution smoke consumer. The node-library profile retains
-Node types.
-
-## Minimum-Node compatibility
-
-Bootstrap's `--node-engines` range is the published contract for a `node-library`; the
-default is `>=24`. Its generated `package-floor` CI job builds and packs on Node 24,
-then switches to the selected floor and runs only the consumer check:
-
-```sh
-pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke
-```
-
-The override is deliberately scoped to this artifact-consumption step. Do not use it for
-source installation, linting, type checking, tests, or builds, and do not weaken
-`devEngines.runtime`.
-<!-- template-only:end -->
 
 ## Dependency cooldown
 
@@ -58,9 +28,17 @@ version to `minimumReleaseAgeExclude` in the same reviewed PR as the lockfile up
 Record the advisory and why waiting is riskier, remove the exception after the version
 ages out, and never use a broad package-only or wildcard exclusion.
 
-Development and source checks stay on Node 24. A generated package's published Node
-floor is checked separately by the `package-floor` CI job, which consumes the packed
-artifact at the selected floor.
+Development and source checks stay on Node 24. The package's published Node floor is
+checked separately by the `package-floor` CI job, which consumes the packed artifact at
+that floor:
+
+```sh
+pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke
+```
+
+The override is deliberately scoped to this artifact-consumption step. Do not use it for
+source installation, linting, type checking, tests, or builds, and do not weaken
+`devEngines.runtime`.
 
 ## Pull requests
 
