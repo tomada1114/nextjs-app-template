@@ -20,23 +20,20 @@ checked.
 
 ## Overview
 
-An ESM-only TypeScript package published to npm. Development runs on Node >= 24,
-matching the package's published `engines.node` floor. pnpm 11 is the package manager,
-used through Corepack. A package may also ship one command entry in `src/cli.ts`; that
-command is not an import surface.
+An ESM-only TypeScript package. It is private: nothing here is packed, published, or
+consumed as a tarball, so there is no published `engines.node` floor — `.node-version`
+and `devEngines.runtime` carry the Node 24 development runtime instead. pnpm 11 is the
+package manager, used through Corepack. A package may also ship one command entry in
+`src/cli.ts`; that command is not an import surface.
 
 ## Quick reference
 
 ```sh
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
-pnpm check         # the full gate, including build, docs, and packaging
+pnpm check:source  # the same gate with coverage thresholds enforced
 pnpm fix           # ESLint autofix, then Prettier
 pnpm test          # tests only
 pnpm test:coverage # tests with the coverage thresholds enforced
-pnpm build         # emit dist/ from src/
-pnpm package:check # build and pack once, then run every artifact check
-pnpm package:smoke # install the tarball into throwaway consumers and run it
-pnpm docs:build    # TypeDoc into docs/api/
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
@@ -44,35 +41,30 @@ pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
 
-`pnpm check:quick` is the full local source gate, and CI runs those source/package
-checks as separate steps, so a green run here means those are green too. `lefthook`'s
-pre-commit hook runs a staged-file-scoped version of the same tools — format applied
-rather than merely checked, tests limited to the ones reachable from the staged files —
-before every commit. Nothing — not a hook, not a workflow — defines a check of its own;
-they all call these scripts.
+`pnpm check:quick` is the full local source gate, and CI runs those same checks as
+separate steps, so a green run here means those are green too. `lefthook`'s pre-commit
+hook runs a staged-file-scoped version of the same tools — format applied rather than
+merely checked, tests limited to the ones reachable from the staged files — before every
+commit. Nothing — not a hook, not a workflow — defines a check of its own; they all call
+these scripts.
 
-Development and source checks stay on Node 24. The package publishes a bare `>=N`
-`engines.node` floor (currently `>=24`); the `package-floor` CI job builds and packs on
-Node 24, then consumes that artifact with
-`pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke` at the
-published floor. The override is only for that compatibility check. Never relax
-`devEngines.runtime`'s `onFail: error` for normal development or source checks.
+Development and source checks stay on Node 24, stated once in `.node-version` and once
+in `devEngines.runtime`. Never relax `devEngines.runtime`'s `onFail: error`, and never
+reach for `--config.runtime-on-fail=ignore`: nothing here runs on any other Node.
 
 ## Validating a change
 
-Run the narrowest check that can fail, then the gate. Reaching for `pnpm check` on every
-edit is slow enough that it stops being run at all.
+Run the narrowest check that can fail, then the gate. Reaching for `pnpm check:source`
+on every edit is slow enough that it stops being run at all.
 
-| What you changed                       | The narrowest check that can fail                                                 |
-| -------------------------------------- | --------------------------------------------------------------------------------- |
-| A module under `src/`                  | `pnpm exec vitest run tests/<module>.test.ts`                                     |
-| Anything reachable from `src/index.ts` | `pnpm check` — only `package:smoke` sees the published `.d.ts` as a consumer does |
-| A test                                 | `pnpm exec vitest run tests/<name>.test.ts`                                       |
-| A script under `scripts/`              | `pnpm exec vitest run tests/<script>.test.ts`                                     |
-| TSDoc comments                         | `pnpm docs:build`                                                                 |
-| A skill under `.agents/skills/`        | `pnpm agents:sync && pnpm agents:check && pnpm test`                              |
-| `package.json`, `pnpm-workspace.yaml`  | `pnpm install`, then `pnpm check`                                                 |
-| Markdown                               | `pnpm fix`                                                                        |
+| What you changed                      | The narrowest check that can fail                    |
+| ------------------------------------- | ---------------------------------------------------- |
+| A module under `src/`                 | `pnpm exec vitest run tests/<module>.test.ts`        |
+| A test                                | `pnpm exec vitest run tests/<name>.test.ts`          |
+| A script under `scripts/`             | `pnpm exec vitest run tests/<script>.test.ts`        |
+| A skill under `.agents/skills/`       | `pnpm agents:sync && pnpm agents:check && pnpm test` |
+| `package.json`, `pnpm-workspace.yaml` | `pnpm install`, then `pnpm check:source`             |
+| Markdown                              | `pnpm fix`                                           |
 
 ## Architecture
 
@@ -102,14 +94,14 @@ names its own boundary with its neighbours.
 | `writing-tests`         | the body of a test under `tests/`                                                     |
 | `placing-tests`         | a new test file, a vitest project, or a coverage floor                                |
 | `type-testing`          | `tests/types.test.ts` and `expectTypeOf`                                              |
-| `public-api-contract`   | `src/index.ts`, `src/internal/`, or `exports`/`files`                                 |
-| `release-impact`        | a PR body, its semver consequence, a `CHANGELOG.md` entry                             |
+| `public-api-contract`   | `src/index.ts` or `src/internal/`                                                     |
+| `release-impact`        | a PR body and its semver consequence                                                  |
 | `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                             |
 | `authoring-skills`      | a skill under `.agents/skills/`                                                       |
 | `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                       |
 | `managing-dependencies` | adding, bumping, or removing a package by hand (an open bot PR is `merge-dependabot`) |
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                     |
-| `updating-docs`         | `README.md`, `CONTRIBUTING.md`, or `docs/`                                            |
+| `updating-docs`         | `README.md` or `CONTRIBUTING.md`                                                      |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                          |
 
 ## Security and human approval

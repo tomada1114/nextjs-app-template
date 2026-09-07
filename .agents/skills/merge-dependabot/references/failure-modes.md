@@ -20,14 +20,13 @@ error. The PR bumps one package, and the name in the error is a different one.
 
 **Cause:** `pnpm-workspace.yaml` sets `strictPeerDependencies: true`, so an unmet or
 conflicting peer range is a hard failure rather than a warning. The standing example is
-`typescript`: `typescript-eslint` and `typedoc` cap their peer support below the current
-major (`managing-dependencies` has the ceiling; `package.json` has the range). A PR
-proposing the next major fails here and is **correct to fail**.
+`typescript`: `typescript-eslint` caps its peer support below the current major
+(`managing-dependencies` has the ceiling; `package.json` has the range). A PR proposing
+the next major fails here and is **correct to fail**.
 
-**Fix:** hold the PR. Raising this ceiling is a coordinated multi-package upgrade — all
-of `typescript`, `typescript-eslint` and `typedoc` at once — not a routine bump. Never
-add an override or relax the setting to land it. Say so in the report and let a human
-schedule the upgrade.
+**Fix:** hold the PR. Raising this ceiling is a coordinated upgrade of both `typescript`
+and `typescript-eslint` at once — not a routine bump. Never add an override or relax the
+setting to land it. Say so in the report and let a human schedule the upgrade.
 
 ## F2 — Lockfile out of step with the manifest
 
@@ -84,26 +83,7 @@ below one of the floors in `vitest.config.ts` (see `placing-tests`).
 chase coverage by editing tests to accommodate a dependency you have not decided to
 accept, and do not lower the threshold.
 
-## F6 — Packaging gate only
-
-**Symptom:** lint, types and tests pass; `Package artifact` or `Package smoke` fails —
-`publint`, are-the-types-wrong, the tarball allowlist, or the consumer `tsc` run.
-
-**Cause:** usually a TypeScript bump changing emitted declarations, or a
-packaging-metadata interaction. This is exactly the class of break that a source-only
-test suite would miss.
-
-**Fix:** reproduce locally, which is far faster than iterating in CI:
-
-```bash
-pnpm run package:check
-pnpm run package:smoke
-```
-
-If the emitted declarations changed shape, fix the source — but only after you have
-confirmed the change is intended.
-
-## F7 — Merge state `BEHIND` or `DIRTY`
+## F6 — Merge state `BEHIND` or `DIRTY`
 
 Not a CI failure. `BEHIND` means main moved; `DIRTY` means a real conflict.
 
@@ -115,7 +95,7 @@ Dependabot rebases within a minute or two, then checks re-run. If it conflicts
 repeatedly — which is common once two npm PRs are open, since both touch
 `pnpm-lock.yaml` — fold the PR into the combined branch and resolve there.
 
-## F8 — Check never reports
+## F7 — Check never reports
 
 **Symptom:** `checks=PENDING` that never resolves, or `checks=NONE`.
 

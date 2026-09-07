@@ -7,26 +7,20 @@ const fixtures = "tests/fixtures/**";
 // Tests that import repository automation, touch the filesystem, spawn a
 // subprocess, or use git. They are listed explicitly so a new test defaults to
 // the short-timeout unit project until its I/O needs are deliberately reviewed.
-// The five files not listed here are pure unit tests; guard-rules.test.ts is the
+// The files not listed here are pure unit tests; guard-rules.test.ts is the
 // intentional exception to the usual `src/**` rule because it calls the guard
 // engine's pure functions directly.
 const automationTests = [
-  "tests/check-attw.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",
   "tests/clean.test.ts",
-  "tests/docs.test.ts",
   "tests/git-env.test.ts",
   "tests/labels.test.ts",
   "tests/node-tools.test.ts",
-  "tests/package-smoke.test.ts",
-  "tests/package.test.ts",
   "tests/skills-frontmatter.test.ts",
-  "tests/smoke-package.test.ts",
   "tests/sync-agents.test.ts",
   "tests/sync-labels.test.ts",
   "tests/tooling-ignores.test.ts",
-  "tests/verify-package.test.ts",
   "tests/workflows.test.ts",
 ];
 
@@ -109,18 +103,17 @@ export default defineConfig({
           statements: 90,
           branches: 80,
         },
-        // Raised again by issue #98, which added dedicated coverage for
-        // verify-package.mjs's main()/runCheck(), sync-agents.mjs's
-        // main()/listFiles()/assertSourceDirectory(), and smoke-package.mjs's
-        // main()/installConsumer()/publicSubpaths() — the functions issue #88
-        // deliberately left out of its own, smaller raise. Measured baseline
-        // at the time of this raise: 88.52% statements, 80.05% branches,
-        // 93.79% functions, 88.48% lines, rounded down to the nearest
-        // multiple of 5, the same convention used for both earlier raises
-        // (#44, #88). It exists so a new automation script can't ship with
-        // zero tests and nothing reporting the number moving;
-        // scripts/lib/guard/** also counts toward this aggregate, on top of
-        // its own stricter floor above.
+        // Last raised by issue #98 against a measured baseline of 88.52%
+        // statements, 80.05% branches, 93.79% functions and 88.48% lines,
+        // each rounded down to the nearest multiple of 5 — the convention
+        // every raise here has used (#44, #88, #98). Three of the scripts
+        // that baseline was measured over have since left the tree with the
+        // packaging gates (issue #4); the floor is deliberately left where it
+        // was rather than re-fitted to whatever the smaller tree now scores.
+        // It exists so a new automation script can't ship with zero tests and
+        // nothing reporting the number moving; scripts/lib/guard/** also
+        // counts toward this aggregate, on top of its own stricter floor
+        // above.
         "scripts/**": {
           lines: 85,
           functions: 90,

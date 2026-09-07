@@ -3,11 +3,10 @@ extend-exclude = [
   # Generated file. A typo in a package name is upstream's, and rewriting it
   # here would invalidate the lockfile.
   "pnpm-lock.yaml",
-  # Generated build/doc output, matching the same paths in .gitignore,
+  # Generated build/test output, matching the same paths in .gitignore,
   # eslint.config.mjs's globalIgnores, and .prettierignore.
   "dist/",
   "coverage/",
-  "docs/api/",
   # Data under test. Unlike the generated trees above this one is committed on
   # purpose, and a string misspelled on purpose is the point of the fixture.
   "tests/fixtures/",

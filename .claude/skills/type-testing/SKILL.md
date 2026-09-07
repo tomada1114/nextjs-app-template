@@ -98,9 +98,6 @@ explains why annotating a generic export is the standard way to accidentally wid
 ## What these tests do not cover
 
 These assertions check the _source's own_ contract — the type-checker's view of
-`src/index.ts` as compiled from `tests/types.test.ts`. They say nothing about what a
-consumer sees after packaging: module resolution, `exports` conditions, and a `.d.ts`
-rewritten by the build can all diverge from the source view. That published surface is
-checked separately, from a consumer's point of view, by `pnpm package:smoke`. A green
-`tests/types.test.ts` and a red `package:smoke` are not a contradiction — they are two
-different guarantees.
+`src/index.ts` as compiled from `tests/types.test.ts`. Nothing here is packed or
+published, so that view is the whole contract: there is no separate consumer-side
+resolution to diverge from it.

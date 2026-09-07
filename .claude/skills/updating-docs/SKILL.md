@@ -2,17 +2,17 @@
 name: updating-docs
 description: >
   Decides whether a change needs a documentation update and which surface it lands on —
-  README.md, docs/**, TSDoc in src/**, or CHANGELOG.md — for edits touching
-  src/index.ts, README.md, CONTRIBUTING.md, or docs/**. Use when triaging whether a PR
-  needs a doc change, updating the README example after an API change, or deciding if an
-  internal refactor needs no docs at all.
+  README.md, CONTRIBUTING.md, or TSDoc in src/** — for edits touching src/index.ts,
+  README.md, or CONTRIBUTING.md. Use when triaging whether a PR needs a doc change,
+  updating the README example after an API change, or deciding if an internal refactor
+  needs no docs at all.
 ---
 
 # Updating Documentation
 
 **Owns:** whether a change needs a documentation update, and which surface it lands on.
-**Does not own:** the release-impact note and CHANGELOG entries (`release-impact`);
-TSDoc release tags (`public-api-contract`).
+**Does not own:** the release-impact note (`release-impact`); TSDoc release tags
+(`public-api-contract`).
 
 ## Decide on observability, not location
 
@@ -32,14 +32,15 @@ When a change is user-observable, sweep every surface it touches — do not stop
 first one that seems relevant:
 
 - The README example, if the change affects what it shows.
-- The affected pages under `docs/**` (hand-written pages, not `docs/api/`).
+- `CONTRIBUTING.md`, if the change affects setup, the commands, or the PR process.
 - TSDoc comments in `src/**` for the symbol that changed.
-- CHANGELOG.md, when the change implies a release. **REQUIRED:** follow `release-impact`
-  for the note and the entry itself; this skill only flags that one is owed.
+- The `Release impact:` line in the PR body, when the change is user-observable.
+  **REQUIRED:** follow `release-impact` for its wording; this skill only flags that one
+  is owed.
 
 **REQUIRED:** `release-impact`'s same-PR checklist is what requires the README example
-and any affected `docs/` page to land in the same pull request as a public-API change;
-this skill decides which surface the update belongs on, not whether one is owed.
+to land in the same pull request as a public-API change; this skill decides which
+surface the update belongs on, not whether one is owed.
 
 ## Purpose per file
 
@@ -50,8 +51,8 @@ Each file has one job; do not blur them:
   API reference. Nothing more.
 - `CONTRIBUTING.md` — local setup, the main `pnpm` commands, how to run tests, release
   intent, and the PR process.
-- `CHANGELOG.md` — owned by release pull requests; `release-impact` holds its
-  categories, its Prettier-ignore, and how an entry is worded.
+- There is no `CHANGELOG.md` and no `docs/` tree here; the `Release impact:` line in the
+  pull request body carries what a changelog would have (`release-impact`).
 
 ## What belongs in prose
 
@@ -71,8 +72,6 @@ signature change, not to adjust the test.
 
 ## Generated trees are off-limits
 
-`docs/api/` is TypeDoc output (`pnpm docs:build`, configured by `typedoc.json`). It is
-generated and gitignored — never hand-edit it, and never include it in a documentation
-sweep. To change what it says, edit the TSDoc comments on the exported symbol in
-`src/**` and regenerate; the generated file itself carries no independent content to
-review.
+`.claude/skills/` is a generated mirror of `.agents/skills/` (`pnpm agents:sync`) —
+never hand-edit it, and never include it in a documentation sweep. Edit the authored
+file and re-run the sync; `authoring-skills` owns the rest.

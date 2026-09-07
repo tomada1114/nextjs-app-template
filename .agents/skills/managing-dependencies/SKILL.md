@@ -34,9 +34,9 @@ detail to fill in later — it means the review has not actually happened yet.
 - Whether it runs an install script, ships a native binary, or does network access —
   each needs its own justification, and an install script also needs an `allowBuilds`
   entry (see below).
-- Unpacked size and its effect on this package's own published tarball.
-- Supported Node versions and module format (ESM/CJS) against this package's own
-  `engines`/`exports` in `package.json`.
+- Unpacked size and its effect on install time here.
+- Supported Node versions and module format (ESM/CJS) against this repository's own
+  `devEngines.runtime` and `"type": "module"` in `package.json`.
 - Open security advisories and npm provenance.
 - Which of `dependencies`, `devDependencies`, `peerDependencies`, or
   `optionalDependencies` it belongs in, and why.
@@ -49,12 +49,10 @@ subprocess boundary for fast branch coverage. That mock does not prove that a pa
 manager can resolve the dependency, or that this repository's cooldown, trust, and
 lifecycle rules permit it.
 
-When a generated repository adds its first runtime dependency, land the manifest and
-lockfile change only after running `pnpm package:check` and `pnpm package:smoke` for
-real. Those commands exercise the packed manifest and an actual throwaway consumer
-install; keep the dependency declared in `dependencies`, never bundle it into the
-tarball, and do not treat the mocked unit/automation case as a substitute for either
-real command.
+When a repository adds its first runtime dependency, land the manifest and lockfile
+change only after a real `pnpm install` and a green `pnpm run check:source`. Keep the
+dependency declared in `dependencies`, and do not treat a mocked unit/automation case as
+a substitute for the real install.
 
 ## What a `peerDependencies` entry actually does here
 
@@ -65,16 +63,8 @@ do with one differs, which is worth knowing before you rely on either:
   dependency, picking the **highest** version matching the range. A `devDependencies`
   entry naming the same package wins instead, and pnpm does not complain when that entry
   falls outside the declared peer range.
-- The consumer smoke test (`scripts/smoke-package.mjs`) installs the tarball with
-  `npm install --legacy-peer-deps`, so the throwaway consumer never fetches a peer from
-  the network and `node_modules` holds only the package under test. That is what proves
-  the more useful thing: the published package installs and its `bin` runs _before_ the
-  consumer has the peer in place, which is the real first-run experience of
-  `npx <tool>`. A `bin` that actually needs the peer at runtime must therefore fail with
-  its own diagnostic, not a bare module-resolution stack trace.
-- Whether the declared range itself is satisfiable by anything on the registry is not
-  tested here — asserting that needs the real network by definition, so it belongs in a
-  separate CI job, not in the offline smoke test.
+- Whether the declared range is satisfiable by anything on the registry is not tested
+  anywhere here — asserting that needs the real network by definition.
 
 ## Testing against a version the ceiling forbids
 
@@ -162,14 +152,14 @@ the prohibition on relaxing it.
 
 ## TypeScript version ceiling
 
-`typescript` is held below the version that `typescript-eslint` and `typedoc` cap their
-peer support at (see `package.json`'s `devDependencies` for the current range). With
+`typescript` is held below the version that `typescript-eslint` caps its peer support at
+(see `package.json`'s `devDependencies` for the current range). With
 `strictPeerDependencies` on, a bump past that ceiling fails the install rather than
 merely warning.
 
-Do not "upgrade typescript to latest." Raising this ceiling is a coordinated
-multi-package upgrade — `typescript-eslint` and `typedoc` both need to raise their own
-peer ranges first — not a routine dependency bump.
+Do not "upgrade typescript to latest." Raising this ceiling is a coordinated upgrade —
+`typescript-eslint` has to raise its own peer range first — not a routine dependency
+bump.
 
 ## Handoff
 

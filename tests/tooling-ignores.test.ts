@@ -163,10 +163,10 @@ function typosExtendExclude(): string[] {
 }
 
 describe("the generated/ignored tree stays consistent across tooling", () => {
-  // Build/doc output nobody commits: .gitignore keeps it out of git
+  // Build/test output nobody commits: .gitignore keeps it out of git
   // entirely, so there is nothing in it for ESLint, Prettier, or typos to
   // usefully check either.
-  const BUILD_OUTPUT = ["dist/", "coverage/", "docs/api/"];
+  const BUILD_OUTPUT = ["dist/", "coverage/"];
 
   // The opposite case: `.claude/skills/` IS tracked (AGENTS.md — both the
   // authored `.agents/skills/` and its generated mirror are committed real

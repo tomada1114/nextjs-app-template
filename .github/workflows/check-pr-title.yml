@@ -31,9 +31,8 @@ jobs:
           # include `deps`, which is the prefix .github/dependabot.yml puts on
           # every dependency commit, so bot and batched-bot PRs failed this
           # check for a reason no one could read off the workflow.
-          # tests/workflows.test.ts requires every Dependabot prefix to appear
-          # here, and .github/release.yml to have a category for the label
-          # pr-label.yml derives from it.
+          # tests/workflows.test.ts requires every Dependabot prefix to
+          # appear here.
           types: |
             feat
             fix

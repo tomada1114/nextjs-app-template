@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 // separate `run:` steps (split for failure attribution — a reader should see
 // which step failed, not just that the composite did). Nothing asserted the
 // two lists stay in sync, so a step added to one silently stops being
-// enforced by the other. `release.yml` is the only caller of `check:source`
-// as a unit, so a gate added there alone is enforced only at release time.
+// enforced by the other: a contributor running the composite locally would
+// pass a gate CI never runs, or the reverse.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 /** A script name has no exception here today, but the mechanism stays ready. */

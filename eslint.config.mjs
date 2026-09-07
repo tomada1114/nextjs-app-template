@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import js from "@eslint/js";
 import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -26,61 +24,6 @@ const NO_EXPORT_STAR = {
 const INTERNAL_IS_PRIVATE =
   'src/internal/ is private: see "Architecture" in AGENTS.md. Tests reach it through the public surface in src/index.ts (see the `writing-tests` skill), and repository automation must not depend on package internals at all.';
 
-/**
- * Read one property off a value of unknown shape.
- *
- * @param {unknown} value - Candidate object.
- * @param {string} key - Property to read.
- * @returns {unknown} The property value, or undefined when absent.
- */
-function readKey(value, key) {
-  if (typeof value !== "object" || value === null || !(key in value)) {
-    return undefined;
-  }
-  return /** @type {Record<string, unknown>} */ (value)[key];
-}
-
-/**
- * The `universal-library` profile forbids Node built-ins in `src/` by emptying
- * `compilerOptions.types` in the build config. Reading that back here keeps the
- * profile encoded in exactly one place instead of duplicating a profile flag
- * that could drift out of sync with what actually compiles.
- *
- * @returns {boolean} True when `src/` must stay runtime-agnostic.
- */
-function isUniversalProfile() {
-  const raw = readFileSync(new URL("tsconfig.build.json", import.meta.url), "utf8");
-  // The build config is JSONC; strip full-line comments before parsing.
-  /** @type {unknown} */
-  const parsed = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ""));
-  const types = readKey(readKey(parsed, "compilerOptions"), "types");
-  return Array.isArray(types) && types.length === 0;
-}
-
-/** @type {import("eslint").Linter.Config[]} */
-const universalSourceRestrictions = isUniversalProfile()
-  ? [
-      {
-        name: "universal-profile/no-node-builtins",
-        files: ["src/**/*.ts"],
-        rules: {
-          "no-restricted-imports": [
-            "error",
-            {
-              patterns: [
-                {
-                  group: ["node:*"],
-                  message:
-                    "The universal-library profile must run outside Node. Move Node-only code behind a separate conditional export entry.",
-                },
-              ],
-            },
-          ],
-        },
-      },
-    ]
-  : [];
-
 export default defineConfig([
   // Only generated trees are ignored; everything hand-written is linted,
   // including repository automation and config files. `.claude/skills/` is a
@@ -94,7 +37,6 @@ export default defineConfig([
   globalIgnores([
     "dist/",
     "coverage/",
-    "docs/api/",
     ".claude/skills/",
     ".claude/worktrees/",
     "tests/fixtures/",
@@ -200,7 +142,6 @@ export default defineConfig([
       ],
     },
   },
-  ...universalSourceRestrictions,
   {
     name: "automation/node-scripts",
     files: ["scripts/**/*.mjs", ".agents/skills/**/*.mjs"],
