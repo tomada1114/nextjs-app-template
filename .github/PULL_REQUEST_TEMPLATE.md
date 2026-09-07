@@ -4,6 +4,6 @@
 
 ## Checklist
 
-- [ ] `pnpm check` passes
+- [ ] `pnpm check:source` passes
 - [ ] Public API changes include behavior tests, type tests, and a release-impact note
 - [ ] README and affected docs are updated

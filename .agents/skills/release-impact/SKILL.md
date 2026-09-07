@@ -27,10 +27,10 @@ A change to the public surface is a change to a contract other people depend on.
 4. the README example and any affected page under `docs/`
 5. a release-impact note describing the change and its semver impact
 
-No gate reconstructs this list for you. `pnpm check` proves the new surface builds, is
-documented, and packs; it cannot tell you whether the change was _meant_, or what it
-does to the version. That is what the release-impact note has to say — write it, do not
-let the gate stand in for it.
+No gate reconstructs this list for you. `pnpm run check:source` proves the new surface
+builds and is tested; it cannot tell you whether the change was _meant_, or what it does
+to the version. That is what the release-impact note has to say — write it, do not let
+the gate stand in for it.
 
 ## State the decision in every PR
 

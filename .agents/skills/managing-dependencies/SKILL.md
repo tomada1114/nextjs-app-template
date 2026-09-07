@@ -63,16 +63,8 @@ do with one differs, which is worth knowing before you rely on either:
   dependency, picking the **highest** version matching the range. A `devDependencies`
   entry naming the same package wins instead, and pnpm does not complain when that entry
   falls outside the declared peer range.
-- The consumer smoke test (`scripts/smoke-package.mjs`) installs the tarball with
-  `npm install --legacy-peer-deps`, so the throwaway consumer never fetches a peer from
-  the network and `node_modules` holds only the package under test. That is what proves
-  the more useful thing: the published package installs and its `bin` runs _before_ the
-  consumer has the peer in place, which is the real first-run experience of
-  `npx <tool>`. A `bin` that actually needs the peer at runtime must therefore fail with
-  its own diagnostic, not a bare module-resolution stack trace.
-- Whether the declared range itself is satisfiable by anything on the registry is not
-  tested here — asserting that needs the real network by definition, so it belongs in a
-  separate CI job, not in the offline smoke test.
+- Whether the declared range is satisfiable by anything on the registry is not tested
+  anywhere here — asserting that needs the real network by definition.
 
 ## Testing against a version the ceiling forbids
 

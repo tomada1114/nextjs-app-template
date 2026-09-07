@@ -51,9 +51,8 @@
   color: cccccc
   description: "Not implementable as filed, or parked pending something outside the tracker."
 
-# Changelog-only labels: used by .github/release.yml's categories and applied
-# by .github/workflows/pr-label.yml from a PR's Conventional Commit type.
-# Never used for issue triage.
+# Labels applied by .github/workflows/pr-label.yml from a PR's Conventional
+# Commit type. Never used for issue triage.
 - name: dependencies
   color: 0366d6
   description: "A dependency version bump."
