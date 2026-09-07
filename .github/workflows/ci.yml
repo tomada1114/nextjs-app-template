@@ -54,12 +54,6 @@ jobs:
       - name: Type check
         run: pnpm run typecheck
 
-      - name: Build
-        run: pnpm run build
-
-      - name: Build the documentation
-        run: pnpm run docs:build
-
   test:
     name: Test (${{ matrix.os }})
     strategy:
@@ -93,67 +87,3 @@ jobs:
       - name: Run tests without coverage
         if: matrix.os != 'ubuntu-latest'
         run: pnpm run test
-
-  package:
-    name: Package artifact
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Builds and packs once, then runs publint, Are the Types Wrong?, and the
-      # install/runtime/type/deep-import smoke checks against that exact file.
-      - name: Verify the publishable package
-        run: pnpm run package:check
-
-  # A package with no published Node floor (universal-library) has no floor
-  # for this job to verify, so this job only applies when engines.node is
-  # published.
-  package-floor:
-    name: Package smoke at the published Node floor
-    needs: package
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Source work and the dependency install stay on the development runtime.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build and pack the artifact on the development runtime
-        run: |
-          set -euo pipefail
-          pnpm run build
-          node scripts/clean.mjs .smoke
-          pnpm pack --pack-destination .smoke
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-
-      - name: Consume the packed artifact at the published Node floor
-        run: pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke

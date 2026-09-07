@@ -8,16 +8,16 @@ import { parseLabelManifest } from "../scripts/lib/labels-manifest.mjs";
 
 // `.github/labels.yml` is the single declarative source for this
 // repository's label taxonomy (the `triaging-issues` skill).
-// This is a static, filesystem-only check: a form or the release manifest
-// must not be able to name a label the manifest does not declare, so GitHub
-// does not silently drop it (AGENTS.md warns about exactly that).
+// This is a static, filesystem-only check: an issue form or a workflow must
+// not be able to name a label the manifest does not declare, so GitHub does
+// not silently drop it (AGENTS.md warns about exactly that).
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const githubDir = path.join(repoRoot, ".github");
 
 /**
  * Pull every label named inside a `labels: [...]` flow sequence, quoted or
- * not (issue templates quote their entries; release.yml does not).
+ * not (issue templates quote their entries; other manifests may not).
  */
 function extractLabelArrays(text: string): string[] {
   const labels: string[] = [];
@@ -81,14 +81,26 @@ describe("label taxonomy", () => {
     },
   );
 
-  it("every label in .github/release.yml's changelog categories is declared in .github/labels.yml", () => {
-    const text = readFileSync(path.join(githubDir, "release.yml"), "utf8");
-    const labels = extractLabelArrays(text);
+  it("every label pr-label.yml can apply is declared in .github/labels.yml", () => {
+    // pr-label.yml derives a label from the PR title's Conventional Commit
+    // type and applies it best-effort — `gh pr edit` on a label the repository
+    // does not have prints a notice and exits 0, so a label that was never
+    // declared here is silently never applied. This used to be checked one
+    // step further along the chain, against `.github/release.yml`'s changelog
+    // categories; that file went with the npm release workflow, and the
+    // manifest is the remaining place a label has to exist.
+    const text = readFileSync(
+      path.join(githubDir, "workflows", "pr-label.yml"),
+      "utf8",
+    );
+    const labels = [...text.matchAll(/\blabel=([a-z][a-z-]*)/g)].flatMap(
+      (match) => match[1] ?? [],
+    );
     expect(labels.length).toBeGreaterThan(0);
     for (const label of labels) {
       expect(
         manifestNames.has(label),
-        `.github/release.yml uses "${label}", which .github/labels.yml does not declare`,
+        `pr-label.yml applies "${label}", which .github/labels.yml does not declare`,
       ).toBe(true);
     }
   });

@@ -5,22 +5,15 @@ import process from "node:process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  npmCliPath,
-  repoRoot,
-  resolveDependencyBin,
-  runNode,
-} from "../scripts/lib/node-tools.mjs";
+import { repoRoot, runNode } from "../scripts/lib/node-tools.mjs";
 
-// scripts/lib/node-tools.mjs is AGENTS.md's own worked example for the
-// ERR_DEPENDENCY_MISSING error-message convention, so its error paths are
-// exercised directly here rather than only incidentally through the scripts
-// that call it. Real installed dependencies (typescript, prettier, publint)
-// stand in for fixtures instead of mocking node:fs — the `writing-tests` skill's
-// conventions prefer a real fake to a mock beyond a one-shot call, and these
-// three between them cover every bin shape resolveDependencyBin has to read
-// (a string bin, an object bin keyed by an explicit name, and an object bin
-// that falls back to the package's own name).
+// `runNode` is the one spawn helper every remaining repository script goes
+// through, so its result shapes — success, a non-zero exit, and a spawn that
+// never started — are exercised directly here rather than only incidentally
+// through the scripts that call it. Real throwaway scripts written into a
+// `mkdtempSync` directory stand in for fixtures instead of mocking
+// node:child_process: the `writing-tests` skill's conventions prefer a real
+// fake to a mock beyond a one-shot call.
 const workspaces: string[] = [];
 
 function makeWorkspace(prefix: string): string {
@@ -127,55 +120,5 @@ describe("runNode", () => {
     const result = runNode(script, []);
 
     expect(result.stdout.trim()).toBe(repoRoot);
-  });
-});
-
-describe("npmCliPath", () => {
-  it("finds the npm CLI shipped next to this Node installation", () => {
-    const found = npmCliPath();
-
-    expect(found.endsWith("npm-cli.js")).toBe(true);
-    expect(existsSync(found)).toBe(true);
-  });
-});
-
-describe("resolveDependencyBin", () => {
-  it("throws ERR_DEPENDENCY_MISSING for a package that is not installed", () => {
-    expect(() =>
-      resolveDependencyBin("this-package-does-not-exist-in-node-modules"),
-    ).toThrow(/ERR_DEPENDENCY_MISSING/);
-  });
-
-  it("names the missing package and the next safe command", () => {
-    expect(() => resolveDependencyBin("also-not-installed")).toThrow(
-      /also-not-installed[\s\S]*pnpm install --frozen-lockfile/,
-    );
-  });
-
-  it("resolves a string bin field directly, ignoring binName", () => {
-    // prettier declares "bin": "./bin/prettier.cjs" — a string, not an object.
-    expect(resolveDependencyBin("prettier", "anything")).toBe(
-      path.join(repoRoot, "node_modules", "prettier", "bin", "prettier.cjs"),
-    );
-  });
-
-  it("resolves an object bin field by the requested binName", () => {
-    // typescript declares two named bins: tsc and tsserver.
-    expect(resolveDependencyBin("typescript", "tsc")).toBe(
-      path.join(repoRoot, "node_modules", "typescript", "bin", "tsc"),
-    );
-  });
-
-  it("falls back to the package's own name when binName is omitted", () => {
-    // publint's only bin entry is keyed by its own package name.
-    expect(resolveDependencyBin("publint")).toBe(
-      path.join(repoRoot, "node_modules", "publint", "src", "cli.js"),
-    );
-  });
-
-  it("throws ERR_DEPENDENCY_BIN_MISSING when the requested bin is absent", () => {
-    expect(() => resolveDependencyBin("typescript", "does-not-exist")).toThrow(
-      /ERR_DEPENDENCY_BIN_MISSING/,
-    );
   });
 });

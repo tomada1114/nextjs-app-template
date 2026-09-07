@@ -2,21 +2,9 @@
   "name": "my-package",
   "version": "0.1.1",
   "description": "A short description.",
-  "keywords": [],
+  "private": true,
   "license": "MIT",
-  "author": "Your Name <you@example.com>",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/your-name/my-package.git"
-  },
-  "bugs": {
-    "url": "https://github.com/your-name/my-package/issues"
-  },
-  "homepage": "https://github.com/your-name/my-package#readme",
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
   "packageManager": "pnpm@11.18.0",
   "devEngines": {
     "runtime": {
@@ -30,27 +18,8 @@
       "onFail": "download"
     }
   },
-  "files": [
-    "dist"
-  ],
-  "sideEffects": false,
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "types": "./dist/index.d.ts",
-  "publishConfig": {
-    "access": "public",
-    "provenance": true,
-    "registry": "https://registry.npmjs.org/"
-  },
   "scripts": {
-    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json",
-    "clean": "node scripts/clean.mjs dist coverage docs/api .package .smoke .attw .eslintcache",
+    "clean": "node scripts/clean.mjs dist coverage .eslintcache",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
@@ -59,22 +28,16 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:related": "vitest related --run",
-    "package:smoke": "node scripts/package-smoke.mjs",
-    "package:check": "pnpm run build && node scripts/clean.mjs .package && pnpm pack --pack-destination .package && pnpm run package:verify -- --pack-dir .package && node scripts/clean.mjs .package",
-    "package:verify": "node scripts/verify-package.mjs",
-    "docs:build": "typedoc",
     "agents:sync": "node scripts/sync-agents.mjs",
     "agents:check": "node scripts/sync-agents.mjs --check",
     "repo:labels": "node scripts/sync-labels.mjs",
     "check:staged": "node scripts/check-staged.mjs",
     "check:quick": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
-    "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage && pnpm run build && pnpm run docs:build",
-    "check": "pnpm run check:source && node scripts/clean.mjs .package && pnpm pack --pack-destination .package && pnpm run package:verify -- --pack-dir .package && node scripts/clean.mjs .package",
+    "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage",
     "fix": "eslint . --fix && prettier --write .",
     "hooks:install": "lefthook install"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.5",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.4.0",
     "@vitest/coverage-v8": "^4.1.11",
@@ -83,8 +46,6 @@
     "eslint-config-prettier": "^10.1.8",
     "lefthook": "^2.1.12",
     "prettier": "3.9.6",
-    "publint": "^0.3.24",
-    "typedoc": "^0.28.20",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.11"

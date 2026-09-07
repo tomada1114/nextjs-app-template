@@ -974,7 +974,6 @@ describe("the workflows in .github/workflows", () => {
       "ci.yml",
       "dependency-review.yml",
       "pr-label.yml",
-      "release.yml",
       "security-audit.yml",
       "typos.yml",
     ]);
@@ -1028,141 +1027,23 @@ describe("the workflows in .github/workflows", () => {
 
   it("grants a write scope only where the job cannot do its work without one", () => {
     // pr-label writes a label and tolerates the read-only token a fork PR
-    // gets; release needs OIDC and a tag push. Everything else, and in
-    // particular everything that runs repository code, stays read-only.
+    // gets. Everything else, and in particular everything that runs
+    // repository code, stays read-only. This repository publishes nothing, so
+    // no workflow needs OIDC or a tag push any more.
     const writers = workflowNames.filter((name) =>
       scan(workflowSource(name)).some((line) => line.text.endsWith(": write")),
     );
 
-    expect(writers.sort()).toEqual(["pr-label.yml", "release.yml"]);
+    expect(writers.sort()).toEqual(["pr-label.yml"]);
   });
 });
 
-describe("the release workflow preserves the reviewed artifact", () => {
-  const source = workflowSource("release.yml");
-  const publish = jobsOf(scan(source)).find((job) => job.name === "publish");
-
-  it("uses only read access and OIDC in the publish job", () => {
-    expect(publish).toBeDefined();
-    if (publish === undefined) {
-      return;
-    }
-    const permissions = jobKey(publish, "permissions");
-    expect(permissions).toBeDefined();
-    if (permissions === undefined) {
-      return;
-    }
-    expect(
-      blockOf(publish.body, publish.body.indexOf(permissions)).map((line) => line.text),
-    ).toEqual(["contents: read", "id-token: write"]);
-    expect(jobKey(publish, "environment")?.text).toBe("environment: release");
-  });
-
-  it("does not refer to a long-lived npm token or enable a dependency cache", () => {
-    expect(source).not.toContain("NPM_TOKEN");
-    // setup-node's package-manager-cache is explicitly disabled: a release
-    // workflow must never restore build state from a previous run's cache.
-    expect(source).not.toMatch(/cache:\s*(?!false\b)\S/);
-  });
-
-  it("checks the tag before publishing", () => {
-    expect(source.indexOf("Verify tag matches package version")).toBeGreaterThan(-1);
-    expect(source.indexOf("Verify tag matches package version")).toBeLessThan(
-      source.indexOf("npm publish dist/package.tgz"),
-    );
-  });
-
-  it("builds and packs once, then reuses the fixed tarball path", () => {
-    expect(source.match(/\bpnpm pack\b/g)).toHaveLength(1);
-    expect(source).toContain("pnpm run package:verify -- --tarball dist/package.tgz");
-    expect(source).toContain("npm publish dist/package.tgz");
-    expect(source).toContain(
-      'npm pack "${PACKAGE}@${VERSION}" --pack-destination dist',
-    );
-    expect(source).toContain("path: dist/package.tgz");
-    expect(source).not.toContain("pnpm check");
-    expect(source).toContain("pnpm run check:source");
-  });
-
-  it("takes the publish contract from package.json rather than from flags", () => {
-    // publishConfig carries access, provenance and the registry (asserted in
-    // tests/package.test.ts). A flag here would be a second copy that only
-    // this call site obeys — the rehearsal and a manual publish would keep
-    // whatever the manifest says, and the two could drift apart unnoticed.
-    // --tag is the one exception: publishConfig is a static file and cannot
-    // express a per-release dist-tag decision (stable release vs. a
-    // release-candidate that must not move `latest`), so that one flag is
-    // required rather than forbidden.
-    const publishes = runCommands(source).filter(({ command }) =>
-      /\bnpm publish\b/.test(command),
-    );
-
-    expect(publishes).toHaveLength(1);
-    expect(
-      publishes.filter(({ command }) =>
-        /--(?:access|provenance|registry)\b/.test(command),
-      ),
-    ).toEqual([]);
-  });
-
-  it("always publishes with an explicit dist-tag from the tag-verification step", () => {
-    // A release candidate must never move the `latest` npm dist-tag. The
-    // verify-tag step derives the right dist-tag (the prerelease identifier,
-    // or "latest" for a stable version) and every npm publish call carries
-    // it — including the stable case, where it evaluates to `--tag latest`
-    // as an explicit statement rather than an implicit default.
-    const publishes = runCommands(source).filter(({ command }) =>
-      /\bnpm publish\b/.test(command),
-    );
-
-    expect(publishes).toHaveLength(1);
-    expect(
-      publishes.filter(({ command }) =>
-        /--tag\s+"\$\{\{\s*steps\.verify-tag\.outputs\.dist_tag\s*\}\}"/.test(command),
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("derives the npm dist-tag and prerelease flag from the version's prerelease identifier", () => {
-    expect(source).toContain("id: verify-tag");
-    expect(source).toContain('echo "dist_tag=${PRERELEASE_ID}" >> "${GITHUB_OUTPUT}"');
-    expect(source).toContain('echo "dist_tag=latest" >> "${GITHUB_OUTPUT}"');
-    expect(source).toContain('echo "prerelease=true" >> "${GITHUB_OUTPUT}"');
-    expect(source).toContain('echo "prerelease=false" >> "${GITHUB_OUTPUT}"');
-  });
-
-  it("marks the GitHub Release as a prerelease when the version has a prerelease identifier", () => {
-    expect(source).toContain("needs.publish.outputs.prerelease");
-    expect(source).toContain("--prerelease");
-    expect(source.indexOf("outputs:")).toBeGreaterThan(-1);
-    expect(source).toContain("prerelease: ${{ steps.verify-tag.outputs.prerelease }}");
-  });
-
-  it("does not hide a rebuild or repack behind the release scripts", () => {
-    const scripts = (
-      JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
-        scripts: Record<string, string>;
-      }
-    ).scripts;
-
-    expect(scripts["check:source"]?.match(/\bpnpm run build\b/g)).toHaveLength(1);
-    expect(scripts["check:source"]).not.toMatch(/\b(?:pnpm|npm) pack\b/);
-    expect(scripts["package:verify"]).not.toContain("build");
-    expect(scripts["package:verify"]).not.toMatch(/\b(?:pnpm|npm) pack\b/);
-  });
-});
-
-// --- the pull-request vocabulary shared by the bots and the changelog --------
+// --- the pull-request vocabulary shared by the bots and the labels ----------
 
 const dependabotConfig = readFileSync(
   path.join(repoRoot, ".github", "dependabot.yml"),
   "utf8",
 );
-const releaseConfig = readFileSync(
-  path.join(repoRoot, ".github", "release.yml"),
-  "utf8",
-);
-
 /** The entries of a `key: |` block scalar, trimmed, in file order. */
 function blockScalarEntries(source: string, key: string): string[] {
   const lines = source.split("\n");
@@ -1218,21 +1099,6 @@ describe("the PR title vocabulary covers everything that can open a PR", () => {
     expect(prefixes).not.toEqual([]);
     expect(prefixes.filter((prefix) => !allowedTypes.includes(prefix))).toEqual([]);
   });
-
-  it("gives every label pr-label.yml can apply a changelog category", () => {
-    // pr-label.yml derives a label from the title type; .github/release.yml
-    // sorts the generated release notes by that label. A label with no category
-    // silently drops its PRs out of the notes.
-    const labels = [
-      ...workflowSource("pr-label.yml").matchAll(/\blabel=([a-z][a-z-]*)/g),
-    ].flatMap((match) => match[1] ?? []);
-    const categorized = [...releaseConfig.matchAll(/labels:\s*\[([^\]]+)\]/g)].flatMap(
-      (match) => (match[1] ?? "").split(",").map((entry) => entry.trim()),
-    );
-
-    expect(labels).not.toEqual([]);
-    expect(labels.filter((label) => !categorized.includes(label))).toEqual([]);
-  });
 });
 
 describe("the Dependabot cooldown agrees with the pnpm install cooldown", () => {
@@ -1266,6 +1132,7 @@ describe("the Dependabot cooldown agrees with the pnpm install cooldown", () => 
 // --- agreement with package.json and .node-version ---------------------------
 
 interface Manifest {
+  private?: boolean;
   engines?: { node?: string };
   packageManager?: string;
   devEngines?: {
@@ -1281,9 +1148,17 @@ const manifest = JSON.parse(
 describe("workflow regression checks for repository automation", () => {
   it("runs the test job as a fail-fast-free OS matrix with one coverage leg", () => {
     const source = workflowSource("ci.yml");
-    const testStart = source.indexOf("  test:");
-    const packageStart = source.indexOf("  package:", testStart);
-    const testJob = source.slice(testStart, packageStart);
+    // Anchored on the next top-level job header rather than on one job's name:
+    // `test` is currently the last job in the file, and `indexOf` of a name
+    // that is not there returns -1, which `slice` would read as "one character
+    // from the end" and silently widen the window to the whole file.
+    const header = "  test:\n";
+    const testStart = source.indexOf(header);
+    expect(testStart).toBeGreaterThan(-1);
+    const afterHeader = source.slice(testStart + header.length);
+    const nextJob = /^ {2}[a-z][a-z-]*:$/m.exec(afterHeader);
+    const testJob =
+      nextJob === null ? afterHeader : afterHeader.slice(0, nextJob.index);
 
     expect(testJob).toContain("name: Test (${{ matrix.os }})");
     expect(testJob).toContain("strategy:");
@@ -1311,28 +1186,21 @@ describe("workflow regression checks for repository automation", () => {
     expect(source).toContain("exit 1");
   });
 
-  it("checks the published Node floor with package:smoke after packing on Node 24", () => {
-    // A package that declares no `engines.node` (the universal-library
-    // profile) has no floor to verify, so this job would not exist for that
-    // profile.
+  it("publishes nothing, so it declares no Node floor and no job to verify one", () => {
+    // This repository is private (`package.json`'s `"private": true`): nothing
+    // is packed, published, or consumed as a tarball. `engines.node` was the
+    // published floor, and the `package`/`package-floor` jobs were the only
+    // things that verified it against a packed artifact — the three go
+    // together, and re-adding any one of them alone leaves a floor nobody
+    // checks or a job with nothing to check. The development runtime is
+    // carried by `devEngines.runtime` and `.node-version` instead, asserted in
+    // the block below.
     const source = workflowSource("ci.yml");
-    const packageFloorStart = source.indexOf("  package-floor:");
-    const floor = /^>=(\d+)$/.exec(manifest.engines?.node ?? "")?.[1];
 
-    if (floor === undefined) {
-      expect(packageFloorStart).toBe(-1);
-      return;
-    }
-    expect(packageFloorStart).toBeGreaterThan(-1);
-    const packageFloor = source.slice(packageFloorStart);
-
-    expect(packageFloor).toContain(`node-version: ${floor}`);
-    expect(packageFloor).toContain("pnpm run build");
-    expect(packageFloor).toContain("pnpm pack --pack-destination .smoke");
-    expect(packageFloor).toContain(
-      "pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke",
-    );
-    expect(packageFloor).toContain("pnpm install --frozen-lockfile");
+    expect(manifest.engines).toBeUndefined();
+    expect(manifest.private).toBe(true);
+    expect(source.indexOf("  package:")).toBe(-1);
+    expect(source.indexOf("  package-floor:")).toBe(-1);
   });
 });
 
@@ -1343,9 +1211,9 @@ describe("the development runtime contract fails closed", () => {
 
   it("keeps devEngines and .node-version on the development Node major", () => {
     // `devEngines.runtime.version` is what pnpm enforces locally, and
-    // `.node-version` is what the source-check jobs install. The published
-    // `engines.node` floor is intentionally independent and is exercised by
-    // the package-floor job above.
+    // `.node-version` is what the source-check jobs install. These two are now
+    // the only Node versions this repository states: there is no published
+    // `engines.node` floor to be independent of.
     const major = (value: string) => /(\d+)/.exec(value)?.[1];
     const nodeVersionFile = readFileSync(
       path.join(repoRoot, ".node-version"),
