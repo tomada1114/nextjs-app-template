@@ -1314,7 +1314,7 @@ describe("workflow regression checks for repository automation", () => {
   it("checks the published Node floor with package:smoke after packing on Node 24", () => {
     // A package that declares no `engines.node` (the universal-library
     // profile) has no floor to verify, so this job would not exist for that
-    // profile — see the `# profile:node-library:` block wrapping it below.
+    // profile.
     const source = workflowSource("ci.yml");
     const packageFloorStart = source.indexOf("  package-floor:");
     const floor = /^>=(\d+)$/.exec(manifest.engines?.node ?? "")?.[1];

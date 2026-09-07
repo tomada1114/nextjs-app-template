@@ -119,7 +119,6 @@ jobs:
       - name: Verify the publishable package
         run: pnpm run package:check
 
-  # profile:node-library:start
   # A package with no published Node floor (universal-library) has no floor
   # for this job to verify, so this job only applies when engines.node is
   # published.
@@ -158,4 +157,3 @@ jobs:
 
       - name: Consume the packed artifact at the published Node floor
         run: pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke
-  # profile:node-library:end
