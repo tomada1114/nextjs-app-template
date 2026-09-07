@@ -37,16 +37,16 @@ depends on a code path never reached, nothing was proven at all.
 ```ts
 // Wrong: runs the invalid call as part of the test body.
 it("rejects a number", () => {
-  // @ts-expect-error a number is not a valid identifier source
-  normalizeIdentifier(42);
+  // @ts-expect-error a number is not a valid input for this signature
+  normalize(42);
 });
 
 // Right: declare the invalid call inside a function, never invoke it. The
 // assertion is that the function fails to compile.
 it("rejects a number", () => {
   const rejected = (): void => {
-    // @ts-expect-error a number is not a valid identifier source
-    normalizeIdentifier(42);
+    // @ts-expect-error a number is not a valid input for this signature
+    normalize(42);
   };
   expect(rejected).toBeTypeOf("function");
 });

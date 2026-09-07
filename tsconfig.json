@@ -1,8 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Next.js compiles through its own bundler, so module specifiers resolve
+    // the way a bundler resolves them, not the way Node does. `jsx`,
+    // `esModuleInterop`, `resolveJsonModule` and `incremental` below are
+    // likewise values `next build` requires: it rewrites this file when one of
+    // them is missing or different, so they are written out here rather than
+    // discovered as an unexplained diff after a build.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "plugins": [{ "name": "next" }],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -11,15 +20,15 @@
     "noUncheckedSideEffectImports": true,
     "noImplicitReturns": true,
     "useUnknownInCatchVariables": true,
-    // Forbids the syntax Node's type stripping cannot erase — enum, namespace,
-    // parameter properties — so every source file stays runnable unbuilt.
-    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "forceConsistentCasingInFileNames": true,
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "incremental": true,
     "skipLibCheck": true,
     // Closes the path where a package in node_modules substitutes its own
     // standard library for TypeScript's built-in lib files.
@@ -40,7 +49,12 @@
     ".claude/skills",
     "*.ts",
     "*.mts",
-    "*.mjs"
+    "*.mjs",
+    // Route and page types Next.js generates into the (gitignored) build
+    // directory. Absent before the first build, which an `include` glob
+    // tolerates.
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   // `.claude/skills/` is a generated, committed mirror of `.agents/skills/`
   // (`pnpm agents:sync`): every skill lives at `.claude/skills/<name>/...`,

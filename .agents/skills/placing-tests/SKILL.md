@@ -3,9 +3,9 @@ name: placing-tests
 description: >
   Decides where a new test file goes under tests/<module>.test.ts, which
   vitest.config.ts project (unit vs automation) it joins, and which of the three
-  coverage.thresholds floors (src/**, scripts/**, scripts/lib/guard/**) govern it. Use
-  when adding a *.test.ts file, choosing between `pnpm exec vitest run` and `pnpm
-  test:coverage`, or a coverage run drops below a floor.
+  coverage.thresholds floors (the src/ zones, scripts/**, scripts/lib/guard/**) govern
+  it. Use when adding a *.test.ts file, choosing between `pnpm exec vitest run` and
+  `pnpm test:coverage`, or a coverage run drops below a floor.
 ---
 
 # Placing Tests
@@ -56,27 +56,31 @@ work.
   a real subprocess or temp-directory operation — giving it the short one would make
   correct tests flaky.
 
-## CLI entry tests
+## Command entry tests
 
-A command's test seam is the CLI entry itself: drive `argv` and observe the exit code,
-stdout, and stderr. For `src/cli.ts`, the conventional location is `tests/cli.test.ts`,
-not `src/internal/` and not a second public package entry. An in-process entry test that
-imports only `src/cli.ts` and touches no I/O belongs to the `unit` project; a test that
-starts the command as a child process or uses a temporary consumer belongs to
+A command's test seam is the command entry itself: drive `argv` and observe the exit
+code, stdout, and stderr — not `src/internal/`, and not a second public entry. An
+in-process entry test that imports only that entry and touches no I/O belongs to the
+`unit` project; a test that starts the command as a child process belongs to
 `automation`.
 
 ## Coverage floors
 
-`coverage.include` in `vitest.config.ts` lists both `src/**/*.ts` and `scripts/**/*.mjs`
-on purpose: a file with no test still counts toward the denominator at 0% instead of
-vanishing from it. A new file is covered from the moment it exists — write its test in
-the same PR, not as follow-up.
+`coverage.include` in `vitest.config.ts` lists `src/**/*.ts`, `src/**/*.tsx` and
+`scripts/**/*.mjs` on purpose: a file with no test still counts toward the denominator
+at 0% instead of vanishing from it. A new file is covered from the moment it exists —
+write its test in the same PR, not as follow-up.
 
 Three independent threshold sets exist, not one, because they answer three different
 questions:
 
-- **`src/**`** carries the package's own baseline floor — this is the public contract's
-  coverage bar.
+- **The `src/` zones** named in `coverage.thresholds` carry the baseline floor for this
+  repository's own logic. The glob is deliberately narrower than `coverage.include`: the
+  App Router tree and the component tree are still _reported_, so an untested file there
+  shows as a number rather than vanishing, but they carry no floor — they are framework
+  entry points and rendered markup, not logic a unit test reaches. Widening or narrowing
+  that glob is a threshold decision to argue for in a PR; moving a number by editing
+  `coverage.exclude` is forbidden outright (below).
 - **`scripts/**`** was never measured before it was added to `coverage.include`, so its
   floor is the last measured coverage rounded down to a clean value, not a guessed
   target — it has been raised as coverage grew (see the dated comments in
@@ -94,7 +98,7 @@ deliberately does not repeat them, since a copied number goes stale the moment t
 config changes.
 
 **Coverage stops at the process boundary.** The v8 provider instruments the Vitest
-workers and nothing else, so a `src/**` module that only ever executes inside a process
+workers and nothing else, so a `src/` module that only ever executes inside a process
 the test spawns reports 0% however thoroughly the integration test exercises it — and 0%
 against an 80% floor fails the run. Design for it rather than discovering it: keep the
 part that runs in the child thin and put the logic behind it in a module the test can

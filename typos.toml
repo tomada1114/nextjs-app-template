@@ -6,6 +6,7 @@ extend-exclude = [
   # Generated build/test output, matching the same paths in .gitignore,
   # eslint.config.mjs's globalIgnores, and .prettierignore.
   "dist/",
+  ".next/",
   "coverage/",
   # Data under test. Unlike the generated trees above this one is committed on
   # purpose, and a string misspelled on purpose is the point of the fixture.
@@ -16,16 +17,6 @@ extend-exclude = [
   ".claude/skills/",
 ]
 
-# Each entry below is a word that is spelled the way it is on purpose. Prefer
-# fixing the text over adding to these lists.
-[default.extend-identifiers]
-# Deliberately misspelled in tests/types.test.ts, where the point is that an
-# unknown option is a type error rather than an extension point.
-seperator = "seperator"
-
-[default.extend-words]
-# Node.js v22's LTS codename.
-Jod = "Jod"
-# normalizeIdentifier documents that "café" becomes "caf". That string is the
-# function's output, not a misspelling of "calf".
-caf = "caf"
+# No word exceptions: every entry this file used to carry belonged to the demo
+# library and its tests, which are gone. Prefer fixing the text over adding one
+# back.

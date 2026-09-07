@@ -46,12 +46,12 @@ the failure path too, not only on success.
 ## CLI behavior
 
 The observable contract of a command is `argv` → exit code, stdout, and stderr. Drive
-that contract through the CLI entry, such as `src/cli.ts`'s exported runner, and assert
-the complete result for representative arguments. Do not reach into `src/internal/` to
-make command logic testable; if direct unit access is required, the
-`public-api-contract` decision makes that logic public instead. A child-process test may
-exercise the installed command path when the executable boundary itself matters, but it
-should still assert only those caller-visible streams and status.
+that contract through the command entry's own exported runner, and assert the complete
+result for representative arguments. Do not reach into `src/internal/` to make command
+logic testable; if direct unit access is required, the `public-api-contract` decision
+makes that logic public instead. A child-process test may exercise the installed command
+path when the executable boundary itself matters, but it should still assert only those
+caller-visible streams and status.
 
 ## Expected values come from outside the code
 

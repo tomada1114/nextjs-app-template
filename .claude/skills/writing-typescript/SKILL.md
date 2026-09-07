@@ -4,7 +4,7 @@ description: >
   Use when writing or reviewing a module under src/**/*.ts: narrowing unknown instead of
   any, `satisfies` vs `as`, a type guard, interface vs type, an exhaustive switch over a
   union, `import type` under verbatimModuleSyntax, why `enum` is rejected in src/
-  (erasableSyntaxOnly), annotating a return type or a generic boundary, hitting
+  (no-restricted-syntax), annotating a return type or a generic boundary, hitting
   noUncheckedIndexedAccess, exactOptionalPropertyTypes or
   noPropertyAccessFromIndexSignature, placing a new constant, or fixing a logic bug in
   an existing src/ function.
@@ -68,7 +68,8 @@ exported from `src/index.ts` (`public-api-contract`); the `.mjs` files under `sc
   signature; a widened `Record<string, T>` does not. `scripts/lib/json.mjs`'s
   `readKey`/`readString` are the resolution used for parsed-JSON reads — see
   `writing-repo-scripts` for that rule itself.
-- Do not introduce `enum`. `tsconfig.json`'s `erasableSyntaxOnly` forbids it.
+- Do not introduce `enum`. `eslint.config.mjs` blocks `TSEnumDeclaration` through
+  `no-restricted-syntax`, and the message there says why.
 
 ## Function boundaries and generics
 
@@ -78,8 +79,9 @@ exported from `src/index.ts` (`public-api-contract`); the `.mjs` files under `sc
   `expectTypeOf` test in `tests/types.test.ts` either way — a hand-written annotation is
   the standard way to accidentally widen a generic that should stay preserved.
 - Keep exported generics narrow: accept the widest reasonable input, return the
-  narrowest true output. `withTimeout` is the worked example — it returns the
-  operation's own resolved type instead of widening it to something looser.
+  narrowest true output. A helper that wraps a caller's operation is the worked example
+  — it returns that operation's own resolved type instead of widening it to something
+  looser.
 - Let inference do the work inside a function body; reserve explicit annotations for
   boundaries (parameters, exported return types), not every local binding.
 

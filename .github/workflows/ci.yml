@@ -54,6 +54,13 @@ jobs:
       - name: Type check
         run: pnpm run typecheck
 
+      # `next build` type-checks the App Router entry points the way the
+      # framework loads them, which the bare `tsc` step above cannot: a page
+      # or layout is reached through Next's file-system convention, not
+      # through an import.
+      - name: Build
+        run: pnpm run build
+
   test:
     name: Test (${{ matrix.os }})
     strategy:

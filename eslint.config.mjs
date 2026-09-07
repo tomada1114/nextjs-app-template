@@ -1,28 +1,43 @@
 import js from "@eslint/js";
 import vitest from "@vitest/eslint-plugin";
 import { defineConfig, globalIgnores } from "eslint/config";
+import next from "eslint-config-next";
 import eslintConfigPrettier from "eslint-config-prettier";
 import tseslint from "typescript-eslint";
 
 /**
+ * The `enum` ban, applied to every file this config sees.
+ *
+ * @remarks
+ * `tsconfig.json` used to carry this as `erasableSyntaxOnly`, which existed
+ * because `src/` had to run under Node's type stripping unbuilt. Next.js
+ * compiles the tree instead, so the premise is gone and the ban is stated
+ * here, where it can name the reason rather than a whole syntax class.
+ */
+const NO_ENUM = {
+  selector: "TSEnumDeclaration",
+  message:
+    "`enum` emits a runtime object no other TypeScript construct needs. Use a union of string literals, or an `as const` object.",
+};
+
+/**
  * The `export *` ban, shared by the whole `src/` tree and by the extra
- * index-only rules below.
+ * entry-point rules below.
  *
  * @remarks
  * `no-restricted-syntax` options replace rather than merge across config
- * objects, so the narrower `src/index.ts` block has to restate this entry or
- * it would silently switch `export *` back on for the one file where it does
- * the most damage.
+ * objects, so every narrower block that sets this rule has to restate the
+ * entries it still wants — otherwise it silently switches them back on.
  */
 const NO_EXPORT_STAR = {
   selector: "ExportAllDeclaration",
   message:
-    "`export *` publishes symbols implicitly. Re-export each public symbol by name from src/index.ts.",
+    "`export *` publishes symbols implicitly. Re-export each public symbol by name.",
 };
 
 /** What `src/internal/**` is, in the words of the rule that made it private. */
 const INTERNAL_IS_PRIVATE =
-  'src/internal/ is private: see "Architecture" in AGENTS.md. Tests reach it through the public surface in src/index.ts (see the `writing-tests` skill), and repository automation must not depend on package internals at all.';
+  'src/internal/ is private: see "Architecture" in AGENTS.md. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on package internals at all.';
 
 export default defineConfig([
   // Only generated trees are ignored; everything hand-written is linted,
@@ -34,8 +49,11 @@ export default defineConfig([
   // linted in their own checkout.
   // A `tests/fixtures/` file is malformed on purpose, so linting it reports
   // the very defect a test asserts on.
+  // `.next/` and `next-env.d.ts` are written by `next dev`/`next build`.
   globalIgnores([
     "dist/",
+    ".next/",
+    "next-env.d.ts",
     "coverage/",
     ".claude/skills/",
     ".claude/worktrees/",
@@ -78,28 +96,36 @@ export default defineConfig([
         { fixStyle: "inline-type-imports" },
       ],
       "no-console": "error",
+      "no-restricted-syntax": ["error", NO_ENUM],
+    },
+  },
+  // `eslint-config-next` states its two rule blocks against `**/*`, which here
+  // would also mean `scripts/**/*.mjs` and `tests/**/*.ts` — trees this
+  // repository parses with typescript-eslint and lints with its own rules.
+  // Narrow them to the tree the Next.js compiler owns. The config's third
+  // entry has no `files` key (it is a global-ignores entry) and is taken as
+  // published.
+  ...next.map((entry) =>
+    "files" in entry ? { ...entry, files: ["src/**/*.{ts,tsx}"] } : entry,
+  ),
+  {
+    name: "next/pinned-react-version",
+    files: ["src/**/*.{ts,tsx}"],
+    settings: {
+      // `eslint-config-next` asks eslint-plugin-react to *detect* the React
+      // version, and that detection path calls an ESLint 9 context API that
+      // ESLint 10 removed — every react/* rule throws while loading. Naming
+      // the version skips detection entirely. Keep this in step with the
+      // `react` major/minor in package.json, and drop it once
+      // eslint-plugin-react declares eslint 10 in its peer range.
+      react: { version: "19.2" },
     },
   },
   {
-    name: "public-api/explicit-surface",
-    files: ["src/**/*.ts"],
+    name: "src/shared-syntax",
+    files: ["src/**/*.ts", "src/**/*.tsx"],
     rules: {
-      // The published contract is named exports from src/index.ts. A default
-      // export has no stable name for consumers to import, or for a reviewer
-      // to read a diff of.
-      "no-restricted-exports": [
-        "error",
-        {
-          restrictDefaultExports: {
-            direct: true,
-            named: true,
-            defaultFrom: true,
-            namedFrom: true,
-            namespaceFrom: true,
-          },
-        },
-      ],
-      "no-restricted-syntax": ["error", NO_EXPORT_STAR],
+      "no-restricted-syntax": ["error", NO_ENUM, NO_EXPORT_STAR],
 
       // A `switch` over a union is the one place where adding a member to that
       // union silently changes behavior instead of failing to compile. With
@@ -113,6 +139,34 @@ export default defineConfig([
     },
   },
   {
+    name: "public-api/explicit-surface",
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    // Next.js finds a page, layout, loading/error boundary or route handler by
+    // its file name and reads it through its default export, so `src/app/**`
+    // is the one tree where a default export is the interface rather than an
+    // unnamed hole in one. Everywhere else under `src/` the surface stays
+    // named exports, which is what a reviewer can read a diff of.
+    ignores: ["src/app/**"],
+    rules: {
+      "no-restricted-exports": [
+        "error",
+        {
+          restrictDefaultExports: {
+            direct: true,
+            named: true,
+            defaultFrom: true,
+            namedFrom: true,
+            namespaceFrom: true,
+          },
+        },
+      ],
+    },
+  },
+  {
+    // Parked, not retired: `src/index.ts` no longer exists — the demo library
+    // it fronted is gone — and issue #10 re-targets this at the zone entry
+    // points. Deleting it here would lose the rule before its replacement
+    // lands.
     name: "public-api/internal-stays-private",
     files: ["src/index.ts"],
     rules: {
@@ -128,6 +182,7 @@ export default defineConfig([
       // reach it.
       "no-restricted-syntax": [
         "error",
+        NO_ENUM,
         NO_EXPORT_STAR,
         {
           selector: "ExportNamedDeclaration[source.value=/^\\.\\/internal\\//]",
@@ -155,16 +210,6 @@ export default defineConfig([
       // TypeScript annotations, so leaving it on would demand syntax that is
       // not valid JavaScript.
       "@typescript-eslint/explicit-module-boundary-types": "off",
-    },
-  },
-  {
-    name: "cli/terminal-output",
-    files: ["src/cli.ts", "src/cli/**/*.ts"],
-    rules: {
-      // Terminal output is the product of a command. Keep this exception at
-      // the command boundary so library modules still cannot print as a side
-      // effect of an import.
-      "no-console": "off",
     },
   },
   {

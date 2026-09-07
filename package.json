@@ -19,7 +19,10 @@
     }
   },
   "scripts": {
-    "clean": "node scripts/clean.mjs dist coverage .eslintcache",
+    "clean": "node scripts/clean.mjs .next coverage .eslintcache",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
@@ -33,7 +36,7 @@
     "repo:labels": "node scripts/sync-labels.mjs",
     "check:staged": "node scripts/check-staged.mjs",
     "check:quick": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
-    "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage",
+    "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:coverage",
     "fix": "eslint . --fix && prettier --write .",
     "hooks:install": "lefthook install"
   },
