@@ -133,19 +133,15 @@ pnpm install --lockfile-only
 git add package.json pnpm-lock.yaml && git commit -m "deps: regenerate the lockfile"
 ```
 
-Verify locally on the development Node, then on the minimum supported Node (a separate
-CI job):
+Verify locally on the development Node:
 
 ```bash
-pnpm install --frozen-lockfile && pnpm check
-pnpm --config.runtime-on-fail=ignore run check
+pnpm install --frozen-lockfile && pnpm run check:source
 ```
 
-`pnpm check` also covers the packaging gates (`publint`, are-the-types-wrong, the
-tarball smoke test) that a bump can break without touching source. Fix a mechanical
-failure (a renamed lint rule, a new type error from a stricter TypeScript) on the
-branch; for a judgement call, stop and report instead of merging around it or
-suppressing the error.
+Fix a mechanical failure (a renamed lint rule, a new type error from a stricter
+TypeScript) on the branch; for a judgement call, stop and report instead of merging
+around it or suppressing the error.
 
 Push and open the PR with a valid Conventional Commits title (the `check-pr-title`
 workflow skips PRs labeled `dependencies`, but the squashed history and generated
@@ -159,9 +155,8 @@ gh pr create --title "deps: batch dependency updates" \
   --label dependencies --body "<filled PR template>"
 ```
 
-A dependency bump that consumers can observe (a changed peer range, a raised
-`engines.node`, a new runtime dependency) needs a release-impact note
-(`release-impact`); a devDependency bump does not.
+A dependency bump that changes behavior (a new runtime dependency, a changed peer range)
+needs a release-impact note (`release-impact`); a devDependency bump does not.
 
 ## Step 5: Land and clean up
 

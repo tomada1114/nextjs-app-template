@@ -3,9 +3,9 @@ name: writing-typescript
 description: >
   Use when writing or reviewing a module under src/**/*.ts: narrowing unknown instead of
   any, `satisfies` vs `as`, a type guard, interface vs type, an exhaustive switch over a
-  union, `import type` under verbatimModuleSyntax, why `enum` (erasableSyntaxOnly) and
-  `node:` imports are rejected in src/, annotating a return type or a generic boundary,
-  hitting noUncheckedIndexedAccess, exactOptionalPropertyTypes or
+  union, `import type` under verbatimModuleSyntax, why `enum` is rejected in src/
+  (erasableSyntaxOnly), annotating a return type or a generic boundary, hitting
+  noUncheckedIndexedAccess, exactOptionalPropertyTypes or
   noPropertyAccessFromIndexSignature, placing a new constant, or fixing a logic bug in
   an existing src/ function.
 ---
@@ -95,11 +95,8 @@ exported from `src/index.ts` (`public-api-contract`); the `.mjs` files under `sc
   to a new union member, not a placeholder — adding one to silence the rule is what
   disables the protection it exists to give.
 
-## Runtime-agnostic source
+## Node built-ins in `src/`
 
-- Whether `node:*` imports are allowed in `src/**` depends on which profile this
-  repository is on. Read `tsconfig.build.json`'s `compilerOptions.types`: `["node"]` is
-  the `node-library` profile and `node:` builtins are permitted; `[]` is the
-  `universal-library` profile, where `eslint.config.mjs` registers the
-  universal-profile/no-node-builtins block and a `node:` import is an error — move
-  Node-only code behind a separate conditional export entry instead.
+- `node:*` imports are allowed in `src/**`: `tsconfig.json` includes the Node types and
+  no ESLint rule restricts them. Nothing here ships to a non-Node runtime, so there is
+  no runtime-agnostic profile to keep `src/` inside.

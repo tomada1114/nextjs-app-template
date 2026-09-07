@@ -4,8 +4,7 @@ description: >
   Covers what may be published from src/index.ts, how src/internal/ stays private, and
   how package.json's exports/files allowlists and the @public TSDoc tag declare the
   surface. Use when adding or removing an export in src/index.ts, deciding whether a
-  symbol belongs in src/internal/, editing package.json's exports or files fields, or
-  running pnpm package:check / pnpm package:smoke.
+  symbol belongs in src/internal/, or deciding what src/index.ts may re-export.
 ---
 
 # Public API Contract
@@ -68,24 +67,10 @@ public API by accident.
   over a missing one — it is a convention for readers, so a symbol reachable from
   `index.ts` says out loud that it is part of the contract rather than something
   re-exported by accident.
-- A public symbol with no TSDoc at all does fail the build. Enforced by:
-  `typedoc.json`'s `validation.notDocumented`, which runs against `src/index.ts` as the
-  sole entry point — `src/internal/` and test-only code never enter this check.
-- A public symbol whose type references something unexported leaves a consumer unable to
-  name that type in their own code. Enforced by: `typedoc.json`'s
-  `validation.notExported`.
-
-## Verifying the surface as a consumer sees it
-
-- `pnpm package:check` builds, packs, and runs every artifact check (`publint`, Are the
-  Types Wrong?, and the consumer smoke test) against the packed tarball rather than the
-  source tree.
-- `pnpm package:smoke` runs just the consumer-install leg — the same
-  `scripts/smoke-package.mjs` that `package:check` and `pnpm check` already invoke
-  through `scripts/verify-package.mjs` — so reach for it for a fast focused iteration on
-  an `exports`/`files` problem, not as an extra pass after a green `pnpm check`.
-- Both read the tarball's own packed manifest, not the repository's `package.json` in
-  place, so a stale `files` entry surfaces here even when every other gate is green.
+- A public symbol with no TSDoc at all, or one whose type references something
+  unexported, leaves a reader unable to name that type. Nothing enforces this
+  mechanically any more — the doc build that did was removed with the publish gates — so
+  it is a review expectation.
 
 **REQUIRED:** `release-impact` for what a change to this surface obliges the same pull
 request to carry.

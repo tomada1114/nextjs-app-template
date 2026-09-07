@@ -32,7 +32,7 @@ When a change is user-observable, sweep every surface it touches — do not stop
 first one that seems relevant:
 
 - The README example, if the change affects what it shows.
-- The affected pages under `docs/**` (hand-written pages, not `docs/api/`).
+- The affected pages under `docs/**`, all of which are hand-written.
 - TSDoc comments in `src/**` for the symbol that changed.
 - CHANGELOG.md, when the change implies a release. **REQUIRED:** follow `release-impact`
   for the note and the entry itself; this skill only flags that one is owed.
@@ -71,8 +71,6 @@ signature change, not to adjust the test.
 
 ## Generated trees are off-limits
 
-`docs/api/` is TypeDoc output (`pnpm docs:build`, configured by `typedoc.json`). It is
-generated and gitignored — never hand-edit it, and never include it in a documentation
-sweep. To change what it says, edit the TSDoc comments on the exported symbol in
-`src/**` and regenerate; the generated file itself carries no independent content to
-review.
+`.claude/skills/` is a generated mirror of `.agents/skills/` (`pnpm agents:sync`) —
+never hand-edit it, and never include it in a documentation sweep. Edit the authored
+file and re-run the sync; `authoring-skills` owns the rest.

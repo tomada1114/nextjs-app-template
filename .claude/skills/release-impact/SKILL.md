@@ -57,7 +57,6 @@ implementation:
 | Narrow an accepted input type                           | MAJOR |
 | Widen a required option (make an optional one required) | MAJOR |
 | Change an error `code`                                  | MAJOR |
-| Raise the `engines` floor                               | MAJOR |
 | Add an export                                           | MINOR |
 | Add an optional option                                  | MINOR |
 | Widen an accepted input type                            | MINOR |
@@ -90,8 +89,8 @@ in terms of which files changed.
 
 ## Done when
 
-- `pnpm check` is green, including `package:smoke` — this proves the surface builds, is
-  documented, and packs, but proves nothing about intent.
+- `pnpm run check:source` is green — this proves the surface builds and is tested, but
+  proves nothing about intent.
 - The PR body carries either a release-impact note (`yes` with a level and reason) or an
   explicit `no` statement, per the section above.
 - Publishing itself is not part of this checklist: AGENTS.md gates commit, push, PR, and
