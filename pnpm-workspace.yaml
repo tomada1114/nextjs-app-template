@@ -43,3 +43,27 @@ allowBuilds:
   # lefthook ships a postinstall that downloads/links its Go binary; that is
   # the whole point of depending on it for Git hooks.
   lefthook: true
+
+# Transitive-version overrides. Each entry replaces a resolution the policy
+# above refuses; none of them relaxes the policy itself.
+overrides:
+  # eslint-config-next depends on ^3.5.2. Its 3.9+ releases resolve through
+  # unrs-resolver, a native binary linked by a lifecycle script, which would
+  # need an allowBuilds entry above for a resolver no enabled rule ever loads.
+  # 3.8.7 is the newest release that still uses the pure-JS enhanced-resolve.
+  eslint-import-resolver-typescript: 3.8.7
+  # eslint-plugin-react depends on semver@^6, and semver@6.3.1 carries no
+  # provenance while earlier-published semver releases do, so trustPolicy:
+  # no-downgrade refuses it. semver 7 answers the same range queries.
+  semver: ^7.7.4
+
+# Peer-range exceptions, one graph edge each. strictPeerDependencies above
+# stays on: these three plugins arrive only as dependencies of
+# eslint-config-next and still cap their declared eslint peer at 9, while this
+# repository runs eslint 10. Drop an entry as soon as its plugin publishes a
+# release naming eslint 10.
+peerDependencyRules:
+  allowedVersions:
+    eslint-plugin-import>eslint: "10"
+    eslint-plugin-jsx-a11y>eslint: "10"
+    eslint-plugin-react>eslint: "10"
