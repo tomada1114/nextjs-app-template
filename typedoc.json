@@ -11,8 +11,8 @@
   // Stating the revision and the link template keeps this gate independent of
   // git state: TypeDoc would otherwise probe the `origin` remote and warn when
   // it is missing, which fails the build below in a fresh clone or in a
-  // bootstrapped directory that has no remote yet. Source links still resolve
-  // wherever git is available, and are simply omitted where it is not.
+  // freshly created directory that has no remote yet. Source links still
+  // resolve wherever git is available, and are simply omitted where it is not.
   "gitRevision": "main",
   "sourceLinkTemplate": "https://github.com/your-name/my-package/blob/{gitRevision}/{path}#L{line}",
 

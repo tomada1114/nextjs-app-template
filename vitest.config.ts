@@ -11,7 +11,6 @@ const fixtures = "tests/fixtures/**";
 // intentional exception to the usual `src/**` rule because it calls the guard
 // engine's pure functions directly.
 const automationTests = [
-  "tests/bootstrap.test.ts",
   "tests/check-attw.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",
@@ -26,9 +25,7 @@ const automationTests = [
   "tests/smoke-package.test.ts",
   "tests/sync-agents.test.ts",
   "tests/sync-labels.test.ts",
-  "tests/template-self.test.ts",
   "tests/tooling-ignores.test.ts",
-  "tests/verify-bootstrap.test.ts",
   "tests/verify-package.test.ts",
   "tests/workflows.test.ts",
 ];
@@ -113,7 +110,6 @@ export default defineConfig({
           branches: 80,
         },
         // Raised again by issue #98, which added dedicated coverage for
-        // verify-bootstrap.mjs's main()/run()/assertGenerated(),
         // verify-package.mjs's main()/runCheck(), sync-agents.mjs's
         // main()/listFiles()/assertSourceDirectory(), and smoke-package.mjs's
         // main()/installConsumer()/publicSubpaths() — the functions issue #88

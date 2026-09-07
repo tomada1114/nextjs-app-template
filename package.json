@@ -71,8 +71,7 @@
     "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:coverage && pnpm run build && pnpm run docs:build",
     "check": "pnpm run check:source && node scripts/clean.mjs .package && pnpm pack --pack-destination .package && pnpm run package:verify -- --pack-dir .package && node scripts/clean.mjs .package",
     "fix": "eslint . --fix && prettier --write .",
-    "hooks:install": "lefthook install",
-    "bootstrap:e2e": "node scripts/verify-bootstrap.mjs"
+    "hooks:install": "lefthook install"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

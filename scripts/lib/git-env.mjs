@@ -15,7 +15,7 @@
 // *is* the pre-commit layer, and `git commit -- <path>` hands its hook a
 // temporary index through GIT_INDEX_FILE that the default index does not
 // contain, so it has to inherit. Its tests clear the variables from their own
-// process instead (`vi.stubEnv`), which is also how `tests/bootstrap.test.ts`
+// process instead (`vi.stubEnv`), which is also how `tests/check-staged.test.ts`
 // keeps its fixtures out of the checkout.
 import process from "node:process";
 

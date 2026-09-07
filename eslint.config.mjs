@@ -263,9 +263,9 @@ export default defineConfig([
       //
       // `vitest/no-conditional-expect` comes from the recommended set and is
       // turned off for the same kind of reason: AGENTS.md prescribes
-      // asserting on a caught error inside `catch`, and the workflow and
-      // bootstrap suites branch on what the repository actually contains
-      // before asserting against it.
+      // asserting on a caught error inside `catch`, and the workflow suite
+      // branches on what the repository actually contains before asserting
+      // against it.
       "vitest/no-conditional-expect": "off",
     },
   },

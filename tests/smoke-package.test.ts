@@ -297,7 +297,7 @@ describe("compileTypeScriptConsumer", () => {
 
 describe("isUniversalProfile", () => {
   it("reflects this repository's own profile", () => {
-    // tsconfig.build.json's compilerOptions.types is bootstrap's single
+    // tsconfig.build.json's compilerOptions.types is this repository's single
     // source of truth for the profile (see isUniversalProfile's doc comment),
     // and package.json#engines.node is deleted only for universal-library, so
     // the two must always agree on whichever profile this checkout — or a

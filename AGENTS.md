@@ -20,10 +20,10 @@ checked.
 
 ## Overview
 
-An ESM-only TypeScript package published to npm. Development runs on Node >= 24, while a
-generated `node-library` chooses its published `engines.node` floor during bootstrap.
-pnpm 11 is the package manager, used through Corepack. A package may also ship one
-command entry in `src/cli.ts`; that command is not an import surface.
+An ESM-only TypeScript package published to npm. Development runs on Node >= 24,
+matching the package's published `engines.node` floor. pnpm 11 is the package manager,
+used through Corepack. A package may also ship one command entry in `src/cli.ts`; that
+command is not an import surface.
 
 ## Quick reference
 
@@ -40,7 +40,6 @@ pnpm docs:build    # TypeDoc into docs/api/
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
-pnpm bootstrap:e2e # run scripts/bootstrap.mjs end to end for every profile
 ```
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
@@ -52,11 +51,11 @@ rather than merely checked, tests limited to the ones reachable from the staged 
 before every commit. Nothing — not a hook, not a workflow — defines a check of its own;
 they all call these scripts.
 
-Development and source checks stay on Node 24. A generated `node-library` may publish a
-different bare `>=N` floor through bootstrap's `--node-engines` option (default `>=24`);
-the `package-floor` CI job builds and packs on Node 24, then consumes that artifact with
-`pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke` on the
-selected floor. The override is only for that compatibility check. Never relax
+Development and source checks stay on Node 24. The package publishes a bare `>=N`
+`engines.node` floor (currently `>=24`); the `package-floor` CI job builds and packs on
+Node 24, then consumes that artifact with
+`pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke` at the
+published floor. The override is only for that compatibility check. Never relax
 `devEngines.runtime`'s `onFail: error` for normal development or source checks.
 
 ## Validating a change
@@ -96,23 +95,22 @@ What may appear on the import surface, and what a change to it obliges, are the
 Each skill owns one kind of change. Load the one whose subject you are working on; each
 names its own boundary with its neighbours.
 
-| Skill                        | Load it when you are working on                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| `writing-typescript`         | a module under `src/**/*.ts`                                                          |
-| `designing-errors`           | an error type or an `ERR_*` code, in `src/` or `scripts/`                             |
-| `writing-tests`              | the body of a test under `tests/`                                                     |
-| `placing-tests`              | a new test file, a vitest project, or a coverage floor                                |
-| `type-testing`               | `tests/types.test.ts` and `expectTypeOf`                                              |
-| `public-api-contract`        | `src/index.ts`, `src/internal/`, or `exports`/`files`                                 |
-| `release-impact`             | a PR body, its semver consequence, a `CHANGELOG.md` entry                             |
-| `writing-repo-scripts`       | a `.mjs` under `scripts/`                                                             |
-| `bootstrapping-the-template` | the bootstrap flow, its profiles, or `pnpm bootstrap:e2e`                             |
-| `authoring-skills`           | a skill under `.agents/skills/`                                                       |
-| `changing-gates`             | a CI workflow, `lefthook.yml`, or a tool config                                       |
-| `managing-dependencies`      | adding, bumping, or removing a package by hand (an open bot PR is `merge-dependabot`) |
-| `merge-dependabot`           | landing open Dependabot or Renovate pull requests                                     |
-| `updating-docs`              | `README.md`, `CONTRIBUTING.md`, or `docs/`                                            |
-| `triaging-issues`            | filing, labelling, or ranking a GitHub issue                                          |
+| Skill                   | Load it when you are working on                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `writing-typescript`    | a module under `src/**/*.ts`                                                          |
+| `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                             |
+| `writing-tests`         | the body of a test under `tests/`                                                     |
+| `placing-tests`         | a new test file, a vitest project, or a coverage floor                                |
+| `type-testing`          | `tests/types.test.ts` and `expectTypeOf`                                              |
+| `public-api-contract`   | `src/index.ts`, `src/internal/`, or `exports`/`files`                                 |
+| `release-impact`        | a PR body, its semver consequence, a `CHANGELOG.md` entry                             |
+| `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                             |
+| `authoring-skills`      | a skill under `.agents/skills/`                                                       |
+| `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                       |
+| `managing-dependencies` | adding, bumping, or removing a package by hand (an open bot PR is `merge-dependabot`) |
+| `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                     |
+| `updating-docs`         | `README.md`, `CONTRIBUTING.md`, or `docs/`                                            |
+| `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                          |
 
 ## Security and human approval
 

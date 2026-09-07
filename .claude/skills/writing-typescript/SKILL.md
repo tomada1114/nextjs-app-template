@@ -97,9 +97,9 @@ exported from `src/index.ts` (`public-api-contract`); the `.mjs` files under `sc
 
 ## Runtime-agnostic source
 
-- Whether `node:*` imports are allowed in `src/**` depends on the profile this
-  repository was bootstrapped with. Read `tsconfig.build.json`'s
-  `compilerOptions.types`: `["node"]` is the `node-library` profile and `node:` builtins
-  are permitted; `[]` is the `universal-library` profile, where `eslint.config.mjs`
-  registers the universal-profile/no-node-builtins block and a `node:` import is an
-  error — move Node-only code behind a separate conditional export entry instead.
+- Whether `node:*` imports are allowed in `src/**` depends on which profile this
+  repository is on. Read `tsconfig.build.json`'s `compilerOptions.types`: `["node"]` is
+  the `node-library` profile and `node:` builtins are permitted; `[]` is the
+  `universal-library` profile, where `eslint.config.mjs` registers the
+  universal-profile/no-node-builtins block and a `node:` import is an error — move
+  Node-only code behind a separate conditional export entry instead.

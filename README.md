@@ -10,18 +10,8 @@ A short description.
 pnpm add my-package
 ```
 
-<!-- profile:node-library:start -->
-
 Requires Node.js 24 or newer. The package ships ESM only; on that range `require(esm)`
 is unflagged, so a CommonJS consumer can `require()` it directly.
-<!-- bootstrap-node-floor -->
-<!-- profile:node-library:end -->
-
-<!-- profile:universal-library:start -->
-
-The package does not declare a Node.js floor. The package ships ESM only; on that range
-`require(esm)` is unflagged, so a CommonJS consumer can `require()` it directly.
-<!-- profile:universal-library:end -->
 
 ## Quick start
 
@@ -44,29 +34,6 @@ blocked by the package export map.
 
 See the generated TypeDoc documentation from `pnpm docs:build` for the full API
 reference.
-
-<!-- template-only:start -->
-
-## Use this template
-
-Create a repository with GitHub's **Use this template** button, then run the interactive
-bootstrap before installing dependencies:
-
-```sh
-node scripts/bootstrap.mjs
-```
-
-Answer the prompts for the package name, profile, CLI choice, published Node floor,
-author, email, GitHub user, license, and description. For automation, pass the package
-name together with the `--profile`, `--cli`, `--node-engines`, `--author`, `--email`,
-`--github-user`, and `--license` flags.
-
-Use `node-library` for a Node.js package, or `universal-library` for code that must
-build without Node APIs. Add `--cli yes` to a `node-library` package to keep its
-`src/cli.ts` command entry. A `node-library` publishes `>=24` by default; pass
-`--node-engines '>=20'` to choose a different published floor. Bootstrap removes this
-section from the generated repository.
-<!-- template-only:end -->
 
 ## Development
 

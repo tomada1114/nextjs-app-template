@@ -119,10 +119,9 @@ jobs:
       - name: Verify the publishable package
         run: pnpm run package:check
 
-  # profile:node-library:start
   # A package with no published Node floor (universal-library) has no floor
-  # for this job to verify, so bootstrap removes the whole job for that
-  # profile instead of running it against a floor that doesn't exist.
+  # for this job to verify, so this job only applies when engines.node is
+  # published.
   package-floor:
     name: Package smoke at the published Node floor
     needs: package
@@ -152,33 +151,9 @@ jobs:
           node scripts/clean.mjs .smoke
           pnpm pack --pack-destination .smoke
 
-      # bootstrap rewrote the node-version below from this default to match
-      # --node-engines >=N (the trailing comment is bootstrap's own rewrite
-      # target and does not survive that rewrite).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24 # bootstrap-node-floor
+          node-version: 24
 
       - name: Consume the packed artifact at the published Node floor
         run: pnpm --config.runtime-on-fail=ignore run package:smoke -- --pack-dir .smoke
-  # profile:node-library:end
-
-  # template-only:start
-  bootstrap:
-    name: Bootstrap generated repositories
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: Verify bootstrap transformations
-        run: node scripts/verify-bootstrap.mjs
-  # template-only:end
