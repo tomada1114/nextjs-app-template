@@ -94,14 +94,14 @@ names its own boundary with its neighbours.
 | `writing-tests`         | the body of a test under `tests/`                                                     |
 | `placing-tests`         | a new test file, a vitest project, or a coverage floor                                |
 | `type-testing`          | `tests/types.test.ts` and `expectTypeOf`                                              |
-| `public-api-contract`   | `src/index.ts`, `src/internal/`, or `exports`/`files`                                 |
-| `release-impact`        | a PR body, its semver consequence, a `CHANGELOG.md` entry                             |
+| `public-api-contract`   | `src/index.ts` or `src/internal/`                                                     |
+| `release-impact`        | a PR body and its semver consequence                                                  |
 | `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                             |
 | `authoring-skills`      | a skill under `.agents/skills/`                                                       |
 | `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                       |
 | `managing-dependencies` | adding, bumping, or removing a package by hand (an open bot PR is `merge-dependabot`) |
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                     |
-| `updating-docs`         | `README.md`, `CONTRIBUTING.md`, or `docs/`                                            |
+| `updating-docs`         | `README.md` or `CONTRIBUTING.md`                                                      |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                          |
 
 ## Security and human approval

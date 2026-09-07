@@ -7,10 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { repoRoot, runNode } from "../scripts/lib/node-tools.mjs";
 
-// `runNode` is the one spawn helper every remaining repository script goes
-// through, so its result shapes — success, a non-zero exit, and a spawn that
-// never started — are exercised directly here rather than only incidentally
-// through the scripts that call it. Real throwaway scripts written into a
+// `runNode` is the shared spawn helper a repository script reaches for when it
+// has to run another Node program. No script under `scripts/` calls it today —
+// the ones that did left with the packaging gates — so its result shapes
+// (success, a non-zero exit, and a spawn that never started) are covered here
+// or nowhere. Real throwaway scripts written into a
 // `mkdtempSync` directory stand in for fixtures instead of mocking
 // node:child_process: the `writing-tests` skill's conventions prefer a real
 // fake to a mock beyond a one-shot call.

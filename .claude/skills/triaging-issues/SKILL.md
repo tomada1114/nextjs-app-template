@@ -57,7 +57,7 @@ that applies `chore` or `security`.
 `.github/labels.yml` is the source for the label set itself — name, color, and
 description; this skill holds only what each one _means_ for triage.
 `.github/ISSUE_TEMPLATE/*.yml` is what applies a type label at filing time. Two labels
-in `.github/labels.yml` — `dependencies` and `ci` — are changelog-only, applied by
+in `.github/labels.yml` — `dependencies` and `ci` — are PR-only, applied by
 `.github/workflows/pr-label.yml` from a PR's Conventional Commit type, and are never
 used for issue triage. If the file and this skill disagree about a triage label, fix the
 mismatch rather than choosing one.

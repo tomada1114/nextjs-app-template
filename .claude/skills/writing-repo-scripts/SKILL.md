@@ -24,8 +24,10 @@ floor (`placing-tests`); the `ERR_<STAGE>_*` code vocabulary shared with `src/`
   cannot depend on a compile step or on anything installed. Author it as `.mjs`.
 - Import only `node:*` builtins and the shared helpers under `scripts/lib/`. Never
   import a dependency from `node_modules` directly — a script that needs an installed
-  tool spawns it at run time (`runNode` in `scripts/lib/node-tools.mjs`) instead, so the
-  script still loads even when that dependency is absent.
+  tool spawns it at run time instead, so the script still loads even when that
+  dependency is absent. No script does today, and no helper resolves a dependency's bin
+  any more, so a script that needs one has to locate it and hand the path to `runNode`
+  (`scripts/lib/node-tools.mjs`) itself.
 - Import Node globals explicitly (`import process from "node:process"`,
   `import console from "node:console"`) rather than relying on the ambient globals Node
   provides at the top level.

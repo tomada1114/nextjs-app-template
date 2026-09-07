@@ -6,7 +6,7 @@ description: >
   impact:` line in a PR body; when adding, removing, renaming, or retyping anything
   exported from src/index.ts — normalizeIdentifier, withTimeout, InvalidInputError,
   TimeoutError, NormalizeIdentifierOptions, WithTimeoutOptions — or changing an error
-  `code`; or when writing a CHANGELOG.md entry.
+  `code`.
 ---
 
 # Release Impact
@@ -78,14 +78,12 @@ current version from `package.json` rather than assuming which period applies �
 still names the level the table gave, so the reviewer sees the breaking change rather
 than a minor bump that hides one.
 
-## CHANGELOG.md
+## There is no CHANGELOG.md
 
-`CHANGELOG.md` follows Keep a Changelog categories and SemVer, and is updated by release
-pull requests, not by every feature PR — a feature PR states its release impact per the
-section above; translating that into a changelog entry happens when the release PR is
-cut. It is Prettier-ignored so entries stay focused on published changes rather than
-reformatting noise. Write an entry in terms of observable behavior for a consumer, never
-in terms of which files changed.
+This repository publishes nothing, and it keeps no changelog: the file went with the
+publish gates. The `Release impact:` line in the pull request body is the whole record,
+so write it in terms of observable behavior rather than which files changed. Do not
+recreate `CHANGELOG.md` as a side effect of a feature PR.
 
 ## Done when
 

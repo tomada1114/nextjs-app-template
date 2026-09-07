@@ -1,10 +1,10 @@
 ---
 name: public-api-contract
 description: >
-  Covers what may be published from src/index.ts, how src/internal/ stays private, and
-  how package.json's exports/files allowlists and the @public TSDoc tag declare the
-  surface. Use when adding or removing an export in src/index.ts, deciding whether a
-  symbol belongs in src/internal/, or deciding what src/index.ts may re-export.
+  Covers what may appear on the import surface in src/index.ts, how src/internal/ stays
+  private, and how the @public TSDoc tag declares the surface. Use when adding or
+  removing an export in src/index.ts, deciding whether a symbol belongs in
+  src/internal/, or deciding what src/index.ts may re-export.
 ---
 
 # Public API Contract
@@ -51,15 +51,15 @@ public API by accident.
   `no-restricted-imports` rule over `tests/**/*.ts` and `scripts/**/*.mjs`. It covers
   the built copy under dist as well as the source — the same private module either way.
 
-## `package.json` allowlists
+## No `package.json` allowlists
 
-- `exports` and `files` in `package.json` are allowlists, not documentation of intent. A
-  path not listed in either is private, and a deep import into `dist/` — reaching past
-  the allowlist into an internal module — is expected to fail for a consumer even if the
-  file exists on disk.
-- A new subpath export (a second entry under `exports`, a deep export) is a
-  public-surface decision with the same weight as a new symbol in `index.ts` — it is not
-  a packaging detail to slip in separately.
+- This repository is private and publishes nothing, so `package.json` carries no
+  `exports`, `files`, or `types` field. Nothing mechanically blocks a deep import the
+  way an export map would: `src/index.ts` plus the ESLint rules above are the whole
+  boundary, and keeping a module out of `index.ts` is the only thing that keeps it
+  private.
+- Adding any of those fields back is a publishing decision, not a packaging detail —
+  raise it rather than slipping it into an unrelated change.
 
 ## Declaring intent on each symbol
 
