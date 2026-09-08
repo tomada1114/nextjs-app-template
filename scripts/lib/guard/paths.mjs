@@ -64,6 +64,41 @@ export function isDotenvName(name) {
 }
 
 /**
+ * Trailing segments that identify the one personal Claude Code file
+ * `.gitignore` names by exact path: `.claude/settings.local.json`.
+ *
+ * @remarks
+ * Matched by trailing segments rather than requiring these to be the whole
+ * path, the same way {@link isDotenvName} matches a basename and the
+ * `secrets/` rule matches any ancestor segment — because `checkRead` guards
+ * an agent's Read call, which arrives as an absolute path, not the
+ * repository-root-relative spelling `.gitignore` itself uses. A
+ * `.claude/settings.local.json` nested under some other directory, or
+ * reached through a `../` spelling, is the same personal, token-bearing file
+ * AGENTS.md and CLAUDE.md describe, so blocking it there too is intended, not
+ * a false positive. `.claude/worktrees/` is the file's gitignored sibling for
+ * full checkouts left behind by an agent session; those are already kept out
+ * of a whole-tree walk by `SKIPPED_DIRECTORIES` naming `worktrees`, so no
+ * matching rule for it belongs here.
+ */
+const CLAUDE_LOCAL_SETTINGS_PARTS = [".claude", "settings.local.json"];
+
+/**
+ * Report whether a path's final segments are the personal Claude settings file.
+ *
+ * @param {string[]} parts - Segments from {@link describePath}.
+ * @returns {boolean} True when the path ends in `.claude/settings.local.json`,
+ * at the repository root, nested deeper, or reached by an absolute path.
+ */
+function isClaudeLocalSettingsPath(parts) {
+  const tail = parts.slice(-CLAUDE_LOCAL_SETTINGS_PARTS.length);
+  return (
+    tail.length === CLAUDE_LOCAL_SETTINGS_PARTS.length &&
+    tail.every((part, index) => part === CLAUDE_LOCAL_SETTINGS_PARTS[index])
+  );
+}
+
+/**
  * Return a block reason when a file must not be read.
  *
  * @param {string} filePath - Path the call targets.
@@ -79,6 +114,9 @@ export function checkRead(filePath) {
   }
   if (parts.slice(0, -1).includes("secrets")) {
     return "Files under secrets/ hold credentials and must not be read by the agent.";
+  }
+  if (isClaudeLocalSettingsPath(parts)) {
+    return "`.claude/settings.local.json` is a developer's personal, gitignored settings file, which can hold real tokens, and must not be read by the agent.";
   }
   return null;
 }

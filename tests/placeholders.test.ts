@@ -158,12 +158,13 @@ const THIS_FILE = "tests/placeholders.test.ts";
  * Every readable, hand-written file under `root`, as root-relative paths.
  *
  * @remarks
- * What must never be read — `.env*`, `.envrc*`, anything under `secrets/` —
- * is decided by the guard engine `scripts/check-staged.mjs` already uses, not
- * by a second list here: AGENTS.md keeps a rule in exactly one place, and a
- * copy of it here is the copy that goes stale. `checkRead` judges a file by
- * its whole path and stays the rule of record; `SKIPPED_DIRECTORIES` names
- * `secrets` on top of it only so the directory is never enumerated.
+ * What must never be read — `.env*`, `.envrc*`, anything under `secrets/`,
+ * and the personal `.claude/settings.local.json` — is decided by the guard
+ * engine `scripts/check-staged.mjs` already uses, not by a second list here:
+ * AGENTS.md keeps a rule in exactly one place, and a copy of it here is the
+ * copy that goes stale. `checkRead` judges a file by its whole path and
+ * stays the rule of record; `SKIPPED_DIRECTORIES` names `secrets` on top of
+ * it only so the directory is never enumerated.
  *
  * `root` is a parameter so the exclusions can be asserted over a synthetic
  * tree; a checkout with no `secrets/` in it would pass vacuously.
@@ -268,12 +269,16 @@ describe("the walk that feeds the inventory", () => {
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "placeholders-walk-"));
     mkdirSync(path.join(root, "secrets"));
+    mkdirSync(path.join(root, ".claude", "skills"), { recursive: true });
     for (const relative of [
       "secrets/token.txt",
       ".env",
       ".env.local",
       ".envrc",
       ".env.example",
+      ".claude/settings.local.json",
+      ".claude/settings.json",
+      ".claude/skills/example.md",
       "README.md",
     ]) {
       writeFileSync(path.join(root, relative), body);
@@ -294,7 +299,20 @@ describe("the walk that feeds the inventory", () => {
     expect(walk(root)).not.toContain(".git");
   });
 
-  it("reads the tracked env example and no real dotenv or direnv file", () => {
-    expect(walk(root).sort()).toStrictEqual([".env.example", "README.md"]);
+  it("does not read the personal .claude/settings.local.json", () => {
+    expect(walk(root)).not.toContain(".claude/settings.local.json");
+  });
+
+  it("still walks .claude/skills/, which the generated skill mirror lives under", () => {
+    expect(walk(root)).toContain(".claude/skills/example.md");
+  });
+
+  it("reads the tracked env example, the shared Claude settings and no real dotenv, direnv, or personal settings file", () => {
+    expect(walk(root).sort()).toStrictEqual([
+      ".claude/settings.json",
+      ".claude/skills/example.md",
+      ".env.example",
+      "README.md",
+    ]);
   });
 });
