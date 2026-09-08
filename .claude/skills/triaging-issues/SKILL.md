@@ -13,9 +13,8 @@ description: >
 # Triaging Issues
 
 **Owns:** this repository's issue vocabulary — the label taxonomy, what a priority
-means, and what an issue body must contain. **Does not own:** implementing an issue, or
-what the resulting pull request must state (`release-impact`); any workflow beyond the
-tracker.
+means, and what an issue body must contain. **Does not own:** implementing an issue; any
+workflow beyond the tracker.
 
 Labels carry the triage decision, so it is made once and read back rather than
 re-derived every time the backlog is looked at. An issue is filed with a type label and

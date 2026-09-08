@@ -14,7 +14,7 @@ description: >
 **Owns:** type-level tests in `tests/types.test.ts` — what to assert about a type, and
 the two ways such an assertion silently passes without testing anything. **Does not
 own:** runtime behavior assertions (`writing-tests`), where test files live
-(`placing-tests`), what is allowed to be exported at all (`public-api-contract`).
+(`placing-tests`).
 
 ## What belongs here
 

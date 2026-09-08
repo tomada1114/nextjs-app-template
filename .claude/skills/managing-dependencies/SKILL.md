@@ -12,9 +12,7 @@ description: >
 # Managing Dependencies
 
 **Owns:** whether a package may exist in this repository at all, and what happens at
-install time. **Does not own:** landing an existing bot PR (`merge-dependabot`); the
-semver consequence of a bump for this package's own published version
-(`release-impact`).
+install time. **Does not own:** landing an existing bot PR (`merge-dependabot`).
 
 ## The review record a new runtime dependency needs
 

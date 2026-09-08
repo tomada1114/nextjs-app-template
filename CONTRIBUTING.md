@@ -29,11 +29,8 @@ ages out, and never use a broad package-only or wildcard exclusion.
 ## Pull requests
 
 Create a feature branch, keep commits focused, and use a Conventional Commit PR title.
-Update behavior tests, type tests, and documentation when the public contract changes,
-and say in the PR what the change does to the version. Run `pnpm check:source` before
-requesting review.
+Update behavior tests, type tests, and documentation when the public contract changes.
+Run `pnpm check:source` before requesting review.
 
 Every pull request explains what it changes and keeps the README, tests, and
-documentation in sync when it does. Documentation, test, CI, and tooling changes with no
-release impact need no release record. During the 0.x period, a breaking change uses a
-minor bump and must include migration instructions; after 1.0 it uses a major bump.
+documentation in sync when it does.
