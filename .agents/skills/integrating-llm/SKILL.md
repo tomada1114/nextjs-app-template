@@ -46,10 +46,10 @@ and the fake is what the contract suite and `pnpm dev` run on.
 `@anthropic-ai/*` is importable **only** under `src/ai/adapters/anthropic/`. Enforced
 by: `eslint.config.mjs`'s `boundaries/*` blocks, asserted again from the module graph by
 `tests/boundaries.test.ts`. Those gates cover every zone _outside_ `src/ai/`; inside the
-layer the rule is yours to hold, and that half matters most — `port.ts`, `errors.ts`,
-`index.ts` and the fake must stay SDK-free, or the port stops being an interface a
-second vendor could implement. `src/ai/index.ts` is the layer's whole surface, and
-`src/server/composition.ts` the single line naming a vendor.
+layer the rule is yours to hold, and that half matters most — `src/ai/port.ts`,
+`errors.ts`, `index.ts` and the fake adapter must stay SDK-free, or the port stops being
+an interface a second vendor could implement. `src/ai/index.ts` is the layer's whole
+surface, and `src/server/composition.ts` the single line naming a vendor.
 
 ## Two layers of structured output, and only one is guaranteed
 
