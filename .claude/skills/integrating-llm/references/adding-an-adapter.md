@@ -80,7 +80,9 @@ shared contract.
   vendor is invisible to the removal check. `REMOVED_PATHS` gains the adapter's own
   suite, beside `tests/ai-anthropic.test.ts`: it reads `tests/fixtures/llm` and imports
   `tests/llm-replay.ts`, so a suite left off that list fails this test as a surviving
-  file naming a removed one.
+  file naming a removed one. `REMOVED_SKILL_NAMES` is derived from `REMOVED_PATHS` and
+  is not edited by hand — a new adapter adds a package name and a credential name to
+  `AI_LAYER_TOKENS`, and nothing to the skill-name list.
 - `src/server/env.ts` and `.env.example` — a second credential is a second name in the
   schema and a matching line in the example. `tests/server-env.test.ts` asserts the
   correspondence.

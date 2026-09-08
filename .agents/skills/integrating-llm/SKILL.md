@@ -202,6 +202,6 @@ preserves those or quietly ends them.
 
 `tests/ai-layer-removal.test.ts` is the specification, checkable only while the layer is
 still present — run it before deleting anything. It names the paths the removal deletes
-(this skill among them), the two tokens that name the layer without naming a path, and
-the files that survive but must be edited. **REQUIRED:** `starting-an-app`, which owns
-the procedure itself.
+(this skill among them), the tokens that name the vendor without naming a path, the
+names the removed skills are cross-referenced by, and the files that survive but must be
+edited. **REQUIRED:** `starting-an-app`, which owns the procedure itself.

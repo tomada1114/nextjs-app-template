@@ -24,6 +24,9 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
+/** Where a skill is authored; `.claude/skills/` mirrors it. */
+const AUTHORED_SKILLS_ROOT = ".agents/skills/";
+
 /**
  * Everything the removal deletes outright.
  *
@@ -56,14 +59,43 @@ const REMOVED_PATHS = [
 ];
 
 /**
- * Strings that name the AI layer without naming one of its paths.
+ * Vendor product names that name the AI layer without naming one of its paths.
  *
  * @remarks
  * Both are deliberately specific. `Anthropic` on its own would match
  * `scripts/lib/guard/credentials.mjs`, whose `sk-ant-` rule detects a leaked
- * key and stays whether or not this application calls a model.
+ * key and stays whether or not this application calls a model. A name this
+ * repository gives one of its own documents is not one of these —
+ * `REMOVED_SKILL_NAMES` holds those, so an adapter author reading
+ * `adding-an-adapter.md` adds a package and a credential here and nothing
+ * else.
  */
 const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
+
+/**
+ * The bare name of every skill the removal deletes.
+ *
+ * @remarks
+ * Derived from `REMOVED_PATHS` rather than typed again, because forgetting to
+ * type it again is the bug this list exists to close: a skill goes on
+ * `REMOVED_PATHS` by path, but `authoring-skills` requires a sibling skill to
+ * be cross-referenced *by name, never by path*, so the path entry alone misses
+ * every reference written the way the repository mandates. Deriving from a
+ * hand-written constant is not the derivation `withMirror` warns against —
+ * that one is about reading the tree, or importing `scripts/sync-agents.mjs`,
+ * which would make the expected value agree with the thing under test.
+ *
+ * Only the authored `.agents/skills/` half is read; the `.claude/skills/`
+ * entry beside it names the same skill. A nested path under a skill
+ * contributes nothing, since its last segment is not a skill name.
+ */
+const REMOVED_SKILL_NAMES = REMOVED_PATHS.flatMap((removed) => {
+  if (!removed.startsWith(AUTHORED_SKILLS_ROOT)) {
+    return [];
+  }
+  const name = removed.slice(AUTHORED_SKILLS_ROOT.length);
+  return name.includes("/") ? [] : [name];
+});
 
 /**
  * Files that survive the removal but have to be edited by it, whose subject is
@@ -140,8 +172,8 @@ const EDITED_DOCUMENT_FILES = [
  */
 function withMirror(paths: readonly string[]): string[] {
   return paths.flatMap((relative) =>
-    relative.startsWith(".agents/skills/")
-      ? [relative, relative.replace(".agents/skills/", ".claude/skills/")]
+    relative.startsWith(AUTHORED_SKILLS_ROOT)
+      ? [relative, relative.replace(AUTHORED_SKILLS_ROOT, ".claude/skills/")]
       : [relative],
   );
 }
@@ -214,18 +246,40 @@ function isRemoved(relative: string): boolean {
 const everyFile = walk("");
 const survivingFiles = everyFile.filter((relative) => !isRemoved(relative));
 
-/** The removed paths and tokens `relative` still names, if any. */
-function referencesIn(relative: string): string[] {
-  const text = readText(relative);
-  if (text === undefined) {
-    return [];
-  }
-  return [...REMOVED_PATHS, ...AI_LAYER_TOKENS].filter((token) => text.includes(token));
+/** The removed paths, tokens and skill names `text` names, if any. */
+function referencesInText(text: string): string[] {
+  return [...REMOVED_PATHS, ...AI_LAYER_TOKENS, ...REMOVED_SKILL_NAMES].filter(
+    (needle) => text.includes(needle),
+  );
 }
 
-const survivorsNamingTheAiLayer = survivingFiles
-  .filter((relative) => referencesIn(relative).length > 0)
-  .sort();
+/** The same, for a file in the tree; `[]` for a binary one. */
+function referencesIn(relative: string): string[] {
+  const text = readText(relative);
+  return text === undefined ? [] : referencesInText(text);
+}
+
+/**
+ * The files among `files` whose text still names the AI layer, sorted.
+ *
+ * @remarks
+ * `read` is a parameter only so the falsification case can pose a skill whose
+ * one mention of the layer is a by-name cross-reference, without writing that
+ * mention into a real skill and then trusting a later edit to take it out.
+ */
+function survivorsNaming(
+  files: readonly string[],
+  read: (relative: string) => string | undefined,
+): string[] {
+  return files
+    .filter((relative) => {
+      const text = read(relative);
+      return text !== undefined && referencesInText(text).length > 0;
+    })
+    .sort();
+}
+
+const survivorsNamingTheAiLayer = survivorsNaming(survivingFiles, readText);
 
 // --- imports -----------------------------------------------------------------
 
@@ -288,5 +342,31 @@ describe("the AI layer can be removed whole", () => {
     // AI layer is a stale instruction, and a stale instruction is how a
     // removal checklist rots into one nobody trusts.
     expect(referencesIn(relative).length).toBeGreaterThan(0);
+  });
+
+  it("derives the bare name of every skill the removal deletes", () => {
+    // A literal an author wrote, so the derivation is checked rather than
+    // trusted, and a second removed skill fails here until it is acknowledged.
+    expect(REMOVED_SKILL_NAMES).toStrictEqual(["integrating-llm"]);
+  });
+
+  it("catches a skill whose only mention of the layer is a by-name cross-reference", () => {
+    const posed = ".agents/skills/posed-by-this-test/SKILL.md";
+    const withReference =
+      "**BACKGROUND:** `integrating-llm` for the port behind the handler.\n";
+    const withoutReference =
+      "**BACKGROUND:** `writing-tests` for the contract suite.\n";
+    const readingPosedAs = (body: string) => (relative: string) =>
+      relative === posed ? body : readText(relative);
+    const files = [...survivingFiles, posed];
+
+    // Adding the mention: the suite's own expected value no longer holds.
+    expect(survivorsNaming(files, readingPosedAs(withReference))).toStrictEqual(
+      [...EDITED_FILES, posed].sort(),
+    );
+    // Removing it: back to exactly what the suite asserts today.
+    expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
+      EDITED_FILES,
+    );
   });
 });
