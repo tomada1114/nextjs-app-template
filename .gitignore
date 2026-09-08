@@ -30,9 +30,13 @@ next-env.d.ts
 # Environment variables (example files are tracked on purpose)
 .env
 .env.*
+.envrc
 !.env.example
 !.env.sample
 !.env.template
+
+# Credentials kept in a checkout: never tracked, and never read by a tool here
+secrets/
 
 # Logs
 *.log

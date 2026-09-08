@@ -20,6 +20,12 @@ describe("paths: checkRead", () => {
     expect(checkRead(".env")).toMatch(/\.env\*/);
   });
 
+  it("blocks reading a direnv .envrc", () => {
+    // direnv's file is neither `.env` nor `.env.`-prefixed, so it is named
+    // rather than derived; its content is the same kind as a dotenv file's.
+    expect(checkRead(".envrc")).toMatch(/\.env\*/);
+  });
+
   it("allows reading the env example", () => {
     expect(checkRead(".env.example")).toBeNull();
   });

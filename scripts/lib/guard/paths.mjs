@@ -36,6 +36,21 @@ export function isEnvExample(name) {
 }
 
 /**
+ * Report whether a basename is an environment file that can hold real values.
+ *
+ * @remarks
+ * `.envrc` is direnv's file rather than dotenv's, so neither the `.env` name
+ * nor the `.env.` prefix reaches it — yet it holds the same kind of content,
+ * and AGENTS.md writes the prohibition as `.env*`, which covers it.
+ *
+ * @param {string} name - Basename of the file.
+ * @returns {boolean} True when the file is an environment file, example or not.
+ */
+export function isDotenvName(name) {
+  return name === ".env" || name === ".envrc" || name.startsWith(".env.");
+}
+
+/**
  * Return a block reason when a file must not be read.
  *
  * @param {string} filePath - Path the call targets.
@@ -46,7 +61,7 @@ export function checkRead(filePath) {
     return null;
   }
   const { name, parts } = describePath(filePath);
-  if ((name === ".env" || name.startsWith(".env.")) && !isEnvExample(name)) {
+  if (isDotenvName(name) && !isEnvExample(name)) {
     return "Files named .env* may hold secrets and must not be read by the agent — read the matching .env.example instead.";
   }
   if (parts.slice(0, -1).includes("secrets")) {
