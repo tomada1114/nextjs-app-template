@@ -203,6 +203,10 @@ const EDITED_FILES = [
 // build and coverage output, data under test, and agent worktrees hold nothing
 // hand-written — matched by name whatever the entry turns out to be, because a
 // linked worktree's `.git` is a file rather than a directory.
+// `secrets` is named here as well, although `checkRead` already drops every
+// entry inside it: without the name, the directory is still `readdirSync`'d,
+// and a checkout that keeps it unreadable throws EACCES at module scope —
+// outside any `it()`, so the suite errors out instead of failing.
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".git",
@@ -213,6 +217,7 @@ const SKIPPED_DIRECTORIES = new Set([
   "worktrees",
   ".idea",
   ".vscode",
+  "secrets",
 ]);
 
 const SKIPPED_FILES = new Set([
@@ -227,10 +232,12 @@ const SKIPPED_FILES = new Set([
  *
  * @remarks
  * Mirrors tests/placeholders.test.ts, guard import included: what must never
- * be read — `.env*`, `.envrc`, anything under `secrets/` — is decided by the
+ * be read — `.env*`, `.envrc*`, anything under `secrets/` — is decided by the
  * one engine `scripts/check-staged.mjs` already uses, so the rule is not
- * written a third time here. `root` is a parameter so the exclusions can be
- * asserted over a synthetic tree rather than vacuously over this one.
+ * written a third time here; `SKIPPED_DIRECTORIES` names `secrets` on top of
+ * it only so the directory is never enumerated. `root` is a parameter so the
+ * exclusions can be asserted over a synthetic tree rather than vacuously over
+ * this one.
  */
 function walk(root: string, directory = ""): string[] {
   const absolute = directory === "" ? root : path.join(root, directory);

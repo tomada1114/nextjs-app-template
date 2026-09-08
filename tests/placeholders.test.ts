@@ -97,6 +97,11 @@ const EXPECTED_INVENTORY = [
 // `gitdir:` pointer, so a type-gated skip walks straight into what it means to
 // exclude — and in an ordinary checkout that is a `.git/config` whose remote
 // URL can carry a credential.
+//
+// `secrets` is named here as well, although `checkRead` already drops every
+// entry inside it: without the name, the directory is still `readdirSync`'d,
+// and a checkout that keeps it unreadable throws EACCES at module scope —
+// outside any `it()`, so the suite errors out instead of failing.
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".git",
@@ -107,6 +112,7 @@ const SKIPPED_DIRECTORIES = new Set([
   "worktrees",
   ".idea",
   ".vscode",
+  "secrets",
 ]);
 
 // Generated files and tool caches: nothing here is authored, and a placeholder
@@ -131,12 +137,12 @@ const THIS_FILE = "tests/placeholders.test.ts";
  * Every readable, hand-written file under `root`, as root-relative paths.
  *
  * @remarks
- * What must never be read — `.env*`, `.envrc`, anything under `secrets/` —
+ * What must never be read — `.env*`, `.envrc*`, anything under `secrets/` —
  * is decided by the guard engine `scripts/check-staged.mjs` already uses, not
  * by a second list here: AGENTS.md keeps a rule in exactly one place, and a
  * copy of it here is the copy that goes stale. `checkRead` judges a file by
- * its whole path, so the `secrets/` directory is still listed while every
- * entry inside it is dropped before anything opens it.
+ * its whole path and stays the rule of record; `SKIPPED_DIRECTORIES` names
+ * `secrets` on top of it only so the directory is never enumerated.
  *
  * `root` is a parameter so the exclusions can be asserted over a synthetic
  * tree; a checkout with no `secrets/` in it would pass vacuously.
