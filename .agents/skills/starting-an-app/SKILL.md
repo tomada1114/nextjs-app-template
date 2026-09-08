@@ -53,6 +53,12 @@ remain against the sites the list expects. Replace one site, delete its row from
 is green: an empty inventory means no identity string of this template survived anywhere
 in the tree, not merely in the files someone remembered to open.
 
+The suite's second block, over the CI badge and the security-advisory link, checks those
+two URLs by their _shape_ — the path segments and the workflow filename — and leaves the
+owner and the repository unconstrained. It passes on your slug exactly as it did on the
+template's, so it needs no edit during the rename; what pins the slug itself is the
+inventory row for each of those files.
+
 What goes into each site:
 
 - **The package identity** — `package.json`'s `name` and `description`. `private: true`

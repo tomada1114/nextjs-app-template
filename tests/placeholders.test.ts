@@ -213,21 +213,25 @@ describe("the template's own identity strings", () => {
   });
 });
 
-describe("the template's own repository URLs", () => {
-  // The inventory above only proves the slug appears *somewhere* in each
-  // file; it would pass on a malformed badge URL. This pins the two corrected
-  // URLs by their exact shape, workflow filename included.
+describe("the badge and advisory URLs", () => {
+  // The inventory above only proves the slug appears *somewhere* in each file;
+  // it would pass on a badge URL missing its workflow filename. This pins both
+  // URLs by their shape instead — path segments and filename — with owner and
+  // repository left open on purpose: a renamed project writes its own slug in,
+  // and pinning this template's would make the rename `starting-an-app`
+  // documents impossible to finish with a green suite. The slug itself is the
+  // inventory's job, one row per file.
   it.each([
     [
       "README.md",
-      "https://github.com/tomada1114/nextjs-app-template/actions/workflows/ci.yml",
+      /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/workflows\/ci\.yml/,
     ],
     [
       ".github/ISSUE_TEMPLATE/config.yml",
-      "https://github.com/tomada1114/nextjs-app-template/security/advisories/new",
+      /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/security\/advisories\/new/,
     ],
-  ])("%s points at the real repository", (relative, url) => {
-    expect(readText(relative)).toContain(url);
+  ])("%s carries a well-formed repository URL", (relative, pattern) => {
+    expect(readText(relative)).toMatch(pattern);
   });
 });
 
