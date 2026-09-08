@@ -83,20 +83,44 @@ export default defineConfig({
     // everywhere — not only under CI, which is the default — means the author
     // finds it before the commit rather than the pipeline finding it after.
     allowOnly: false,
-    // Two projects, split by what a test actually touches rather than by
-    // where it lives: a new test is unit by default, while the explicit
+    // Three projects, split by what a test actually touches rather than by
+    // where it lives: a new `.test.ts` file is unit by default, a `.test.tsx`
+    // file needs a DOM and joins `component` instead, and the explicit
     // automation list receives the long budget only after its I/O needs are
-    // known. A hung unit test (no I/O, so it can only be looping or awaiting
-    // forever) is a bug that should be visible in seconds. `coverage` below is
-    // unaffected by this split — Vitest collects and thresholds coverage once
-    // for the whole run, never per project.
+    // known. A hung unit or component test (no I/O, so it can only be looping
+    // or awaiting forever) is a bug that should be visible in seconds.
+    // `coverage` below is unaffected by this split — Vitest collects and
+    // thresholds coverage once for the whole run, never per project.
+    //
+    // `extends: true` is what carries `allowOnly: false` and the
+    // restore/clear/unstub settings above into every project below; a
+    // hand-written project object without it would silently drop them.
     projects: [
       {
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+          include: ["tests/**/*.test.ts"],
           exclude: [...automationTests, fixtures],
+          testTimeout: 5_000,
+          hookTimeout: 5_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "component",
+          // A React Client Component needs `document`/`window` to render, so
+          // this project alone runs under jsdom; `tests/**/*.test.ts` stays on
+          // the faster `node` environment inherited from the top level. An
+          // asynchronous Server Component is out of scope for both — see
+          // `writing-tests`.
+          environment: "jsdom",
+          include: ["tests/**/*.test.tsx"],
+          exclude: [fixtures],
+          setupFiles: ["./tests/dom-setup.ts"],
+          // No I/O here either: rendering a component and querying the
+          // result is the same budget as a unit test.
           testTimeout: 5_000,
           hookTimeout: 5_000,
         },
