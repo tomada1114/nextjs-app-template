@@ -167,6 +167,7 @@ names its own boundary with its neighbours.
 | Skill                   | Load it when you are working on                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------- |
 | `building-app-routes`   | a page, layout or Route Handler under `src/app/`, `src/proxy.ts`, or `src/server/`    |
+| `localizing-ui`         | a catalog under `messages/`, a module under `src/i18n/`, or adding a UI string        |
 | `writing-typescript`    | a `.ts` module or a `.tsx` component under `src/`                                     |
 | `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                             |
 | `writing-tests`         | the body of a test under `tests/`                                                     |
