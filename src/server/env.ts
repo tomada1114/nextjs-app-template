@@ -29,12 +29,14 @@ const serverEnvSchema = z.object({
    * Credential for the Anthropic adapter.
    *
    * @remarks
-   * Optional on purpose. `src/server/composition.ts` wires the fake adapter
-   * today, which needs no credential, and the template's promise is that
-   * `pnpm dev` answers a request with nothing configured. The adapter that
-   * does consume this reports a missing or rejected key as the port's
-   * `ERR_LLM_AUTH` on the request that needed it, which is a failure a caller
-   * can see and act on — a server that refuses to boot is not.
+   * Optional on purpose, and still optional now that
+   * `src/server/composition.ts` wires the Anthropic adapter rather than the
+   * fake. The template's promise is that `pnpm dev` answers a request with
+   * nothing configured, and what keeps that true is the adapter itself: it
+   * takes the credential as `string | undefined` and reports a missing or
+   * rejected key as the port's `ERR_LLM_AUTH` on the request that needed it —
+   * a failure a caller can see and act on, which a server that refuses to boot
+   * is not.
    */
   ANTHROPIC_API_KEY: optionalSetting,
 });
