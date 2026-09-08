@@ -29,8 +29,11 @@ ages out, and never use a broad package-only or wildcard exclusion.
 ## Pull requests
 
 Create a feature branch, keep commits focused, and use a Conventional Commit PR title.
-Update behavior tests, type tests, and documentation when the public contract changes.
 Run `pnpm check:source` before requesting review.
 
-Every pull request explains what it changes and keeps the README, tests, and
-documentation in sync when it does.
+Nothing here is published, so a change is not sized by a version number. What decides
+whether a pull request also has to touch a test or a document is what the change is
+observable as: behavior a caller outside the process can see needs its test updated in
+the same pull request, and a rule that changed needs the file that owns that rule
+changed with it. AGENTS.md says which surfaces are observable and which are private; the
+`updating-docs` skill says when a change reaches `README.md` or this file.
