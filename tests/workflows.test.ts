@@ -110,34 +110,98 @@ function triggerLine(lines: Line[]): Line | undefined {
   return lines.find((line) => line.indent === 0 && /^["']?on["']?\s*:/.test(line.text));
 }
 
+interface Trigger {
+  /** The event name alone: no `- ` marker, no quotes, no trailing `:`. */
+  name: string;
+  /** Where a report points: the entry's own line, or `on:` for an inline value. */
+  line: Line;
+}
+
+/** The outermost entries of a flow collection, split on the commas at depth zero. */
+function flowEntries(value: string): string[] {
+  const body = value.slice(1, -1);
+  const entries: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body.charAt(index);
+    if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      entries.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  entries.push(body.slice(start));
+  return entries;
+}
+
+/** The event an entry names, or `undefined` when it names none. */
+function eventName(entry: string): string | undefined {
+  return /^["']?([A-Za-z_][A-Za-z0-9_-]*)/.exec(entry.trim().replace(/^-\s+/, ""))?.[1];
+}
+
 /**
- * The line on which `on:` names `pull_request_target`, in any spelling, if any.
+ * The lines an `on:` block is written across.
  *
  * @remarks
- * `on:` takes four shapes — an inline scalar, a flow sequence, a block sequence
- * and a mapping — and this is the one rule the whole file exists for, so all
- * four are read rather than the mapping alone. The value written after `on:`
- * covers the scalar and the flow sequence; the entries directly under it cover
- * the block sequence and the mapping. Only the name each entry starts with is
- * matched, and only at the outermost nesting level, so a `branches:` list that
- * happens to contain the word cannot make a safe workflow read as dangerous.
+ * {@link blockOf} is not enough on its own: a block sequence may be written at
+ * its key's own column (`on:\n- push`), which is legal YAML that reads as no
+ * body at all when only more deeply indented lines count.
  */
-function pullRequestTargetLine(lines: Line[]): Line | undefined {
+function triggerBlock(lines: Line[], on: Line): Line[] {
+  const body: Line[] = [];
+  for (let index = lines.indexOf(on) + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (
+      line === undefined ||
+      (line.indent <= on.indent &&
+        !(line.indent === on.indent && line.text.startsWith("- ")))
+    ) {
+      break;
+    }
+    body.push(line);
+  }
+  return body;
+}
+
+/**
+ * Every event `on:` declares, in whichever of its four shapes it is written:
+ * an inline scalar, a flow collection, a block sequence, or a mapping.
+ *
+ * @remarks
+ * Every trigger rule reads `on:` through here, so what it declares is decided
+ * once rather than once per rule, each with its own blind spot. Only the
+ * outermost entries count, so a nested `branches:` list that happens to hold an
+ * event name is not one of them.
+ */
+function triggerNames(lines: Line[]): Trigger[] {
   const on = triggerLine(lines);
   if (on === undefined) {
-    return undefined;
-  }
-  if (/\bpull_request_target\b/.test(inlineValue(on))) {
-    return on;
+    return [];
   }
 
-  const events = blockOf(lines, lines.indexOf(on));
+  const named = (name: string | undefined, line: Line): Trigger[] =>
+    name === undefined ? [] : [{ name, line }];
+
+  const inline = inlineValue(on);
+  if (inline !== "") {
+    const entries = /^[[{]/.test(inline) ? flowEntries(inline) : [inline];
+    return entries.flatMap((entry) => named(eventName(entry), on));
+  }
+
+  const events = triggerBlock(lines, on);
   const eventIndent = events[0]?.indent;
-  return events.find(
-    (line) =>
-      line.indent === eventIndent &&
-      /^pull_request_target\b/.test(line.text.replace(/^-\s+/, "")),
+  return events.flatMap((line) =>
+    line.indent === eventIndent ? named(eventName(line.text), line) : [],
   );
+}
+
+/** The line on which `on:` names `pull_request_target`, if any. */
+function pullRequestTargetLine(lines: Line[]): Line | undefined {
+  return triggerNames(lines).find(({ name }) => name === "pull_request_target")?.line;
 }
 
 interface Job {
@@ -314,18 +378,18 @@ function stepShellAtLine(job: Job, lineNumber: number): string | undefined {
  * All three halves are required. `pipefail` alone still lets an unset variable
  * expand to the empty string, which is what `-u` is there to stop; and without
  * `errexit` a command that fails part-way through a script does not stop the
- * job, so the step reports success after the failure. Each flag is tested with
- * a regex rather than a substring search because it is routinely written
- * inside a cluster (`bash -euo pipefail {0}`), where neither the literal text
- * `-u` nor `-e` ever appears.
+ * job, so the step reports success after the failure. `-e` and `-u` are each
+ * matched as a letter anywhere in a cluster (`bash -euo pipefail {0}`), where
+ * neither literal appears on its own, or under its long-option name
+ * (`-o errexit`), which is the same shell spelled out.
  */
 function isFailClosedShell(shell: string | undefined): boolean {
-  return (
-    shell !== undefined &&
-    shell.includes("pipefail") &&
-    /(?:^|\s)-[A-Za-z]*u/.test(shell) &&
-    /(?:^|\s)-[A-Za-z]*e/.test(shell)
-  );
+  if (shell?.includes("pipefail") !== true) {
+    return false;
+  }
+  const errexit = /(?:^|\s)-[A-Za-z]*e/.test(shell) || /\berrexit\b/.test(shell);
+  const nounset = /(?:^|\s)-[A-Za-z]*u/.test(shell) || /\bnounset\b/.test(shell);
+  return errexit && nounset;
 }
 
 /** The job whose structural lines cover `lineNumber`, if any. */
@@ -495,12 +559,9 @@ function lintWorkflow(source: string): Problem[] {
 
   // A pull request that is pushed to again must not keep the superseded run alive.
   const on = triggerLine(lines);
-  const triggers = on === undefined ? [] : blockOf(lines, lines.indexOf(on));
-  const triggerIndent = triggers[0]?.indent;
-  const onPullRequest = triggers.some((line) => line.text.startsWith("pull_request"));
-  const onPush = triggers.some(
-    (line) => line.indent === triggerIndent && line.text.startsWith("push:"),
-  );
+  const triggers = triggerNames(lines);
+  const onPullRequest = triggers.some(({ name }) => name.startsWith("pull_request"));
+  const onPush = triggers.some(({ name }) => name === "push");
   const concurrency = topLevel(lines, "concurrency");
   if (onPullRequest && concurrency === undefined) {
     report(
@@ -824,6 +885,17 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
   });
 
+  it("rejects pull_request_target in a block sequence at the key's own column", () => {
+    // A sequence may start in the same column as the key it belongs to, which
+    // is where a body read by indentation alone looks like no body at all.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n- pull_request_target\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
   it("rejects pull_request_target under a quoted on key", () => {
     // `on` is a YAML 1.1 boolean, so quoting the key is legal and changes
     // nothing about what the workflow runs.
@@ -839,6 +911,15 @@ describe("lintWorkflow", () => {
     const source = CLEAN_WORKFLOW.replace(
       "  pull_request:\n",
       "  pull_request:\n    branches: [pull_request_target]\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("does not read a branch named after the trigger as the trigger itself in a flow mapping", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: { pull_request: { branches: [pull_request_target] } }\n",
     );
 
     expect(lintWorkflow(source)).toEqual([]);
@@ -1040,6 +1121,24 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_RUN_NOT_PIPEFAIL"]);
   });
 
+  it("accepts a shell default that spells the flags out as long options", () => {
+    // `-o errexit -o nounset -o pipefail` is the same shell as `-euo pipefail`,
+    // so a check that only reads short flags would reject a safe workflow.
+    const source = MULTI_LINE_RUN_WORKFLOW.replace(
+      "permissions: {}\n",
+      [
+        "permissions: {}",
+        "",
+        "defaults:",
+        "  run:",
+        '    shell: "bash -o errexit -o nounset -o pipefail {0}"',
+        "",
+      ].join("\n"),
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
   it("rejects cancelling unconditionally on a workflow that also runs on push", () => {
     const source = CLEAN_WORKFLOW.replace(
       "  pull_request:",
@@ -1061,6 +1160,29 @@ describe("lintWorkflow", () => {
     );
 
     expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("requires a concurrency group when the triggers are a flow sequence", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [push, pull_request]\n",
+    ).replace(
+      "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n",
+      "",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_CONCURRENCY_MISSING"]);
+  });
+
+  it("rejects cancelling unconditionally when the triggers are a flow sequence", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [push, pull_request]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
   });
 
   it("still allows a pull-request-only workflow to cancel unconditionally", () => {
