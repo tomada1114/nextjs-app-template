@@ -185,8 +185,10 @@ node -p "require('typescript-eslint/package.json').peerDependencies.typescript"
 ```
 
 Compare it to `package.json`'s `devDependencies` range. With `strictPeerDependencies`
-on, a bump past the ceiling fails the install rather than merely warning, and
-`.github/dependabot.yml` keeps a `typescript` major from arriving as a PR at all.
+on, a bump past the ceiling fails the install rather than merely warning, so
+`.github/dependabot.yml` ignores `typescript` minors as well as majors — an ignore
+scoped to majors alone would still let the next minor through, and that is the one the
+range actually caps at. Patches inside the current minor arrive as PRs as usual.
 
 Do not "upgrade typescript to latest." Raising this ceiling is a coordinated upgrade —
 `typescript-eslint` has to raise its own peer range first — not a routine bump.

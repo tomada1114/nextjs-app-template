@@ -13,14 +13,18 @@ updates:
     commit-message:
       prefix: "deps:"
     open-pull-requests-limit: 10
-    # A TypeScript major is not installable here: typescript-eslint caps its
-    # peer range below it, and `strictPeerDependencies: true` turns that into a
-    # failed install rather than a warning. See "TypeScript version ceiling" in
-    # .agents/skills/managing-dependencies/SKILL.md. Remove this entry once
-    # that package publishes a peer range that admits the next major.
+    # typescript-eslint caps its typescript peer range at a **minor** — read it
+    # with `node -p "require('typescript-eslint/package.json').peerDependencies.typescript"`
+    # rather than assuming — and `strictPeerDependencies: true` turns a bump
+    # past that cap into a failed install rather than a warning. So the next
+    # uninstallable version is the next minor, not the next major, and both are
+    # ignored; patches inside the current minor still arrive as PRs. See
+    # "TypeScript version ceiling" in .agents/skills/managing-dependencies/SKILL.md.
+    # Narrow this entry to majors, or drop it, once that package publishes a
+    # peer range that admits the next typescript minor.
     ignore:
       - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       # Routine updates arrive as one reviewable PR. Majors are deliberately
       # left out of every group so each gets its own PR and is reviewed against
