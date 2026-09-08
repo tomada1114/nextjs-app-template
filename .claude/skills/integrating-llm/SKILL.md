@@ -111,13 +111,22 @@ into the signal the request is made under_, with `AbortSignal.any`, so firing it
 actually cancels the transport — and so an abort between attempts ends the retry chain
 rather than starting another one. `deadline.ts`'s TSDoc is the argument in full.
 
-One limit is known and tracked rather than papered over: the SDK's backoff sleep does
-not consult the signal, so a deadline firing mid-sleep is noticed only when that sleep
-ends (#66). Under the _derived_ deadline, whose budget already allows for every sleep,
-that costs an overshoot only when a `retry-after` runs past the SDK's own backoff
-ceiling; under a short explicit `deadlineMs` any ordinary computed backoff is enough,
-and the call overshoots by the remainder of it. Do not claim a tighter bound than that
-in a comment or a document.
+One limit remains, and it is bounded rather than papered over: the SDK's backoff sleep
+does not consult the signal, so a deadline firing mid-sleep is noticed only when that
+sleep ends. What that can cost is `MAX_RETRY_AFTER_MS` — 8 s — because
+`declineLongRetryAfter` in `src/ai/adapters/anthropic/retry-after.ts` ends the retry
+chain on a `retry-after` longer than that, so no sleep the SDK starts outlasts the
+ceiling on its own computed backoff whatever the provider asked for. The worst case is
+therefore `deadlineMs + MAX_RETRY_AFTER_MS`. Under the _derived_ deadline, whose budget
+already allows for every sleep, nothing is actually spent; it is a short explicit
+`deadlineMs` that overshoots, by the remainder of whatever sleep it landed in. Do not
+claim a tighter bound than that in a comment or a document.
+
+That middleware writes `x-should-retry: false` onto a response the provider did not put
+it on — the SDK's own control channel, answered by the client to decline a wait it
+cannot afford inside a web request. A new adapter that reaches for the same trick owes
+the same TSDoc: a reader who takes the header for something the provider sent will
+misread every log line downstream of it.
 
 An out-of-range `deadlineMs` throws a `RangeError` at construction — the one place this
 layer throws rather than answering with a `Result`. The signal is armed outside every
