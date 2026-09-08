@@ -1,8 +1,19 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // Not every app built from this template wants a language model in it, so the
 // AI layer has to come out in one piece: delete `src/ai/`, the handlers that
@@ -190,7 +201,8 @@ const EDITED_FILES = [
 
 // Mirrors tests/placeholders.test.ts: dependencies, version-control internals,
 // build and coverage output, data under test, and agent worktrees hold nothing
-// hand-written.
+// hand-written — matched by name whatever the entry turns out to be, because a
+// linked worktree's `.git` is a file rather than a directory.
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".git",
@@ -210,22 +222,27 @@ const SKIPPED_FILES = new Set([
   "next-env.d.ts",
 ]);
 
-/** `.env` and friends are off limits; the tracked example variants are not. */
-function isOffLimits(name: string): boolean {
-  if (!name.startsWith(".env")) {
-    return false;
-  }
-  return ![".env.example", ".env.sample", ".env.template"].includes(name);
-}
-
-function walk(directory: string): string[] {
-  const absolute = directory === "" ? repoRoot : path.join(repoRoot, directory);
+/**
+ * Every readable, hand-written file under `root`, as root-relative paths.
+ *
+ * @remarks
+ * Mirrors tests/placeholders.test.ts, guard import included: what must never
+ * be read — `.env*`, `.envrc`, anything under `secrets/` — is decided by the
+ * one engine `scripts/check-staged.mjs` already uses, so the rule is not
+ * written a third time here. `root` is a parameter so the exclusions can be
+ * asserted over a synthetic tree rather than vacuously over this one.
+ */
+function walk(root: string, directory = ""): string[] {
+  const absolute = directory === "" ? root : path.join(root, directory);
   return readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
     const relative = directory === "" ? entry.name : `${directory}/${entry.name}`;
-    if (entry.isDirectory()) {
-      return SKIPPED_DIRECTORIES.has(entry.name) ? [] : walk(relative);
+    if (SKIPPED_DIRECTORIES.has(entry.name) || checkRead(relative) !== null) {
+      return [];
     }
-    if (!entry.isFile() || SKIPPED_FILES.has(entry.name) || isOffLimits(entry.name)) {
+    if (entry.isDirectory()) {
+      return walk(root, relative);
+    }
+    if (!entry.isFile() || SKIPPED_FILES.has(entry.name)) {
       return [];
     }
     return entry.name.endsWith(".tsbuildinfo") || entry.name.endsWith(".log")
@@ -247,7 +264,7 @@ function isRemoved(relative: string): boolean {
   );
 }
 
-const everyFile = walk("");
+const everyFile = walk(repoRoot);
 const survivingFiles = everyFile.filter((relative) => !isRemoved(relative));
 
 /** The removed paths, tokens and skill names `text` names, if any. */
@@ -372,5 +389,47 @@ describe("the AI layer can be removed whole", () => {
     expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
       EDITED_FILES,
     );
+  });
+});
+
+describe("the walk that feeds the reference scan", () => {
+  // Mirrors tests/placeholders.test.ts: every path the walk returns is opened
+  // by `readText`, and AGENTS.md counts the read itself as the disclosure. A
+  // synthetic tree, because a checkout rarely holds a `secrets/` directory and
+  // an assertion over this one would otherwise pass for the wrong reason.
+  const body = "fixture body, nothing sensitive\n";
+  let root = "";
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "ai-layer-removal-walk-"));
+    mkdirSync(path.join(root, "secrets"));
+    for (const relative of [
+      "secrets/token.txt",
+      ".env",
+      ".env.local",
+      ".envrc",
+      ".env.example",
+      "README.md",
+    ]) {
+      writeFileSync(path.join(root, relative), body);
+    }
+    // What `.git` is inside a linked worktree: a pointer file, not a directory.
+    writeFileSync(path.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/1\n");
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("does not read anything under secrets/", () => {
+    expect(walk(root)).not.toContain("secrets/token.txt");
+  });
+
+  it("does not read a linked worktree's .git, which is a file and not a directory", () => {
+    expect(walk(root)).not.toContain(".git");
+  });
+
+  it("reads the tracked env example and no real dotenv or direnv file", () => {
+    expect(walk(root).sort()).toStrictEqual([".env.example", "README.md"]);
   });
 });
