@@ -244,6 +244,80 @@ describe("createAnthropicAdapter when the provider stalls after the response hea
   });
 });
 
+describe("createAnthropicAdapter under its real retry configuration", () => {
+  it("drives a second attempt under the real DEFAULT_MAX_RETRIES when a retryable failure fires", async () => {
+    // `maxRetries` is deliberately not pinned to 0 here, unlike every other
+    // test in this file: this is the one that exercises the value production
+    // actually runs with, `DEFAULT_MAX_RETRIES`, so the SDK's retry path is
+    // not left entirely untested. `429` is one of the statuses `shouldRetry`
+    // in node_modules/@anthropic-ai/sdk/client.mjs treats as retryable
+    // (alongside 408, 409 and >=500) — confirmed by reading it rather than
+    // assumed. Fake timers stand in for the real backoff sleep the SDK awaits
+    // between attempts (a plain, signal-blind `setTimeout`, per
+    // node_modules/@anthropic-ai/sdk/internal/utils/sleep.mjs), which would
+    // otherwise cost this test a real ~0.4s.
+    const { fetch, calls } = respondWith(429, {
+      type: "error",
+      error: { type: "rate_limit_error", message: "slow down" },
+    });
+
+    vi.useFakeTimers();
+    try {
+      const pending = createAnthropicAdapter({ apiKey: "test-key", fetch }).generate({
+        schema: SCHEMA,
+        prompt: "?",
+        outputLanguage: "en",
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      const error = failureOf(await pending);
+
+      expect(error.code).toBe("ERR_LLM_RATE_LIMIT");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The evidence the issue asks for: a second request actually went out.
+    expect(calls).toHaveLength(2);
+  });
+
+  it("ends the retry chain rather than starting a second attempt once the deadline fires mid-backoff", async () => {
+    // The interaction #62 introduced. `AbortSignal.timeout` runs on the real
+    // clock regardless of `vi.useFakeTimers` (it is not a `setTimeout` a fake
+    // timer install can see), so unlike the test above this one cannot fake
+    // the backoff sleep away — both timers have to run for real. A short
+    // `deadlineMs` keeps that real wait a fraction of the SDK's own ~0.4s
+    // first backoff rather than matching it: comfortably longer than the
+    // synchronous first attempt takes, comfortably shorter than the backoff
+    // sleep it needs to fire inside of.
+    const { fetch, calls } = respondWith(429, {
+      type: "error",
+      error: { type: "rate_limit_error", message: "slow down" },
+    });
+
+    const result = await createAnthropicAdapter({
+      apiKey: "test-key",
+      deadlineMs: 50,
+      fetch,
+    }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+
+    const error = failureOf(result);
+    const cause = error.cause;
+
+    expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    // The deadline's own TimeoutError, not the 429 the first attempt got —
+    // the chain ended because the signal fired, not because the retry budget
+    // ran out.
+    expect(cause).toBeInstanceOf(Error);
+    expect((cause as Error).name).toBe("TimeoutError");
+    // The fetch call count is the evidence: the SDK's backoff sleep ignores
+    // the signal and runs to completion, but by the time it wakes up and is
+    // about to start a second attempt, the deadline has already fired — so no
+    // second request ever goes out.
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe("createAnthropicAdapter rejects a deadline the platform cannot arm", () => {
   it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN, 4_294_967_296])(
     "throws at construction rather than per request for deadlineMs %o",
