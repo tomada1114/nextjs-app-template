@@ -232,12 +232,12 @@ const SKIPPED_FILES = new Set([
  *
  * @remarks
  * Mirrors tests/placeholders.test.ts, guard import included: what must never
- * be read — `.env*`, `.envrc*`, anything under `secrets/` — is decided by the
- * one engine `scripts/check-staged.mjs` already uses, so the rule is not
- * written a third time here; `SKIPPED_DIRECTORIES` names `secrets` on top of
- * it only so the directory is never enumerated. `root` is a parameter so the
- * exclusions can be asserted over a synthetic tree rather than vacuously over
- * this one.
+ * be read — `.env*`, `.envrc*`, anything under `secrets/`, and the personal
+ * `.claude/settings.local.json` — is decided by the one engine
+ * `scripts/check-staged.mjs` already uses, so the rule is not written a
+ * third time here; `SKIPPED_DIRECTORIES` names `secrets` on top of it only so
+ * the directory is never enumerated. `root` is a parameter so the exclusions
+ * can be asserted over a synthetic tree rather than vacuously over this one.
  */
 function walk(root: string, directory = ""): string[] {
   const absolute = directory === "" ? root : path.join(root, directory);
@@ -410,12 +410,16 @@ describe("the walk that feeds the reference scan", () => {
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "ai-layer-removal-walk-"));
     mkdirSync(path.join(root, "secrets"));
+    mkdirSync(path.join(root, ".claude", "skills"), { recursive: true });
     for (const relative of [
       "secrets/token.txt",
       ".env",
       ".env.local",
       ".envrc",
       ".env.example",
+      ".claude/settings.local.json",
+      ".claude/settings.json",
+      ".claude/skills/example.md",
       "README.md",
     ]) {
       writeFileSync(path.join(root, relative), body);
@@ -436,7 +440,20 @@ describe("the walk that feeds the reference scan", () => {
     expect(walk(root)).not.toContain(".git");
   });
 
-  it("reads the tracked env example and no real dotenv or direnv file", () => {
-    expect(walk(root).sort()).toStrictEqual([".env.example", "README.md"]);
+  it("does not read the personal .claude/settings.local.json", () => {
+    expect(walk(root)).not.toContain(".claude/settings.local.json");
+  });
+
+  it("still walks .claude/skills/, which the generated skill mirror lives under", () => {
+    expect(walk(root)).toContain(".claude/skills/example.md");
+  });
+
+  it("reads the tracked env example, the shared Claude settings and no real dotenv, direnv, or personal settings file", () => {
+    expect(walk(root).sort()).toStrictEqual([
+      ".claude/settings.json",
+      ".claude/skills/example.md",
+      ".env.example",
+      "README.md",
+    ]);
   });
 });

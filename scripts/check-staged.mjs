@@ -178,11 +178,12 @@ export function checkStagedChange(change, cwd = repoRoot) {
     return null;
   }
 
-  // Reuses the same .env*/secrets/** classification checkRead applies to an
-  // agent's Read call — the rule is "this path is secret-shaped", independent
-  // of who or what is about to expose it. Decided before the blob is read, so
-  // a secret file's content is never pulled into this process to reach a
-  // verdict the path alone already gives.
+  // Reuses the same classification checkRead applies to an agent's Read call
+  // (.env*, secrets/**, and the personal .claude/settings.local.json) — the
+  // rule is "this path is secret-shaped", independent of who or what is about
+  // to expose it. Decided before the blob is read, so a secret file's content
+  // is never pulled into this process to reach a verdict the path alone
+  // already gives.
   if (checkRead(change.path) !== null) {
     return `${change.path} looks like it holds secrets and must not be committed. Add it to .gitignore instead, or commit a .example/.sample/.template variant.`;
   }
