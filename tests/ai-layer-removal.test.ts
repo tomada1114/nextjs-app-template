@@ -74,12 +74,14 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * Every entry is a file whose subject is the repository rather than the
  * application: the two gate configs, the two boundary tests that assert
  * against the AI layer's shape, the environment schema and its example, and
- * the README's description of the one route. This list existing — and being
- * short — is the property: an app-level module that had to be edited here
- * would mean the layer is no longer separable.
+ * the two documents that describe the layer to a reader — AGENTS.md's
+ * Architecture section and the README's description of the one route. This
+ * list existing — and being short — is the property: an app-level module that
+ * had to be edited here would mean the layer is no longer separable.
  */
 const EDITED_FILES = [
   ".env.example",
+  "AGENTS.md",
   "README.md",
   "eslint.config.mjs",
   "src/server/env.ts",
