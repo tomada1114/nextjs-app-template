@@ -68,31 +68,53 @@ const OPTIONAL_REMOVED_PATHS = [
 const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
 
 /**
- * Files that survive the removal but have to be edited by it.
+ * Files that survive the removal but have to be edited by it, whose subject is
+ * the repository's machinery.
  *
  * @remarks
- * Every entry is a file whose subject is the repository rather than the
- * application: the two gate configs, the two boundary tests that assert
- * against the AI layer's shape, the environment schema and its example, and
- * the documents that describe the layer to a reader — AGENTS.md's Architecture
- * section, the README's description of the one route, the `starting-an-app`
- * skill, which carries the removal procedure and so names the removal set in
- * prose, `building-app-routes`, which teaches the Route Handler pattern
- * through the one endpoint this template ships, `localizing-ui`, which owns
- * the one mapping from a UI locale to the port's `outputLanguage`, and
- * `writing-typescript`, `designing-errors`, `writing-tests` and `type-testing`,
- * which illustrate rules that outlive the layer with worked examples drawn from
- * it — the port contract suite and the handler test as the seams a test is
- * written through, and the port's generic request/response types as what a
- * compile-time assertion is worth making about. This list existing — and being
- * short — is the property: an app-level module that had to be edited here would
- * mean the layer is no longer separable.
- *
- * Each skill's `.claude/skills/` copy is listed too because it is a real
- * committed file, but it is never hand-edited: the removal edits the
- * `.agents/` source and runs `pnpm agents:sync`.
+ * The two gate configs and the two boundary tests assert against the AI
+ * layer's shape; `src/server/env.ts` is the only module that reads the
+ * credential, and `.env.example` is where its name is published. This half is
+ * where the separability property lives: it is the one that has to stay
+ * near-empty, and an entry joining it means an application module now has to
+ * be edited by the removal — the moment the layer has stopped coming out in
+ * one piece.
  */
-const EDITED_FILES = [
+const EDITED_CODE_FILES = [
+  ".env.example",
+  "eslint.config.mjs",
+  "src/server/env.ts",
+  "tests/boundaries.test.ts",
+  "tests/server-env.test.ts",
+  "vitest.config.ts",
+];
+
+/**
+ * Files that survive the removal but have to be edited by it, because they
+ * describe the layer to a reader.
+ *
+ * @remarks
+ * AGENTS.md's Architecture section, the README's description of the one route,
+ * the `starting-an-app` skill, which carries the removal procedure and so
+ * names the removal set in prose, `building-app-routes`, which teaches the
+ * Route Handler pattern through the one endpoint this template ships,
+ * `localizing-ui`, which owns the one mapping from a UI locale to the port's
+ * `outputLanguage`, and `writing-typescript`, `designing-errors`,
+ * `writing-tests` and `type-testing`, which illustrate rules that outlive the
+ * layer with worked examples drawn from it — the port contract suite and the
+ * handler test as the seams a test is written through, and the port's generic
+ * request/response types as what a compile-time assertion is worth making
+ * about. This half claims completeness and nothing else: it grows whenever a
+ * skill teaches a rule through the port or the handler, that growth is
+ * expected rather than a signal, and each entry is here so the removal edits
+ * it instead of leaving a dangling instruction behind.
+ *
+ * Only the authored `.agents/` path is listed. `withMirror` derives each
+ * skill's `.claude/skills/` copy, which is a real committed file but is never
+ * hand-edited: the removal edits the `.agents/` source and runs
+ * `pnpm agents:sync`.
+ */
+const EDITED_DOCUMENT_FILES = [
   ".agents/skills/building-app-routes/SKILL.md",
   ".agents/skills/designing-errors/SKILL.md",
   ".agents/skills/localizing-ui/SKILL.md",
@@ -100,22 +122,33 @@ const EDITED_FILES = [
   ".agents/skills/type-testing/SKILL.md",
   ".agents/skills/writing-tests/SKILL.md",
   ".agents/skills/writing-typescript/SKILL.md",
-  ".claude/skills/building-app-routes/SKILL.md",
-  ".claude/skills/designing-errors/SKILL.md",
-  ".claude/skills/localizing-ui/SKILL.md",
-  ".claude/skills/starting-an-app/SKILL.md",
-  ".claude/skills/type-testing/SKILL.md",
-  ".claude/skills/writing-tests/SKILL.md",
-  ".claude/skills/writing-typescript/SKILL.md",
-  ".env.example",
   "AGENTS.md",
   "README.md",
-  "eslint.config.mjs",
-  "src/server/env.ts",
-  "tests/boundaries.test.ts",
-  "tests/server-env.test.ts",
-  "vitest.config.ts",
 ];
+
+/**
+ * `paths`, plus the generated `.claude/skills/` copy of every authored skill
+ * among them.
+ *
+ * @remarks
+ * A literal string replacement, deliberately: reading the tree, or importing
+ * the mapping from `scripts/sync-agents.mjs`, would make the expected value
+ * agree with the thing it is asserting against instead of with what an author
+ * wrote down.
+ */
+function withMirror(paths: readonly string[]): string[] {
+  return paths.flatMap((relative) =>
+    relative.startsWith(".agents/skills/")
+      ? [relative, relative.replace(".agents/skills/", ".claude/skills/")]
+      : [relative],
+  );
+}
+
+/** Both halves as the one exhaustive expected value the assertions compare. */
+const EDITED_FILES = [
+  ...EDITED_CODE_FILES,
+  ...withMirror(EDITED_DOCUMENT_FILES),
+].sort();
 
 // Mirrors tests/placeholders.test.ts: dependencies, version-control internals,
 // build and coverage output, data under test, and agent worktrees hold nothing
