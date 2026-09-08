@@ -308,25 +308,34 @@ describe("the composed /api/ask route", () => {
     expect(POST).toBe(askHandler);
   });
 
-  // Drives a handler the test builds itself, not the real composed
-  // `askHandler` above: that handler's behavior depends on whatever
-  // `API_ACCESS_KEY` the developer's shell happens to hold at module load, so
-  // asserting on its response here would be asserting on the ambient
-  // environment rather than on this repository's own code (the case below,
-  // `composedWith`, is where the real composition is exercised, with the
-  // environment pinned explicitly). What this case proves instead is the
-  // shape `POST /api/ask` answers with when nothing rejects the request
-  // first — status, `content-type`, and the JSON body — and a 500 fails it.
-  it("answers a well-formed request with a JSON body", async () => {
-    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+  // Pins the answer envelope the route replies with, against the real
+  // composition rather than against a handler this test builds itself, and
+  // with the environment stubbed rather than read: what `askHandler` does
+  // turns on the `API_ACCESS_KEY` the developer's shell happens to hold at
+  // module load, so a case that used the static import would be asserting on
+  // the ambient environment. The body is matched by shape, not by wording --
+  // which adapter composition.ts wires is its own decision to change, but
+  // that the reply is `{answer: <string>}` and not an error envelope is not.
+  it("answers a well-formed request with the answer envelope", async () => {
+    const composed = await composedWith({
+      ANTHROPIC_API_KEY: undefined,
+      API_ACCESS_KEY: undefined,
+    });
 
-    const response = await handler(
+    const response = await composed(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    await expect(response.json()).resolves.toStrictEqual(ANSWER);
+    const body: unknown = await response.json();
+    expect(body).toBeTypeOf("object");
+    expect(body).not.toBeNull();
+    if (typeof body !== "object" || body === null || !("answer" in body)) {
+      throw new Error(`not an answer envelope: ${JSON.stringify(body)}`);
+    }
+    expect(Object.keys(body)).toStrictEqual(["answer"]);
+    expect(body.answer).toBeTypeOf("string");
   });
 
   /**
