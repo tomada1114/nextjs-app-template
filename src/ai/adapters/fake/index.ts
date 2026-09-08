@@ -102,7 +102,12 @@ export function createFakeLlmPort(options: FakeLlmPortOptions = {}): LlmPort {
         );
       }
 
-      const parsed = request.schema.safeParse(response);
+      // `safeParseAsync`, not `safeParse`: a schema carrying an async
+      // `refine`/`transform` makes the synchronous form *throw* rather than
+      // return a failed result, which would break the port's promise never to
+      // throw for an expected failure. The async form handles both shapes, and
+      // this is the reference an adapter copies.
+      const parsed = await request.schema.safeParseAsync(response);
       if (!parsed.success) {
         return err(
           new LlmError(

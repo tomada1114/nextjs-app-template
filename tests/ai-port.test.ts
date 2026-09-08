@@ -56,14 +56,31 @@ export interface LlmPortContractHarness {
   readonly neverAnswers: () => LlmPort;
 }
 
-/** Every `LlmErrorCode`, so no member can be added without a case here. */
-const ALL_CODES: readonly LlmErrorCode[] = [
+/**
+ * Every `LlmErrorCode`.
+ *
+ * @remarks
+ * Annotating this `readonly LlmErrorCode[]` would let a new member be added to
+ * the union with no case here. `as const satisfies` keeps the literal tuple
+ * type instead, which the type assertion in "covers every LlmErrorCode" below
+ * compares against the union — so a new code fails the type check until it is
+ * listed here too.
+ */
+const ALL_CODES = [
   "ERR_LLM_AUTH",
   "ERR_LLM_RATE_LIMIT",
   "ERR_LLM_TIMEOUT",
   "ERR_LLM_INVALID_OUTPUT",
   "ERR_LLM_UNAVAILABLE",
-];
+] as const satisfies readonly LlmErrorCode[];
+
+describe("the LlmPort contract suite", () => {
+  it("covers every LlmErrorCode", () => {
+    expectTypeOf<(typeof ALL_CODES)[number]>().toEqualTypeOf<LlmErrorCode>();
+
+    expect(new Set(ALL_CODES).size).toBe(ALL_CODES.length);
+  });
+});
 
 function valueOf<T>(result: Result<T, LlmError>): T {
   if (!result.ok) {
@@ -127,6 +144,38 @@ export function describeLlmPortContract(
       });
 
       expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+    });
+
+    it("resolves rather than throws for a schema carrying an async refinement", async () => {
+      // Zod's synchronous `safeParse` *throws* on a schema with an async
+      // refine/transform instead of returning a failed result. An adapter that
+      // reaches for it turns a caller's schema choice into a rejected promise,
+      // which the port promises never to do for an expected failure. Both
+      // directions are asserted, because only checking the accepting one would
+      // pass against an adapter that swallowed the failure branch entirely.
+      const accepts = CONTRACT_SCHEMA.refine(async (value) =>
+        Promise.resolve(value.confidence <= 1),
+      );
+      const rejects = CONTRACT_SCHEMA.refine(async (value) =>
+        Promise.resolve(value.confidence > 1),
+      );
+      const port = harness.succeeds();
+
+      await expect(
+        port.generate({
+          schema: accepts,
+          prompt: "What is the answer?",
+          outputLanguage: "en",
+        }),
+      ).resolves.toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+
+      const result = await port.generate({
+        schema: rejects,
+        prompt: "What is the answer?",
+        outputLanguage: "en",
+      });
+
+      expect(failureOf(result).code).toBe("ERR_LLM_INVALID_OUTPUT");
     });
 
     it("reports ERR_LLM_INVALID_OUTPUT when the answer does not match the schema", async () => {
