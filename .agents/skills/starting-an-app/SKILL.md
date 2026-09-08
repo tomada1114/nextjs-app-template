@@ -135,6 +135,9 @@ Delete the paths, then work through `EDITED_FILES`:
 - `README.md` and AGENTS.md lose the route and the port from their prose — AGENTS.md's
   Architecture tree, its three seams, and the contract statement all name them.
 - `tests/server-env.test.ts` loses the cases for the removed key.
+- `building-app-routes` loses the paragraphs written around the one endpoint that is
+  going away: the Route Handler pattern it teaches stays, and the first endpoint of your
+  own is what it is illustrated with instead.
 - This skill loses its "Removing the AI layer" section — it is on `EDITED_FILES` because
   a procedure for deleting something already gone is stale prose. Edit the `.agents/`
   copy and run `pnpm agents:sync`; never hand-edit the mirror.
