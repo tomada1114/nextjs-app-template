@@ -56,44 +56,55 @@ function checkSourceSteps(): string[] {
   );
 }
 
-function ciWorkflow(): string {
-  return readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+const ciWorkflow = readFileSync(
+  path.join(repoRoot, ".github", "workflows", "ci.yml"),
+  "utf8",
+);
+
+/** A job header: the two-space key that opens one job inside `jobs:`. */
+const JOB_HEADER = String.raw`^ {2}([\w-]+):$`;
+
+/**
+ * The body of `ci.yml`'s top-level `jobs:` block. Top-level keys (`name`, `on`,
+ * `permissions`, `concurrency`, `jobs`) sit at column 0 and a job's own body at
+ * four spaces or more, so everything from `jobs:` to the next column-0 key is
+ * exactly the jobs and nothing else — which is what keeps a job's body from
+ * running past the end of the block when `jobs:` is not the last key.
+ */
+function ciJobsBlock(): string {
+  const jobsKey = /^jobs:$/m.exec(ciWorkflow);
+  if (jobsKey === null) {
+    throw new Error("ci.yml declares no top-level `jobs:` key.");
+  }
+  const rest = ciWorkflow.slice(jobsKey.index + jobsKey[0].length);
+  // A `#` at column 0 is a comment, not the next top-level key.
+  const nextTopLevel = /^[^\s#]/m.exec(rest);
+  return nextTopLevel === null ? rest : rest.slice(0, nextTopLevel.index);
 }
 
 /**
- * Every job name `ci.yml` declares. Top-level keys (`name`, `on`,
- * `permissions`, `concurrency`, `jobs`) sit at column 0 and a job's own body at
- * four spaces or more, so the two-space keys between `jobs:` and the next
- * column-0 key are exactly the jobs — read from the file so a job added
+ * Every job name `ci.yml` declares — read from the file so a job added
  * tomorrow is covered the day it lands, not the day someone remembers this
  * test.
  */
 function ciJobNames(): string[] {
-  const text = ciWorkflow();
-  const jobsKey = /^jobs:$/m.exec(text);
-  if (jobsKey === null) {
-    throw new Error("ci.yml declares no top-level `jobs:` key.");
-  }
-  const rest = text.slice(jobsKey.index + jobsKey[0].length);
-  // A `#` at column 0 is a comment, not the next top-level key.
-  const nextTopLevel = /^[^\s#]/m.exec(rest);
-  const body = nextTopLevel === null ? rest : rest.slice(0, nextTopLevel.index);
-  return [...body.matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1] ?? "");
+  return [...ciJobsBlock().matchAll(new RegExp(JOB_HEADER, "gm"))].map(
+    (match) => match[1] ?? "",
+  );
 }
 
 /**
- * Extract every `pnpm run <name>` step inside one named top-level job block
- * of `ci.yml`, from that job's header up to the next top-level job (or the
- * end of the file).
+ * Extract every `pnpm run <name>` step inside one named job of `ci.yml`, from
+ * that job's header up to the next job (or the end of the `jobs:` block).
  */
 function ciJobSteps(jobName: string): string[] {
-  const text = ciWorkflow();
-  const jobStart = new RegExp(`^  ${jobName}:$`, "m").exec(text);
+  const block = ciJobsBlock();
+  const jobStart = new RegExp(`^  ${jobName}:$`, "m").exec(block);
   if (jobStart === null) {
     throw new Error(`ci.yml has no top-level job named "${jobName}".`);
   }
-  const rest = text.slice(jobStart.index + jobStart[0].length);
-  const nextJob = /^ {2}[\w-]+:$/m.exec(rest);
+  const rest = block.slice(jobStart.index + jobStart[0].length);
+  const nextJob = new RegExp(JOB_HEADER, "m").exec(rest);
   const body = nextJob === null ? rest : rest.slice(0, nextJob.index);
   return [...body.matchAll(/run:\s*pnpm run ([\w:-]+)/g)].map(
     (match) => match[1] ?? "",
