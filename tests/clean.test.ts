@@ -1,7 +1,15 @@
 import consoleModule from "node:console";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -130,5 +138,77 @@ describe("clean", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringMatching(/refusing to remove a path outside the repository/),
     );
+  });
+});
+
+// `pnpm clean` and `pnpm clean:deep` are the reviewable alternative to typing
+// `rm -rf` at a prompt: the target list lives in package.json where a diff
+// shows it, and scripts/clean.mjs refuses anything resolving outside the
+// repository. That only holds while the two scripts stay honest about each
+// other, which is what this block pins.
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+/** The targets one `clean*` script passes to `scripts/clean.mjs`, in order. */
+function cleanTargets(scriptName: string): string[] {
+  const manifest: unknown = JSON.parse(
+    readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+  );
+  const scripts =
+    typeof manifest === "object" && manifest !== null && "scripts" in manifest
+      ? manifest.scripts
+      : undefined;
+  const command =
+    typeof scripts === "object" && scripts !== null && scriptName in scripts
+      ? (scripts as Record<string, unknown>)[scriptName]
+      : undefined;
+  if (typeof command !== "string") {
+    throw new Error(`package.json has no "${scriptName}" script to check.`);
+  }
+  const invocation = "node scripts/clean.mjs ";
+  if (!command.startsWith(invocation)) {
+    throw new Error(`"${scriptName}" no longer calls scripts/clean.mjs: ${command}`);
+  }
+  return command
+    .slice(invocation.length)
+    .split(" ")
+    .filter((target) => target !== "");
+}
+
+describe("the clean scripts", () => {
+  it("both route through scripts/clean.mjs rather than a shell rm", () => {
+    expect(cleanTargets("clean").length).toBeGreaterThan(0);
+    expect(cleanTargets("clean:deep").length).toBeGreaterThan(0);
+  });
+
+  it("clean:deep removes everything clean removes", () => {
+    // Otherwise "deep" is a lie: someone reaching for it after `pnpm clean`
+    // left something behind would still be left with that something.
+    const shallow = cleanTargets("clean");
+    const deep = cleanTargets("clean:deep");
+    expect(deep).toEqual(expect.arrayContaining(shallow));
+  });
+
+  it("clean:deep is the only one that removes node_modules", () => {
+    // The split is the whole point: `clean` is cheap and keeps the checkout
+    // usable, `clean:deep` costs a reinstall. Merging them would make the
+    // everyday command the expensive one.
+    expect(cleanTargets("clean")).not.toContain("node_modules");
+    expect(cleanTargets("clean:deep")).toContain("node_modules");
+  });
+
+  it("names only paths scripts/clean.mjs will accept", () => {
+    // A target that resolves outside the repository is refused at runtime and
+    // exits 2, which would make the script fail rather than clean. Catch it
+    // here, where the message names the offending entry.
+    for (const scriptName of ["clean", "clean:deep"]) {
+      for (const target of cleanTargets(scriptName)) {
+        const resolved = path.resolve(repoRoot, target);
+        const relative = path.relative(repoRoot, resolved);
+        expect(
+          relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative),
+          `${scriptName} target ${target} resolves outside the repository`,
+        ).toBe(true);
+      }
+    }
   });
 });

@@ -20,6 +20,7 @@
   },
   "scripts": {
     "clean": "node scripts/clean.mjs .next coverage .eslintcache tsconfig.tsbuildinfo",
+    "clean:deep": "node scripts/clean.mjs .next coverage .eslintcache tsconfig.tsbuildinfo dist node_modules",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
