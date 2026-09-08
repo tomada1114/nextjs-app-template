@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
+import * as z from "zod";
 
 import { readServerEnv, SERVER_ENV_NAMES } from "../src/server/env";
 
@@ -83,8 +84,14 @@ describe(".env.example", () => {
 describe("readServerEnv", () => {
   it("returns the value of a variable that is set", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
+    // Obliged by the rule below, not incidental: a provider credential with no
+    // access key beside it is the one combination the schema rejects.
+    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
 
-    expect(readServerEnv()).toStrictEqual({ ANTHROPIC_API_KEY: "an-example-value" });
+    expect(readServerEnv()).toStrictEqual({
+      ANTHROPIC_API_KEY: "an-example-value",
+      API_ACCESS_KEY: "an-example-access-key",
+    });
   });
 
   it("treats an unset variable as absent", () => {
@@ -95,14 +102,96 @@ describe("readServerEnv", () => {
 
   it("treats a blank variable as absent, so a copied .env.example still boots", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "   ");
+    vi.stubEnv("API_ACCESS_KEY", "   ");
 
-    expect(readServerEnv().ANTHROPIC_API_KEY).toBeUndefined();
+    expect(readServerEnv()).toStrictEqual({
+      ANTHROPIC_API_KEY: undefined,
+      API_ACCESS_KEY: undefined,
+    });
   });
 
   it("ignores environment variables it does not declare", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", undefined);
+    vi.stubEnv("API_ACCESS_KEY", undefined);
     vi.stubEnv("SOME_UNDECLARED_VARIABLE", "present");
 
     expect(readServerEnv()).toStrictEqual({});
+  });
+});
+
+/** What `readServerEnv` reported, flattened; `[]` when it did not throw. */
+function reportedIssues(): { path: string; message: string }[] {
+  try {
+    readServerEnv();
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }));
+    }
+    throw error;
+  }
+  return [];
+}
+
+// `POST /api/ask` has no authentication of its own and no middleware in front
+// of it (`src/proxy.ts`'s matcher excludes `api`), so the moment a billed
+// credential is configured an open endpoint spends money for whoever finds it.
+// Refusing that combination at startup is what makes the protection impossible
+// to forget: the server stops as it boots rather than serving one request
+// unprotected (#82).
+describe("readServerEnv with a provider credential configured", () => {
+  it("throws when no API_ACCESS_KEY is set beside it", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
+    vi.stubEnv("API_ACCESS_KEY", undefined);
+
+    expect(() => readServerEnv()).toThrow(z.ZodError);
+  });
+
+  it("names API_ACCESS_KEY as the variable at fault, and no credential value", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
+    vi.stubEnv("API_ACCESS_KEY", undefined);
+
+    const reported = reportedIssues();
+
+    expect(reported.map((issue) => issue.path)).toStrictEqual(["API_ACCESS_KEY"]);
+    // A ZodError reaches a log and a crash report, so it may name the variable
+    // and never what was in it -- `designing-errors`.
+    expect(reported.map((issue) => issue.message).join("\n")).not.toContain(
+      "an-example-value",
+    );
+  });
+
+  it("throws when API_ACCESS_KEY is blank, which reads as absent", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
+    vi.stubEnv("API_ACCESS_KEY", "   ");
+
+    expect(() => readServerEnv()).toThrow(z.ZodError);
+  });
+
+  it("succeeds when an API_ACCESS_KEY is set", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
+    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
+
+    expect(readServerEnv().API_ACCESS_KEY).toBe("an-example-access-key");
+  });
+
+  it("requires nothing when no provider credential is configured", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
+    vi.stubEnv("API_ACCESS_KEY", undefined);
+
+    // The zero-credential quick start: `pnpm dev` answers from the fake
+    // adapter, which bills nothing, so there is nothing to protect.
+    expect(() => readServerEnv()).not.toThrow();
+  });
+
+  it("accepts an API_ACCESS_KEY on its own", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
+    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
+
+    expect(readServerEnv()).toStrictEqual({
+      API_ACCESS_KEY: "an-example-access-key",
+    });
   });
 });

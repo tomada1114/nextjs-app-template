@@ -210,6 +210,89 @@ describe("the ask handler", () => {
   });
 });
 
+// `src/server/env.ts` makes `API_ACCESS_KEY` mandatory as soon as a billed
+// provider credential is configured, so this is what a deployed app that pays
+// for its answers actually runs. What each case has to show is not only the
+// status but that the port was never reached: an endpoint that rejects a
+// request *after* spending money on it has protected nothing.
+describe("the ask handler with an access key configured", () => {
+  const ACCESS_KEY = "an-example-access-key";
+
+  /** The handler and the record of everything the port was asked. */
+  function guarded(): {
+    handler: (request: Request) => Promise<Response>;
+    seen: CapturedRequest[];
+  } {
+    const seen: CapturedRequest[] = [];
+    return {
+      handler: createAskHandler({
+        llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+        accessKey: ACCESS_KEY,
+      }),
+      seen,
+    };
+  }
+
+  /** A well-formed `POST` carrying `authorization` verbatim, or none at all. */
+  function askWith(authorization?: string): Request {
+    return postRequest(
+      JSON.stringify({ prompt: "Which city was the old capital?" }),
+      authorization === undefined ? {} : { headers: { authorization } },
+    );
+  }
+
+  it("answers a request carrying the configured key", async () => {
+    const { handler, seen } = guarded();
+
+    const response = await handler(askWith(`Bearer ${ACCESS_KEY}`));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual(ANSWER);
+    expect(seen).toHaveLength(1);
+  });
+
+  it.each([
+    ["no Authorization header", undefined],
+    ["an empty Authorization header", ""],
+    ["a wrong key", "Bearer not-the-configured-key"],
+    ["the right key under the wrong scheme", `Basic ${ACCESS_KEY}`],
+    ["the key with no scheme", ACCESS_KEY],
+    ["a bearer prefix and nothing after it", "Bearer "],
+    ["a prefix of the key", `Bearer ${ACCESS_KEY.slice(0, -1)}`],
+    ["the key with something appended", `Bearer ${ACCESS_KEY}x`],
+  ])("rejects %s without reaching the port", async (_label, authorization) => {
+    const { handler, seen } = guarded();
+
+    const response = await handler(askWith(authorization));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "ERR_UNAUTHORIZED",
+        message: "This endpoint requires a valid access key.",
+      },
+    });
+    expect(seen).toStrictEqual([]);
+  });
+
+  it("challenges with the scheme a caller has to use", async () => {
+    const { handler } = guarded();
+
+    const response = await handler(askWith());
+
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+  });
+
+  it("rejects before validating the body, so an anonymous caller learns nothing", async () => {
+    const { handler, seen } = guarded();
+
+    const response = await handler(postRequest("not json at all"));
+
+    expect(response.status).toBe(401);
+    expect(seen).toStrictEqual([]);
+  });
+});
+
 describe("the composed /api/ask route", () => {
   it("is the handler composition.ts builds, re-exported as POST", () => {
     expect(POST).toBe(askHandler);
@@ -229,11 +312,14 @@ describe("the composed /api/ask route", () => {
 
   // Pins the promise README.md and AGENTS.md both make: a fresh checkout with
   // no ANTHROPIC_API_KEY still answers instead of surfacing ERR_LLM_AUTH as a
-  // 500 (#77). This is the one test in the suite allowed to depend on the
-  // process environment, and only to assert the premise the regression needs:
-  // that this run has no credential configured, the same as a fresh clone.
-  it("answers 200 with no ANTHROPIC_API_KEY configured", async () => {
+  // 500 (#77), and with no API_ACCESS_KEY it answers an anonymous caller rather
+  // than a 401 (#82). This is the one test in the suite allowed to depend on
+  // the process environment, and only to assert the premise the regression
+  // needs: that this run has neither variable configured, the same as a fresh
+  // clone.
+  it("answers 200 with no credential of either kind configured", async () => {
     expect(process.env["ANTHROPIC_API_KEY"] ?? "").toBe("");
+    expect(process.env["API_ACCESS_KEY"] ?? "").toBe("");
 
     const response = await askHandler(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),

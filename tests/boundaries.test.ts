@@ -138,7 +138,10 @@ describe("the import scanner the zone assertions run on", () => {
       "src/ai/adapters/fake/index.ts",
       ["zod", "../../../core/result", "../../errors", "../../port"],
     ],
-    ["src/server/handlers/ask.ts", ["zod", "../../ai/index", "../../i18n/locales"]],
+    [
+      "src/server/handlers/ask.ts",
+      ["node:crypto", "zod", "../../ai/index", "../../i18n/locales"],
+    ],
     ["src/app/api/ask/route.ts", ["../../../server/composition"]],
   ])("reads %s as %p", (file, expected) => {
     const module = sourceModules.find((candidate) => candidate.file === file);

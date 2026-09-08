@@ -6,10 +6,11 @@ import { createAskHandler } from "./handlers/ask";
 
 // Read once, at module load, so a malformed environment stops the server as it
 // starts rather than showing up as a puzzling failure on some later request.
-// Nothing below reads a value out of it: the fake adapter needs no credential,
-// and `ANTHROPIC_API_KEY` stays validated for the day this file is edited back
-// to a provider adapter.
-readServerEnv();
+// That is also what closes the endpoint: the schema requires `API_ACCESS_KEY`
+// as soon as a provider credential is configured, so the day this file is
+// edited back to a provider adapter, an unprotected deployment fails here
+// instead of answering.
+const env = readServerEnv();
 
 /**
  * The one line in this repository that decides which vendor answers.
@@ -29,5 +30,13 @@ const llm = createFakeLlmPort({
   },
 });
 
-/** The handler `src/app/api/ask/route.ts` publishes as its `POST` export. */
-export const askHandler = createAskHandler({ llm });
+/**
+ * The handler `src/app/api/ask/route.ts` publishes as its `POST` export.
+ *
+ * @remarks
+ * `accessKey` is `undefined` in the zero-credential quick start, which is what
+ * lets `pnpm dev` answer with nothing configured; it cannot be `undefined`
+ * alongside a provider credential, because `readServerEnv` above refuses that
+ * combination.
+ */
+export const askHandler = createAskHandler({ llm, accessKey: env.API_ACCESS_KEY });
