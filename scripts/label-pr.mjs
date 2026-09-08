@@ -44,6 +44,21 @@ const TYPE_LABELS = new Map([
 /** The full set of labels this workflow is ever allowed to add or remove. */
 export const MANAGED_LABELS = new Set(TYPE_LABELS.values());
 
+/**
+ * The one managed label this workflow may add but must never take away.
+ *
+ * @remarks
+ * `.github/dependabot.yml` titles its github-actions pull requests `ci:`
+ * while Dependabot applies `dependencies` itself, so such a PR arrives
+ * carrying exactly one managed label that maps to a different type — the
+ * same shape a genuine retitle has, and indistinguishable from it without a
+ * signal this script does not have. Since `dependencies` is the only managed
+ * label another actor applies on its own initiative, exempting it resolves
+ * the collision without inventing bot detection: a `deps:` title still adds
+ * it, and nothing here ever removes it.
+ */
+const UNREMOVABLE_LABELS = new Set(["dependencies"]);
+
 // A scope and a breaking-change `!` may each be present or absent, in either
 // order: `feat:`, `feat(scope):`, `feat!:`, `feat(scope)!:`. This workflow
 // does not carry a distinct "breaking change" label — none exists in
@@ -76,12 +91,13 @@ export function resolveLabel(title) {
  * and whether the PR's one stale managed label should be removed.
  *
  * A label outside {@link MANAGED_LABELS} is never proposed for removal,
- * whatever the title says. Among managed labels, removal is proposed only
- * when the PR carries **exactly one** and the title maps to a **different**
- * one — the only shape in which the present label can be read as this
- * workflow's own earlier output rather than something a human or another
- * bot added. Two or more managed labels present, or a title that maps to no
- * label at all, both leave every current label alone and only ever add.
+ * whatever the title says, and neither is one in {@link UNREMOVABLE_LABELS}.
+ * Among the rest, removal is proposed only when the PR carries **exactly
+ * one** managed label and the title maps to a **different** one — the only
+ * shape in which the present label can be read as this workflow's own
+ * earlier output rather than something a human added. Two or more managed
+ * labels present, or a title that maps to no label at all, both leave every
+ * current label alone and only ever add.
  *
  * @param {string} title - The pull request's current title.
  * @param {readonly string[]} currentLabels - Labels currently on the pull request.
@@ -90,11 +106,13 @@ export function resolveLabel(title) {
 export function computeLabelUpdate(title, currentLabels) {
   const addLabel = resolveLabel(title);
   const managedPresent = currentLabels.filter((label) => MANAGED_LABELS.has(label));
+  const removable = managedPresent.filter((label) => !UNREMOVABLE_LABELS.has(label));
   const removeLabels =
     addLabel !== null &&
     managedPresent.length === 1 &&
-    managedPresent.every((label) => label !== addLabel)
-      ? managedPresent
+    removable.length === 1 &&
+    removable[0] !== addLabel
+      ? removable
       : [];
   return { addLabel, removeLabels };
 }

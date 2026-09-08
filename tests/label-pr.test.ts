@@ -118,14 +118,30 @@ describe("computeLabelUpdate", () => {
   });
 
   // Dependabot's github-actions updates title with `ci:` (.github/dependabot.yml)
-  // but Dependabot itself applies its own default `dependencies` label, never
-  // `ci`. That is a single managed label that differs from the resolved one —
-  // structurally identical to the retitle case above — so this conservative
-  // rule cannot tell the two apart and proposes removing it here too.
-  it("cannot distinguish Dependabot's own default label from a stale self-applied one", () => {
+  // while Dependabot itself applies its own default `dependencies` label,
+  // never `ci`. That is one managed label differing from the resolved one --
+  // structurally identical to the retitle case above, so no rule reading
+  // labels alone can tell them apart. `dependencies` is exempt from removal
+  // for exactly that reason: it is the only managed label another actor
+  // applies on its own, so the workflow adds it and never takes it away.
+  it("leaves Dependabot's own dependencies label alone on a ci:-titled update", () => {
     expect(computeLabelUpdate("ci: bump x", ["dependencies"])).toEqual({
       addLabel: "ci",
-      removeLabels: ["dependencies"],
+      removeLabels: [],
+    });
+  });
+
+  it("still adds dependencies for a deps: title that does not carry it yet", () => {
+    expect(computeLabelUpdate("deps: bump x", [])).toEqual({
+      addLabel: "dependencies",
+      removeLabels: [],
+    });
+  });
+
+  it("never removes dependencies even when a retitle makes it stale", () => {
+    expect(computeLabelUpdate("fix: x", ["dependencies"])).toEqual({
+      addLabel: "bug",
+      removeLabels: [],
     });
   });
 
