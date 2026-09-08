@@ -124,9 +124,8 @@ export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number
 export const MAX_DEADLINE_MS = 4_294_967_295;
 
 /**
- * The SDK's own hardcoded default host — a literal at `client.ts:627`/`:871`
- * in `@anthropic-ai/sdk@0.122.0`, with no exported constant to import instead
- * — passed explicitly so the constructor's own env fallback never fires.
+ * The SDK's own hardcoded default host, a literal at `client.ts:627`/`:871` in
+ * `@anthropic-ai/sdk@0.122.0` with no exported constant to import instead.
  */
 const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com";
 
@@ -165,13 +164,14 @@ export interface AnthropicClientOptions {
  * @remarks
  * `apiKey` is required rather than optional so the SDK's own
  * `process.env.ANTHROPIC_API_KEY` fallback never fires — `src/server/env.ts`
- * is the only place under `src/` meant to read `process.env`. Three more
- * options close the same fallback, read at `client.ts:604-669`
- * (`@anthropic-ai/sdk@0.122.0`): `authToken: null` (else a Bearer header
- * joins `X-Api-Key` on every request); `baseURL:
- * ANTHROPIC_DEFAULT_BASE_URL`; and `logLevel: "warn"`, the SDK's own
- * default. `ANTHROPIC_CUSTOM_HEADERS` alone has no closing option and is
- * read unconditionally — an acknowledged residual limitation.
+ * is the only place under `src/` meant to read `process.env`. Four more
+ * options close the same fallback, all read at `client.ts:604-669`
+ * (`@anthropic-ai/sdk@0.122.0`): `authToken: null`, else a Bearer header joins
+ * `X-Api-Key` on every request; `baseURL`; `logLevel: "warn"`, the SDK's own
+ * default; and `webhookKey: null`, which changes no request this adapter makes
+ * — nothing here verifies a webhook — but is the same ambient read.
+ * `ANTHROPIC_CUSTOM_HEADERS` alone has no closing option and is read
+ * unconditionally: an acknowledged residual limitation.
  *
  * {@link declineLongRetryAfter} is installed on every client rather than per
  * request: what it enforces is a property of this adapter, not of one call, and
@@ -191,6 +191,7 @@ export function createAnthropicClient(options: AnthropicClientOptions): Anthropi
     authToken: null,
     baseURL: ANTHROPIC_DEFAULT_BASE_URL,
     logLevel: "warn",
+    webhookKey: null,
     timeout: timeoutMs,
     maxRetries,
     middleware: [declineLongRetryAfter],
