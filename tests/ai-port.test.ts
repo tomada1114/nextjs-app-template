@@ -421,7 +421,7 @@ describe.runIf(isRecording())("recording the Anthropic fixtures", () => {
     const result = await createAnthropicAdapter({
       apiKey: process.env["ANTHROPIC_API_KEY"],
       maxRetries: 0,
-      fetch: recordingFetch("success"),
+      fetch: recordingFetch("success", 200),
     }).generate({
       schema: CONTRACT_SCHEMA,
       prompt: `Reply with exactly this JSON object, copied verbatim: ${JSON.stringify(CONTRACT_ANSWER)}`,
@@ -442,7 +442,7 @@ describe.runIf(isRecording())("recording the Anthropic fixtures", () => {
         createAnthropicAdapter({
           apiKey: "sk-ant-invalid",
           maxRetries: 0,
-          fetch: recordingFetch("auth-401"),
+          fetch: recordingFetch("auth-401", 401),
         }),
       ),
     );

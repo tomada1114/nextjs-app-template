@@ -22,11 +22,18 @@ export const LLM_FIXTURES_DIR = fileURLToPath(
  *
  * @remarks
  * Deliberately not a whole `Response`. Only the status and the JSON body are
- * kept, because those are all a replay needs and everything else a real
- * response carries — `request-id`, organization identifiers, whatever headers a
- * future API version adds — is either an identifier or a liability in a
- * committed file. `headers` exists for the hand-written fixtures that need one
- * (a `retry-after`, say); the recorder never writes it.
+ * kept, because those are all a replay needs, and dropping the headers is what
+ * makes a credential structurally unable to reach a committed file: the request
+ * — where the SDK puts `x-api-key` — is never written down at all, and neither
+ * is any response header a future API version might add.
+ *
+ * The body *is* verbatim, so what the provider puts inside it is committed:
+ * `success.json` carries the real `id` of the recorded message, and an error
+ * body carries its `request_id`. Those are opaque per-request identifiers, not
+ * credentials, and keeping them is what makes the fixture a real recording.
+ *
+ * `headers` exists for the hand-written fixtures that need one (a
+ * `retry-after`, say); the recorder never writes it.
  */
 export interface LlmFixture {
   readonly status: number;
@@ -133,21 +140,65 @@ function abortRejection(reason: unknown): Error {
  * real credential. The request is never written down — only the status and the
  * response body are — so no header this call sent can reach a committed file.
  */
-export function recordingFetch(name: string): typeof globalThis.fetch {
+export function recordingFetch(
+  name: string,
+  expectedStatus: number,
+): typeof globalThis.fetch {
   return async (input, init) => {
     const response = await globalThis.fetch(input, init);
     const text = await response.text();
-    const fixture: LlmFixture = {
-      status: response.status,
-      body: JSON.parse(text) as unknown,
-    };
 
-    mkdirSync(LLM_FIXTURES_DIR, { recursive: true });
-    writeFileSync(fixturePath(name), `${JSON.stringify(fixture, null, 2)}\n`, "utf8");
+    // Written only for the status the recording set out to capture. A session
+    // that met a 429 or a 500 instead would otherwise overwrite a good fixture
+    // with that body: the assertion downstream still fails, but the damaged
+    // file is already on disk by then and `git add` would stage it.
+    if (response.status === expectedStatus) {
+      const fixture: LlmFixture = {
+        status: response.status,
+        body: JSON.parse(text) as unknown,
+      };
+      mkdirSync(LLM_FIXTURES_DIR, { recursive: true });
+      writeFileSync(fixturePath(name), `${JSON.stringify(fixture, null, 2)}\n`, "utf8");
+    }
 
     return new Response(text, {
       status: response.status,
       headers: { "content-type": "application/json" },
     });
+  };
+}
+
+/**
+ * A `fetch` that answers with headers and then never finishes the body.
+ *
+ * @remarks
+ * The window {@link neverResolvingFetch} cannot reach. The SDK converts an
+ * abort into `APIUserAbortError` only while it still owns the request, and it
+ * hands ownership over once the `Response` resolves; a cancellation arriving
+ * during the body decode therefore surfaces as a bare `AbortError` instead.
+ * Reproducing that window is what keeps the port's `cause`-by-identity promise
+ * under test on both sides of the headers rather than only the near side.
+ */
+export function headersThenStallFetch(): typeof globalThis.fetch {
+  return (_input, init) => {
+    const body = new ReadableStream({
+      start(controller) {
+        const signal = init?.signal;
+        signal?.addEventListener(
+          "abort",
+          () => {
+            controller.error(abortRejection(signal.reason));
+          },
+          { once: true },
+        );
+      },
+    });
+
+    return Promise.resolve(
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
   };
 }

@@ -7,15 +7,32 @@ export const DEFAULT_MODEL = "claude-sonnet-5";
 export const DEFAULT_MAX_TOKENS = 1024;
 
 /**
- * How long one call may take before the SDK abandons it, in milliseconds.
+ * How long one attempt may wait for the response *headers*, in milliseconds.
  *
  * @remarks
- * The SDK's own default is ten minutes, which is a batch job's deadline rather
- * than a web request's: a route handler holding a connection open that long has
- * already failed its caller. This is the half of the deadline an adapter owns —
- * the other half is the `AbortSignal` on the request.
+ * Headers, not the whole answer: the SDK arms this deadline around its inner
+ * fetch and clears it as soon as the `Response` resolves, so a provider that
+ * sends `200` and then stalls mid-body is not bounded by it. The
+ * `AbortSignal` on the request is what covers that half, which is the other
+ * reason the port takes one.
+ *
+ * The SDK's own default is ten minutes — a batch job's deadline rather than a
+ * web request's, where a route handler holding a connection open that long has
+ * already failed its caller.
  */
 export const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * How many times a failed attempt is retried.
+ *
+ * @remarks
+ * Stated here rather than inherited, because the SDK's default of `2` multiplies
+ * against {@link DEFAULT_TIMEOUT_MS}: three attempts plus two backoff sleeps put
+ * a single stalled request past three minutes, which is not a deadline anyone
+ * chose. One retry still absorbs the transient failure a retry is for, and
+ * bounds the worst case at roughly two timeouts plus one sleep.
+ */
+export const DEFAULT_MAX_RETRIES = 1;
 
 /** Everything {@link createAnthropicClient} needs that is not a request. */
 export interface AnthropicClientOptions {
@@ -25,7 +42,7 @@ export interface AnthropicClientOptions {
   /** @see DEFAULT_TIMEOUT_MS */
   readonly timeoutMs?: number;
 
-  /** How many times the SDK retries a retryable failure. Defaults to the SDK's own. */
+  /** @see DEFAULT_MAX_RETRIES */
   readonly maxRetries?: number;
 
   /**
@@ -51,12 +68,17 @@ export interface AnthropicClientOptions {
  * definite string closes it.
  */
 export function createAnthropicClient(options: AnthropicClientOptions): Anthropic {
-  const { apiKey, timeoutMs = DEFAULT_TIMEOUT_MS, maxRetries, fetch } = options;
+  const {
+    apiKey,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    fetch,
+  } = options;
 
   return new Anthropic({
     apiKey,
     timeout: timeoutMs,
-    ...(maxRetries === undefined ? {} : { maxRetries }),
+    maxRetries,
     ...(fetch === undefined ? {} : { fetch }),
   });
 }

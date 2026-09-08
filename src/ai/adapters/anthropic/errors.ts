@@ -35,6 +35,27 @@ function codeForStatus(status: number | undefined): LlmErrorCode {
 }
 
 /**
+ * Whether a rejection is a cancelled request wearing no SDK class.
+ *
+ * @remarks
+ * The SDK converts an abort into `APIUserAbortError` only while it owns the
+ * request, and it stops owning it once the response headers arrive — the body
+ * is then decoded outside those guards. An abort landing in that window escapes
+ * as the raw `AbortError` the platform threw, which is an ordinary
+ * `DOMException` and an instance of none of the SDK's error classes. Matching
+ * on the name is what the SDK itself does internally, and it is the only thing
+ * these rejections have in common.
+ */
+function isAbortError(reason: unknown): boolean {
+  return (
+    typeof reason === "object" &&
+    reason !== null &&
+    "name" in reason &&
+    reason.name === "AbortError"
+  );
+}
+
+/**
  * Translates whatever the SDK threw into the one error vocabulary the port
  * publishes.
  *
@@ -45,8 +66,11 @@ function codeForStatus(status: number | undefined): LlmErrorCode {
  * lets a caller compare `result.error.cause` against the reason it supplied,
  * by identity. See {@link abortedLlmError}.
  *
- * Order matters: `APIConnectionTimeoutError` and `APIUserAbortError` are both
- * `APIError` subclasses, so the general case has to come last.
+ * Order matters twice. `APIConnectionTimeoutError` and `APIUserAbortError` are
+ * both `APIError` subclasses, so the general HTTP case has to come last; and
+ * the timeout check has to precede {@link isAbortError}, because the SDK builds
+ * its deadline out of an abort and only it can tell that one apart from the
+ * caller's.
  */
 export function toLlmError(reason: unknown, signal: AbortSignal | undefined): LlmError {
   if (reason instanceof APIUserAbortError) {
@@ -56,6 +80,12 @@ export function toLlmError(reason: unknown, signal: AbortSignal | undefined): Ll
     return new LlmError("ERR_LLM_TIMEOUT", `LLM request timed out: ${reason.message}`, {
       cause: reason,
     });
+  }
+  if (isAbortError(reason)) {
+    // An abort the SDK no longer had a chance to label. Reported through the
+    // signal, not through `reason`, so `cause` keeps the identity the port
+    // promises whichever side of the headers the cancellation landed on.
+    return abortedLlmError(signal?.reason);
   }
   if (reason instanceof APIError) {
     // `APIError`'s status is generic, so an unparameterised `instanceof` narrows

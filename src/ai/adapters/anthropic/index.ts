@@ -51,9 +51,12 @@ function missingKeyError(): LlmError {
  * load-bearing. The API validates it against the JSON Schema derived from
  * `schema`; this function then validates it again against `schema` itself, with
  * `safeParseAsync`. The second pass is not redundant, because the conversion to
- * JSON Schema drops what JSON Schema cannot say — a `refine`, a `transform`, a
+ * JSON Schema silently drops what JSON Schema cannot say — a `refine`, a
  * branded type — so a response the API accepted can still fail the contract the
- * caller actually wrote.
+ * caller actually wrote. What it does *not* do is drop everything: a construct
+ * with no JSON Schema equivalent at all (`transform`, `pipe`, `z.date`) makes
+ * the conversion throw instead, which is why building the request is its own
+ * guarded step below.
  *
  * `messages.create` is what that second pass requires. `messages.parse` would
  * apply `zodOutputFormat`'s own parser, which is Zod's *synchronous* `safeParse`
@@ -88,13 +91,32 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
         return err(missingKeyError());
       }
 
+      // Built outside the request's own `try`: deriving the JSON Schema throws
+      // for a schema JSON Schema cannot express, and that is the caller's
+      // schema being unusable — nothing was sent, so it is not a transport
+      // failure and must not be reported as one worth retrying.
+      let params;
+      try {
+        params = buildCreateParams(request, { model, maxTokens });
+      } catch (reason) {
+        return err(
+          new LlmError(
+            "ERR_LLM_INVALID_OUTPUT",
+            "The request schema cannot be expressed as JSON Schema, so the model cannot be asked for it.",
+            { cause: asError(reason, "The request schema is not convertible.") },
+          ),
+        );
+      }
+
       let text: string | undefined;
+      let stopReason: string | null;
       try {
         const message = await client.messages.create(
-          buildCreateParams(request, { model, maxTokens }),
+          params,
           request.signal === undefined ? {} : { signal: request.signal },
         );
         text = firstTextBlock(message.content);
+        stopReason = message.stop_reason;
       } catch (reason) {
         return err(toLlmError(reason, request.signal));
       }
@@ -103,7 +125,7 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
         return err(
           new LlmError(
             "ERR_LLM_INVALID_OUTPUT",
-            "The model's answer carried no text block to parse.",
+            `The model's answer carried no text block to parse (stop_reason: ${String(stopReason)}).`,
           ),
         );
       }
@@ -112,10 +134,14 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
       try {
         json = JSON.parse(text);
       } catch (reason) {
+        // `stop_reason` is named because it is what tells a truncated answer
+        // from a malformed one. Both arrive here as unparseable JSON, but only
+        // one of them is fixed by re-prompting: `max_tokens` needs a larger
+        // ceiling, and re-asking the same question truncates identically.
         return err(
           new LlmError(
             "ERR_LLM_INVALID_OUTPUT",
-            "The model's answer was not valid JSON.",
+            `The model's answer was not valid JSON (stop_reason: ${String(stopReason)}).`,
             { cause: asError(reason, "The model's answer was not valid JSON.") },
           ),
         );

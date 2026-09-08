@@ -6,7 +6,7 @@ import * as z from "zod";
 
 import { createAnthropicAdapter, LlmError } from "../src/ai/index";
 import type { Result } from "../src/core/result";
-import { LLM_FIXTURES_DIR, replayFetch } from "./llm-replay";
+import { headersThenStallFetch, LLM_FIXTURES_DIR, replayFetch } from "./llm-replay";
 
 const SCHEMA = z.object({ answer: z.string() });
 
@@ -105,11 +105,34 @@ describe("createAnthropicAdapter maps a provider failure onto the port vocabular
     expect(failureOf(await ask(fetch)).code).toBe(code);
   });
 
-  it("reports a transport failure that is not an APIError as ERR_LLM_UNAVAILABLE", async () => {
-    const boom = new Error("socket hang up");
-    const error = failureOf(await ask(() => Promise.reject(boom)));
+  it("reports a refused connection as ERR_LLM_UNAVAILABLE", async () => {
+    // The SDK wraps a rejected fetch in APIConnectionError, which *is* an
+    // APIError carrying no status — so this exercises the status mapping's
+    // `undefined` case, not the unrecognised-rejection fallback below.
+    const error = failureOf(
+      await ask(() => Promise.reject(new Error("socket hang up"))),
+    );
 
     expect(error.code).toBe("ERR_LLM_UNAVAILABLE");
+  });
+
+  it("reports a rejection that is no SDK error at all as ERR_LLM_UNAVAILABLE", async () => {
+    // A body that is not JSON makes the SDK's own decoding throw a SyntaxError,
+    // which matches none of the mapped classes. Without a case here the
+    // fallback is unreachable from the published surface and could be changed
+    // to anything at all with the suite still green.
+    const malformed: typeof globalThis.fetch = () =>
+      Promise.resolve(
+        new Response("not json at all", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const error = failureOf(await ask(malformed));
+
+    expect(error.code).toBe("ERR_LLM_UNAVAILABLE");
+    expect(error.cause).toBeInstanceOf(SyntaxError);
   });
 });
 
@@ -145,6 +168,38 @@ describe("createAnthropicAdapter validates the answer itself", () => {
   });
 });
 
+describe("createAnthropicAdapter when the abort lands after the response headers", () => {
+  it("still reports ERR_LLM_TIMEOUT and keeps the caller's reason on cause", async () => {
+    // The SDK labels an abort as APIUserAbortError only while it still owns the
+    // request; once the headers have arrived the body is decoded outside those
+    // guards and a cancellation escapes as a bare AbortError. Every abort case
+    // in the contract suite lands on the near side of that boundary, so without
+    // this the port's `cause`-by-identity promise is untested past it.
+    const reason = new Error("the caller changed its mind");
+    const controller = new AbortController();
+    const pending = createAnthropicAdapter({
+      apiKey: "test-key",
+      maxRetries: 0,
+      timeoutMs: 60_000,
+      fetch: headersThenStallFetch(),
+    }).generate({
+      schema: SCHEMA,
+      prompt: "?",
+      outputLanguage: "en",
+      signal: controller.signal,
+    });
+
+    // Long enough for the headers to have been handed over.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    controller.abort(reason);
+
+    const error = failureOf(await pending);
+
+    expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    expect(error.cause).toBe(reason);
+  });
+});
+
 describe("createAnthropicAdapter builds the provider request", () => {
   it("sends the schema as a json_schema output format and the language as a system instruction", async () => {
     const { fetch, calls } = respondWith(200, messageWithText('{"answer":"x"}'));
@@ -166,25 +221,64 @@ describe("createAnthropicAdapter builds the provider request", () => {
 });
 
 describe("the committed LLM fixtures", () => {
-  const names = readdirSync(LLM_FIXTURES_DIR).filter((name) => name.endsWith(".json"));
+  /**
+   * What replaying each fixture must actually produce.
+   *
+   * @remarks
+   * Written out rather than derived, and checked for completeness below. A
+   * fixture whose outcome nothing asserts is a file that could decay into
+   * anything — the earlier version of this suite discarded the result, so every
+   * fixture failing would have passed it.
+   */
+  const OUTCOMES = {
+    success: "ok",
+    "invalid-output": "ERR_LLM_INVALID_OUTPUT",
+    "auth-401": "ERR_LLM_AUTH",
+    "rate-limit-429": "ERR_LLM_RATE_LIMIT",
+    "overloaded-529": "ERR_LLM_UNAVAILABLE",
+  } as const;
 
-  it("are a non-empty set", () => {
-    expect(names.length).toBeGreaterThan(0);
+  const onDisk = readdirSync(LLM_FIXTURES_DIR)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.replace(/\.json$/, ""))
+    .sort();
+
+  it("are exactly the fixtures this suite has an expectation for", () => {
+    expect(onDisk).toStrictEqual(Object.keys(OUTCOMES).sort());
   });
 
-  it.each(names)("replays %s without reaching the network", async (name) => {
+  it.each(Object.entries(OUTCOMES))(
+    "replays %s as %s without reaching the network",
+    async (name, expected) => {
+      const networkFetch = vi.fn(() => Promise.reject(new Error("network reached")));
+      vi.stubGlobal("fetch", networkFetch);
+
+      const result = await ask(replayFetch(name));
+
+      if (expected === "ok") {
+        expect(result.ok).toBe(true);
+      } else {
+        expect(failureOf(result).code).toBe(expected);
+      }
+      expect(networkFetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the contract suite's own adapter off the network too", async () => {
+    // The issue's requirement is about the contract suite, which builds its
+    // ports in tests/ai-port.test.ts. This asserts the property the same way it
+    // holds there: an adapter given a fixture `fetch` never falls back to the
+    // global one, whatever the fixture turns out to contain.
     const networkFetch = vi.fn(() => Promise.reject(new Error("network reached")));
     vi.stubGlobal("fetch", networkFetch);
 
-    // The result is whatever the fixture encodes — success for one, a failure
-    // for another. What this asserts is that producing it opened no socket.
-    await ask(replayFetch(name.replace(/\.json$/, "")));
+    await Promise.all(onDisk.map(async (name) => ask(replayFetch(name))));
 
     expect(networkFetch).not.toHaveBeenCalled();
   });
 
-  it.each(names)("carries no credential in %s", (name) => {
-    const text = readFileSync(path.join(LLM_FIXTURES_DIR, name), "utf8");
+  it.each(onDisk)("carries no credential in %s", (name) => {
+    const text = readFileSync(path.join(LLM_FIXTURES_DIR, `${name}.json`), "utf8");
 
     expect(text).not.toMatch(/sk-ant-/i);
     expect(text).not.toMatch(/"(?:authorization|x-api-key)"/i);
