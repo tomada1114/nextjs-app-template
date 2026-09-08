@@ -38,7 +38,15 @@ pnpm test:coverage # tests with the coverage thresholds enforced
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
+pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
 ```
+
+Reach for `pnpm clean`/`pnpm clean:deep` rather than an `rm -rf`: `scripts/clean.mjs`
+refuses any path that resolves outside this repository, so a typo cannot reach the
+machine, and the target list is reviewable in `package.json` instead of retyped at a
+prompt each time. `clean:deep` leaves the checkout without dependencies — run
+`pnpm install` after it.
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
 
