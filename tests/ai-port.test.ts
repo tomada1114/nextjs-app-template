@@ -185,6 +185,42 @@ export function describeLlmPortContract(
       expect(failureOf(result).code).toBe("ERR_LLM_INVALID_OUTPUT");
     });
 
+    it("reports ERR_LLM_TIMEOUT for an abort that lands during async schema validation", async () => {
+      // The gap #90 closes: `safeParseAsync` keeps the call open after the raw
+      // answer has already arrived, so a caller's abort can land while that
+      // validation is still running. `notifyStarted`/`releaseRefinement` pin
+      // the ordering — abort only after the refinement has actually started,
+      // release it only after the abort — so this cannot pass by the parse
+      // simply finishing before the signal is ever checked.
+      let notifyStarted: () => void = () => undefined;
+      const started = new Promise<void>((resolve) => {
+        notifyStarted = resolve;
+      });
+      let releaseRefinement: (valid: boolean) => void = () => undefined;
+      const refinement = new Promise<boolean>((resolve) => {
+        releaseRefinement = resolve;
+      });
+      const schema = CONTRACT_SCHEMA.refine(() => {
+        notifyStarted();
+        return refinement;
+      });
+      const controller = new AbortController();
+
+      const pending = harness.succeeds().generate({
+        schema,
+        prompt: "What is the answer?",
+        outputLanguage: "en",
+        signal: controller.signal,
+      });
+      await started;
+      controller.abort();
+      releaseRefinement(true);
+
+      const error = failureOf(await pending);
+
+      expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    });
+
     it("reports ERR_LLM_INVALID_OUTPUT when the answer does not match the schema", async () => {
       const error = failureOf(await ask(harness.returnsInvalidOutput()));
 

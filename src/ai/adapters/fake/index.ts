@@ -118,6 +118,13 @@ export function createFakeLlmPort(options: FakeLlmPortOptions = {}): LlmPort {
         );
       }
 
+      // Validation is async, so the signal can fire while it is still running.
+      // See `LlmPort.generate`'s TSDoc for why a successful parse does not
+      // override that.
+      if (request.signal?.aborted === true) {
+        return err(abortedLlmError(request.signal.reason));
+      }
+
       return ok(parsed.data);
     },
   };
