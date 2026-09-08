@@ -142,6 +142,11 @@ Delete the paths, then work through `EDITED_FILES`:
   layer — the port's error vocabulary, the handler's `satisfies` status table, the abort
   helpers. Every rule they illustrate outlives the layer, so each example is replaced by
   one from your own code rather than deleted with its rule.
+- `writing-tests` loses the two seams that are going away — the port contract suite and
+  the handler driven with `new Request()` — and `type-testing` the port's generic
+  request and response types. Both keep everything else: the component and Route Handler
+  seams, the traps, and the typed message keys in `src/i18n/messages.ts`, which are not
+  the AI layer's.
 - This skill loses its "Removing the AI layer" section — it is on `EDITED_FILES` because
   a procedure for deleting something already gone is stale prose. Edit the `.agents/`
   copy and run `pnpm agents:sync`; never hand-edit the mirror.
