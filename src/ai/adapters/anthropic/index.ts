@@ -135,7 +135,7 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
         json = JSON.parse(text);
       } catch (reason) {
         // `stop_reason` is named because it is what tells a truncated answer
-        // from a malformed one. Both arrive here as unparseable JSON, but only
+        // from a malformed one. Both arrive here as unparsable JSON, but only
         // one of them is fixed by re-prompting: `max_tokens` needs a larger
         // ceiling, and re-asking the same question truncates identically.
         return err(
