@@ -145,9 +145,12 @@ are the procedure:
 Delete the paths, then work through both edited lists:
 
 - `src/server/env.ts` loses the key from its schema and `.env.example` the matching
-  line. Keep `src/server/env.ts` itself, empty schema and all — it is the seam the next
-  secret enters through, and deleting it means rediscovering where `process.env` is
-  allowed to be read.
+  line. `API_ACCESS_KEY` and the rule requiring it stay: the rule is keyed off what the
+  composition root wires (`requiresAccessKey`), not off a vendor's variable, so it
+  survives the vendor leaving and is waiting for the first endpoint of your own that
+  costs money to answer. Keep `src/server/env.ts` itself, empty schema and all — it is
+  the seam the next secret enters through, and deleting it means rediscovering where
+  `process.env` is allowed to be read.
 - `eslint.config.mjs` loses the vendor-SDK zone rules, and `tests/boundaries.test.ts`
   the cases asserting them.
 - `vitest.config.ts` loses the deleted suites from `automationTests` and the removed

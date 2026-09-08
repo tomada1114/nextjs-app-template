@@ -138,7 +138,10 @@ describe("the import scanner the zone assertions run on", () => {
       "src/ai/adapters/fake/index.ts",
       ["zod", "../../../core/result", "../../errors", "../../port"],
     ],
-    ["src/server/handlers/ask.ts", ["zod", "../../ai/index", "../../i18n/locales"]],
+    [
+      "src/server/handlers/ask.ts",
+      ["node:crypto", "zod", "../../ai/index", "../../i18n/locales"],
+    ],
     ["src/app/api/ask/route.ts", ["../../../server/composition"]],
   ])("reads %s as %p", (file, expected) => {
     const module = sourceModules.find((candidate) => candidate.file === file);
@@ -243,5 +246,203 @@ describe("src/ai/port.ts does not know its adapters", () => {
       importsAdapter("src/ai/port.ts", specifier),
     );
     expect(offenders).toStrictEqual([]);
+  });
+});
+
+// --- the composition root's access gate --------------------------------------
+
+// `src/server/composition.ts` holds two declarations that have to agree:
+// `ADAPTER_BILLS_A_PROVIDER`, which is what makes `readServerEnv` demand
+// `API_ACCESS_KEY`, and the adapter it wires a few lines below. Nothing but the
+// TSDoc on both held them together, so the documented one-line swap — fake
+// adapter out, provider adapter in — could leave `POST /api/ask` open and
+// billed. The two cannot be moved next to each other: the environment read has
+// to sit between them, because a provider adapter is handed
+// `env.ANTHROPIC_API_KEY`. So the agreement is asserted here instead.
+//
+// This lives in this file rather than beside the handler tests for two reasons.
+// It reads a source file off disk with the scanner above, which is what this
+// suite is and what puts it in `vitest.config.ts`'s `automation` project. And
+// the zone edges asserted above are what make a name-based read sound at all:
+// `src/server/` may not import an adapter directly and may not import a vendor
+// SDK, so `src/ai/index.ts` is the only door a model call can come through, and
+// which names composition.ts calls from that door is a real signal rather than
+// a guess.
+
+const COMPOSITION_ROOT = "src/server/composition.ts";
+
+/** The AI layer's whole surface, as a repo-relative module. */
+const AI_SURFACE = "src/ai/index";
+
+/**
+ * Names `src/ai/index.ts` publishes that the composition root can call while
+ * an answer still costs nobody anything.
+ *
+ * @remarks
+ * The list is what makes the check below fail *closed*: every other name — a
+ * provider adapter's factory, one that does not exist yet, or a helper nobody
+ * has classified — reads as billing a provider. Adding a name here is a claim
+ * that calling it bills no one, and is the deliberate act that says so.
+ */
+const NON_BILLING_AI_CALLS = new Set(["createFakeLlmPort"]);
+
+const IMPORT_CLAUSE = /import\s*\{([^}]*)\}\s*from\s*["']([^"'\n]+)["']/g;
+
+/** The value bindings `module` imports by name from the module `target`. */
+function valueImportsOf(module: string, source: string, target: string): string[] {
+  return [...withoutComments(source).matchAll(IMPORT_CLAUSE)].flatMap((match) => {
+    const clause = match[1];
+    const specifier = match[2];
+    if (clause === undefined || specifier === undefined) {
+      return [];
+    }
+    if (resolveWithin(module, specifier) !== target) {
+      return [];
+    }
+    return (
+      clause
+        .split(",")
+        .map((entry) => entry.trim())
+        // `import { type X, y }` — a type-only binding is not something called.
+        .filter((entry) => entry !== "" && !entry.startsWith("type "))
+        // `a as b` binds `b`; a bare `a` binds itself.
+        .map((entry) => {
+          const parts = entry.split(/\s+as\s+/);
+          return parts[1] ?? parts[0] ?? "";
+        })
+        .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name))
+    );
+  });
+}
+
+/** Whether `source` calls `name`, as opposed to merely importing it. */
+function isCalled(source: string, name: string): boolean {
+  return new RegExp(`\\b${name}\\s*\\(`).test(withoutComments(source));
+}
+
+/**
+ * Whether a composition root's text wires an adapter that bills a provider.
+ *
+ * @remarks
+ * What it catches: the AI surface's factory names this file actually calls. A
+ * source calling anything from `src/ai/index.ts` outside
+ * {@link NON_BILLING_AI_CALLS}, and a source calling nothing from it at all,
+ * both read as billed — an unrecognised wiring is treated as the expensive one.
+ *
+ * What it does not: this reads a name, never what the name does. A
+ * `createFakeLlmPort` rewritten to proxy a real provider, or a paid call made
+ * inline *beside* a still-wired fake adapter, would pass here. The zone edges
+ * above narrow that considerably — reaching a provider needs either the vendor
+ * SDK or an adapter module, and `src/server/` may import neither — but the
+ * residue is real, and this assertion is a guard against the documented
+ * one-line swap being made half-way, not a proof that no money can be spent.
+ */
+function wiresABilledAdapter(module: string, source: string): boolean {
+  const called = valueImportsOf(module, source, AI_SURFACE).filter((name) =>
+    isCalled(source, name),
+  );
+  return called.length === 0 || called.some((name) => !NON_BILLING_AI_CALLS.has(name));
+}
+
+/** The literal `name` is declared as, or `undefined` if it is not declared. */
+function declaredBoolean(source: string, name: string): boolean | undefined {
+  const match = new RegExp(`\\b${name}\\s*=\\s*(true|false)\\b`).exec(
+    withoutComments(source),
+  );
+  return match?.[1] === undefined ? undefined : match[1] === "true";
+}
+
+const compositionSource = readFileSync(path.join(repoRoot, COMPOSITION_ROOT), "utf8");
+
+describe("src/server/composition.ts declares the cost of the adapter it wires", () => {
+  // The reader is pinned before it is trusted, the same way SCANNER_CONTROL
+  // pins the import scanner: a classifier that quietly recognises nothing would
+  // agree with a `false` flag forever. The first control is the exact edit this
+  // assertion exists to stop — a provider adapter wired with the flag left
+  // `false`.
+  it.each([
+    [
+      "a provider adapter wired with the flag left false",
+      `
+        import { createAnthropicAdapter } from "../ai/index";
+        import { readServerEnv } from "./env";
+        const ADAPTER_BILLS_A_PROVIDER = false;
+        const env = readServerEnv({ requiresAccessKey: ADAPTER_BILLS_A_PROVIDER });
+        const llm = createAnthropicAdapter({ apiKey: env.ANTHROPIC_API_KEY });
+      `,
+      true,
+      false,
+    ],
+    [
+      "the fake adapter wired with the flag false",
+      `
+        import { createFakeLlmPort } from "../ai/index";
+        const ADAPTER_BILLS_A_PROVIDER = false;
+        const llm = createFakeLlmPort({ response: { answer: "x" } });
+      `,
+      false,
+      false,
+    ],
+    [
+      "a provider adapter wired with the flag flipped to true",
+      `
+        import { createAnthropicAdapter } from "../ai/index";
+        const ADAPTER_BILLS_A_PROVIDER = true;
+        const llm = createAnthropicAdapter({ apiKey: "" });
+      `,
+      true,
+      true,
+    ],
+    [
+      "an adapter imported under a different name, which is not recognised",
+      `
+        import { createFakeLlmPort as buildPort } from "../ai/index";
+        const ADAPTER_BILLS_A_PROVIDER = false;
+        const llm = buildPort({ response: { answer: "x" } });
+      `,
+      true,
+      false,
+    ],
+    [
+      "a factory named only in a comment, which is not a wiring",
+      `
+        import { createFakeLlmPort } from "../ai/index";
+        // Swap in createAnthropicAdapter({ apiKey: env.ANTHROPIC_API_KEY }) here.
+        const ADAPTER_BILLS_A_PROVIDER = false;
+        const llm = createFakeLlmPort({ response: { answer: "x" } });
+      `,
+      false,
+      false,
+    ],
+    [
+      "nothing from the AI surface called at all",
+      `
+        const ADAPTER_BILLS_A_PROVIDER = false;
+        const llm = { async ask() { return { ok: true }; } };
+      `,
+      true,
+      false,
+    ],
+  ])("reads %s", (_case, source, billed, declared) => {
+    expect(wiresABilledAdapter(COMPOSITION_ROOT, source)).toBe(billed);
+    expect(declaredBoolean(source, "ADAPTER_BILLS_A_PROVIDER")).toBe(declared);
+  });
+
+  it("still declares the flag the environment read is gated on", () => {
+    expect(declaredBoolean(compositionSource, "ADAPTER_BILLS_A_PROVIDER")).toBeTypeOf(
+      "boolean",
+    );
+    expect(compositionSource).toContain(
+      "readServerEnv({ requiresAccessKey: ADAPTER_BILLS_A_PROVIDER })",
+    );
+  });
+
+  // The one that bites: wiring anything other than a recognised free adapter
+  // while the flag stays `false` leaves `POST /api/ask` open on an endpoint
+  // that costs money to answer, which is the whole of what issue #82 closes.
+  it("declares ADAPTER_BILLS_A_PROVIDER true if and only if it wires a billed adapter", () => {
+    expect(declaredBoolean(compositionSource, "ADAPTER_BILLS_A_PROVIDER")).toBe(
+      wiresABilledAdapter(COMPOSITION_ROOT, compositionSource),
+    );
   });
 });

@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import * as z from "zod";
 
 import type { LlmErrorCode, LlmPort } from "../../ai/index";
@@ -15,6 +17,18 @@ import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../i18n/locales";
 export interface AskHandlerDependencies {
   /** The model this endpoint asks. */
   readonly llm: LlmPort;
+
+  /**
+   * The shared secret a caller must present, or `undefined` to answer anyone.
+   *
+   * @remarks
+   * `src/server/env.ts` makes `API_ACCESS_KEY` mandatory as soon as
+   * `src/server/composition.ts` wires an adapter that bills a provider, so the
+   * open shape is reachable only while the fake adapter is what answers. It
+   * arrives as an argument because that module is the only one under `src/`
+   * that may read the environment.
+   */
+  readonly accessKey?: string | undefined;
 }
 
 /**
@@ -77,8 +91,44 @@ const STATUS_BY_LLM_CODE = {
  * reworded. Nothing from the provider's own error text reaches the response —
  * it can carry request content back to whoever asked.
  */
-function failure(status: number, code: string, message: string): Response {
-  return Response.json({ error: { code, message } }, { status });
+function failure(
+  status: number,
+  code: string,
+  message: string,
+  headers: HeadersInit = {},
+): Response {
+  return Response.json({ error: { code, message } }, { status, headers });
+}
+
+/**
+ * Whether `request` presents `accessKey` as its bearer credential.
+ *
+ * @remarks
+ * A bearer token rather than a header of this template's own invention: a
+ * client library, a proxy and a log redactor all already know to treat that
+ * one as a secret.
+ *
+ * The scheme is matched case-insensitively: RFC 9110 §11.1 makes the auth-scheme
+ * token case-insensitive, and a proxy or gateway that normalises it to `bearer`
+ * is sending a spec-legal request that must not be answered with a 401.
+ *
+ * The comparison is constant time. A byte-by-byte `===` answers sooner the
+ * earlier it differs, which is enough to recover a secret one character at a
+ * time; hashing both sides first is what makes the lengths equal, since
+ * `timingSafeEqual` throws otherwise and answering that early would leak the
+ * configured key's length.
+ */
+function isAuthorized(request: Request, accessKey: string): boolean {
+  const presented = /^Bearer +(?<token>\S.*)$/iu.exec(
+    request.headers.get("authorization")?.trim() ?? "",
+  )?.groups?.["token"];
+  return (
+    presented !== undefined &&
+    timingSafeEqual(
+      createHash("sha256").update(presented, "utf8").digest(),
+      createHash("sha256").update(accessKey, "utf8").digest(),
+    )
+  );
 }
 
 /**
@@ -95,9 +145,23 @@ function failure(status: number, code: string, message: string): Response {
 export function createAskHandler(
   dependencies: AskHandlerDependencies,
 ): (request: Request) => Promise<Response> {
-  const { llm } = dependencies;
+  const { llm, accessKey } = dependencies;
 
   return async function handleAsk(request: Request): Promise<Response> {
+    // Before the body is read: an unauthenticated caller learns nothing about
+    // what this endpoint accepts, and nothing reaches the port, which is what
+    // costs money.
+    if (accessKey !== undefined && !isAuthorized(request, accessKey)) {
+      return failure(
+        401,
+        "ERR_UNAUTHORIZED",
+        "This endpoint requires a valid access key.",
+        // RFC 9110 requires a challenge on a 401; the scheme is all a caller
+        // needs and all it may be told.
+        { "www-authenticate": "Bearer" },
+      );
+    }
+
     let body: unknown;
     try {
       body = await request.json();
