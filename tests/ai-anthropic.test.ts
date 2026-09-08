@@ -559,6 +559,59 @@ describe("createAnthropicAdapter builds the provider request", () => {
   });
 });
 
+describe("createAnthropicClient closes the SDK's own environment reads (#88)", () => {
+  it("targets the intended host, sends no bearer token, and logs at the intended level regardless of ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_LOG", async () => {
+    // Each of these three would, on today's HEAD, change client behaviour: the
+    // constructor reads them itself whenever the matching option is left
+    // unset (`node_modules/@anthropic-ai/sdk/src/client.ts:604-660`,
+    // `@anthropic-ai/sdk@0.122.0`). None of them is `ANTHROPIC_API_KEY`, so
+    // this is orthogonal to the `apiKey`-fallback case above.
+    vi.stubEnv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "should-never-be-sent");
+    vi.stubEnv("ANTHROPIC_LOG", "debug");
+
+    const calls: { url: string; headers: Headers }[] = [];
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      // Matches how the SDK itself normalizes its own `RequestInfo | URL`
+      // parameter (`node_modules/@anthropic-ai/sdk/src/client.ts:1376-1379`):
+      // `Request` has no useful `toString`, so a bare `String(input)` is not
+      // safe here.
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      calls.push({ url, headers: new Headers(init?.headers ?? {}) });
+      return Promise.resolve(
+        new Response(JSON.stringify(messageWithText('{"answer":"x"}')), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    // `ANTHROPIC_LOG=debug` would raise the client's log level to `debug` had
+    // the fallback fired, which turns on the `info`-level line the SDK logs
+    // for every successful response (`client.ts:1280`) — console.info is the
+    // observable half of "logLevel stays at its intended default".
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    let result: Result<z.infer<typeof SCHEMA>, LlmError>;
+    try {
+      result = await ask(fetch);
+    } finally {
+      info.mockRestore();
+    }
+
+    expect(result.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toMatch(/^https:\/\/api\.anthropic\.com\//);
+    expect(calls[0]?.headers.has("authorization")).toBe(false);
+    expect(calls[0]?.headers.get("x-api-key")).toBe("test-key");
+    expect(info).not.toHaveBeenCalled();
+  });
+});
+
 describe("the committed LLM fixtures", () => {
   /**
    * What replaying each fixture must actually produce.
