@@ -178,6 +178,7 @@ names its own boundary with its neighbours.
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                     |
 | `updating-docs`         | `README.md` or `CONTRIBUTING.md`                                                      |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                          |
+| `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales           |
 
 ## Security and human approval
 
