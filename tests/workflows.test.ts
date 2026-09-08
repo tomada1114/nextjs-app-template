@@ -97,6 +97,49 @@ function topLevel(lines: Line[], key: string): Line | undefined {
   return lines.find((line) => line.indent === 0 && line.text.startsWith(`${key}:`));
 }
 
+/**
+ * The top-level `on:` line, however its key is spelled.
+ *
+ * @remarks
+ * `on` is a YAML 1.1 boolean, so a workflow is free to quote the key to keep it
+ * a string; GitHub reads `on:`, `"on":` and `'on':` alike. Every trigger rule
+ * goes through here so that adding two quote characters cannot make a workflow
+ * look as though it declares no triggers at all.
+ */
+function triggerLine(lines: Line[]): Line | undefined {
+  return lines.find((line) => line.indent === 0 && /^["']?on["']?\s*:/.test(line.text));
+}
+
+/**
+ * The line on which `on:` names `pull_request_target`, in any spelling, if any.
+ *
+ * @remarks
+ * `on:` takes four shapes — an inline scalar, a flow sequence, a block sequence
+ * and a mapping — and this is the one rule the whole file exists for, so all
+ * four are read rather than the mapping alone. The value written after `on:`
+ * covers the scalar and the flow sequence; the entries directly under it cover
+ * the block sequence and the mapping. Only the name each entry starts with is
+ * matched, and only at the outermost nesting level, so a `branches:` list that
+ * happens to contain the word cannot make a safe workflow read as dangerous.
+ */
+function pullRequestTargetLine(lines: Line[]): Line | undefined {
+  const on = triggerLine(lines);
+  if (on === undefined) {
+    return undefined;
+  }
+  if (/\bpull_request_target\b/.test(inlineValue(on))) {
+    return on;
+  }
+
+  const events = blockOf(lines, lines.indexOf(on));
+  const eventIndent = events[0]?.indent;
+  return events.find(
+    (line) =>
+      line.indent === eventIndent &&
+      /^pull_request_target\b/.test(line.text.replace(/^-\s+/, "")),
+  );
+}
+
 interface Job {
   name: string;
   header: Line;
@@ -268,17 +311,20 @@ function stepShellAtLine(job: Job, lineNumber: number): string | undefined {
  * Whether a shell string makes a `run:` body fail closed on its own.
  *
  * @remarks
- * Both halves are required: `pipefail` alone still lets an unset variable
- * expand to the empty string, which is what `-u` is there to stop. The `-u`
- * test is a regex rather than a substring search because the flag is
- * routinely written inside a cluster (`bash -euo pipefail {0}`), where the
- * literal text `-u` never appears.
+ * All three halves are required. `pipefail` alone still lets an unset variable
+ * expand to the empty string, which is what `-u` is there to stop; and without
+ * `errexit` a command that fails part-way through a script does not stop the
+ * job, so the step reports success after the failure. Each flag is tested with
+ * a regex rather than a substring search because it is routinely written
+ * inside a cluster (`bash -euo pipefail {0}`), where neither the literal text
+ * `-u` nor `-e` ever appears.
  */
 function isFailClosedShell(shell: string | undefined): boolean {
   return (
     shell !== undefined &&
     shell.includes("pipefail") &&
-    /(?:^|\s)-[A-Za-z]*u/.test(shell)
+    /(?:^|\s)-[A-Za-z]*u/.test(shell) &&
+    /(?:^|\s)-[A-Za-z]*e/.test(shell)
   );
 }
 
@@ -322,14 +368,13 @@ function lintWorkflow(source: string): Problem[] {
     problems.push({ code, line, message });
   };
 
-  for (const line of lines) {
-    if (/^pull_request_target\b/.test(line.text)) {
-      report(
-        "ERR_WORKFLOW_PULL_REQUEST_TARGET",
-        line.number,
-        "pull_request_target runs fork code with a writable token. Use pull_request.",
-      );
-    }
+  const pullRequestTarget = pullRequestTargetLine(lines);
+  if (pullRequestTarget !== undefined) {
+    report(
+      "ERR_WORKFLOW_PULL_REQUEST_TARGET",
+      pullRequestTarget.number,
+      "pull_request_target runs fork code with a writable token. Use pull_request.",
+    );
   }
 
   // Actions are pinned to a full commit SHA and annotated with their release tag.
@@ -449,7 +494,7 @@ function lintWorkflow(source: string): Problem[] {
   }
 
   // A pull request that is pushed to again must not keep the superseded run alive.
-  const on = topLevel(lines, "on");
+  const on = triggerLine(lines);
   const triggers = on === undefined ? [] : blockOf(lines, lines.indexOf(on));
   const triggerIndent = triggers[0]?.indent;
   const onPullRequest = triggers.some((line) => line.text.startsWith("pull_request"));
@@ -746,10 +791,57 @@ describe("lintWorkflow", () => {
     expect(lintWorkflow(source)).toEqual([]);
   });
 
-  it("rejects pull_request_target", () => {
+  it("rejects pull_request_target as a mapping key", () => {
     const source = CLEAN_WORKFLOW.replace("  pull_request:", "  pull_request_target:");
 
     expect(codesOf(lintWorkflow(source))).toContain("ERR_WORKFLOW_PULL_REQUEST_TARGET");
+  });
+
+  it("rejects pull_request_target as an inline scalar", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: pull_request_target\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
+  it("rejects pull_request_target in a flow sequence", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [pull_request_target]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
+  it("rejects pull_request_target in a block sequence", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  - pull_request_target\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
+  it("rejects pull_request_target under a quoted on key", () => {
+    // `on` is a YAML 1.1 boolean, so quoting the key is legal and changes
+    // nothing about what the workflow runs.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      '"on":\n  pull_request_target:\n',
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
+  it("does not read a branch named after the trigger as the trigger itself", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:\n",
+      "  pull_request:\n    branches: [pull_request_target]\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
   });
 
   it("rejects an install that is not frozen", () => {
@@ -922,6 +1014,25 @@ describe("lintWorkflow", () => {
         "defaults:",
         "  run:",
         '    shell: "bash -eo pipefail {0}"',
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_RUN_NOT_PIPEFAIL"]);
+  });
+
+  it("rejects a shell default that leaves -e off", () => {
+    // `bash -uo pipefail {0}` names two of the three flags, so a check that
+    // stops at `-u` passes it while a command failing part-way through the
+    // script still leaves the step green.
+    const source = MULTI_LINE_RUN_WORKFLOW.replace(
+      "permissions: {}\n",
+      [
+        "permissions: {}",
+        "",
+        "defaults:",
+        "  run:",
+        '    shell: "bash -uo pipefail {0}"',
         "",
       ].join("\n"),
     );
