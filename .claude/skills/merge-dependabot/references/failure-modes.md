@@ -10,8 +10,9 @@ gh run list --branch <branch> --limit 1 --json databaseId -q '.[0].databaseId' \
   | xargs -I{} gh run view {} --log-failed
 ```
 
-Which _step_ failed is the fastest way to tell these apart. F1 and F2 fail before any
-project code runs; F3 onward fail inside a check.
+Which _step_ failed is the fastest way to tell these apart. F1 to F3 fail before any
+project code runs, at `pnpm install`; F4 onward fail inside a check, in the order CI
+runs them — format, lint, typecheck, build, then tests.
 
 ## F1 — Peer range conflict (`strictPeerDependencies`)
 
@@ -20,13 +21,18 @@ error. The PR bumps one package, and the name in the error is a different one.
 
 **Cause:** `pnpm-workspace.yaml` sets `strictPeerDependencies: true`, so an unmet or
 conflicting peer range is a hard failure rather than a warning. The standing example is
-`typescript`: `typescript-eslint` caps its peer support below the current major
-(`managing-dependencies` has the ceiling; `package.json` has the range). A PR proposing
-the next major fails here and is **correct to fail**.
+`typescript`: `typescript-eslint` is the one package capping it, and it caps at a
+**minor**, not merely below the next major, so a `typescript` bump inside the current
+major can fail here too (`managing-dependencies` owns the ceiling and the command that
+reads the real range). A PR proposing a version past it is **correct to fail**.
 
-**Fix:** hold the PR. Raising this ceiling is a coordinated upgrade of both `typescript`
-and `typescript-eslint` at once — not a routine bump. Never add an override or relax the
-setting to land it. Say so in the report and let a human schedule the upgrade.
+**Fix:** hold the PR. Raising the `typescript` ceiling is a coordinated upgrade of both
+`typescript` and `typescript-eslint` at once — not a routine bump. For any other
+package, the only sanctioned way through is a `peerDependencyRules.allowedVersions`
+entry naming one `parent>child` edge, and adding one asserts the package really works
+against the version it did not declare — that is a reviewed dependency decision, not
+something a bot PR carries. Never relax `strictPeerDependencies` itself. Say so in the
+report and let a human decide.
 
 ## F2 — Lockfile out of step with the manifest
 
@@ -74,7 +80,30 @@ for a Prettier formatting change) belong on the branch. If the new version deman
 real design decision or a config change with tradeoffs, hold the PR and report what it
 wants. Never silence it with `@ts-expect-error` or an `eslint-disable` to land the bump.
 
-## F5 — Test or coverage failure
+## F5 — The application no longer builds
+
+**Symptom:** formatting, lint and typecheck pass; CI's `Build` step fails at
+`pnpm run build` (`next build`). Often the only failing step.
+
+**Cause:** a bump to `next`, `react`, `react-dom`, `next-intl`, or anything
+`next.config.ts` loads. `next build` compiles the App Router tree, runs the framework's
+own plugins, and type-checks the route entry points — a surface no unit test reaches, so
+it is the first place a framework bump shows up.
+
+**Fix:** reproduce it locally, since the CI log truncates the part that matters:
+
+```bash
+pnpm install --frozen-lockfile && pnpm run build
+```
+
+A renamed config key or a moved export named in the upstream migration note is
+mechanical and belongs on the branch. A failure that needs an App Router change — a
+changed route or layout signature, a newly required export — is a migration rather than
+a bump: hold the PR and report what the release notes ask for. Never drop the build step
+and never reach for `typescript.ignoreBuildErrors` or `eslint.ignoreDuringBuilds` in
+`next.config.ts` to get past it.
+
+## F6 — Test or coverage failure
 
 **Symptom:** lint and types pass; `pnpm run test:coverage` fails, or coverage drops
 below one of the floors in `vitest.config.ts` (see `placing-tests`).
@@ -83,7 +112,7 @@ below one of the floors in `vitest.config.ts` (see `placing-tests`).
 chase coverage by editing tests to accommodate a dependency you have not decided to
 accept, and do not lower the threshold.
 
-## F6 — Merge state `BEHIND` or `DIRTY`
+## F7 — Merge state `BEHIND` or `DIRTY`
 
 Not a CI failure. `BEHIND` means main moved; `DIRTY` means a real conflict.
 
@@ -95,7 +124,7 @@ Dependabot rebases within a minute or two, then checks re-run. If it conflicts
 repeatedly — which is common once two npm PRs are open, since both touch
 `pnpm-lock.yaml` — fold the PR into the combined branch and resolve there.
 
-## F7 — Check never reports
+## F8 — Check never reports
 
 **Symptom:** `checks=PENDING` that never resolves, or `checks=NONE`.
 
