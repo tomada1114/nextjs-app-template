@@ -171,7 +171,7 @@ names its own boundary with its neighbours.
 | `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                             |
 | `writing-tests`         | the body of a test under `tests/`                                                     |
 | `placing-tests`         | a new test file, a vitest project, or a coverage floor                                |
-| `type-testing`          | `tests/types.test.ts` and `expectTypeOf`                                              |
+| `type-testing`          | an `expectTypeOf` assertion or a `@ts-expect-error` inside a test                     |
 | `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                             |
 | `authoring-skills`      | a skill under `.agents/skills/`                                                       |
 | `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                       |

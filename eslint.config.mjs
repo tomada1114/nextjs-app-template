@@ -330,8 +330,10 @@ export default defineConfig([
 
       // An assertion outside a test reports nothing when it fails, and a test
       // with no assertion passes whatever the code does. `expectTypeOf` is
-      // listed because tests/types.test.ts asserts entirely at compile time —
-      // those tests have no runtime `expect` and are not meant to.
+      // listed because a case whose whole assertion is type-level — see the
+      // `type-testing` skill — has no runtime `expect` and is not meant to;
+      // without it here, `expect-expect` would report such a case as
+      // assertion-less.
       "vitest/no-standalone-expect": "error",
       "vitest/expect-expect": [
         "error",
