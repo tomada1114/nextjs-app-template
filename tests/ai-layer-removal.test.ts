@@ -74,12 +74,20 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * Every entry is a file whose subject is the repository rather than the
  * application: the two gate configs, the two boundary tests that assert
  * against the AI layer's shape, the environment schema and its example, and
- * the two documents that describe the layer to a reader — AGENTS.md's
- * Architecture section and the README's description of the one route. This
- * list existing — and being short — is the property: an app-level module that
- * had to be edited here would mean the layer is no longer separable.
+ * the documents that describe the layer to a reader — AGENTS.md's Architecture
+ * section, the README's description of the one route, and the
+ * `starting-an-app` skill, which carries the removal procedure and so names
+ * the removal set in prose. This list existing — and being short — is the
+ * property: an app-level module that had to be edited here would mean the
+ * layer is no longer separable.
+ *
+ * The skill's `.claude/skills/` copy is listed too because it is a real
+ * committed file, but it is never hand-edited: the removal edits the
+ * `.agents/` source and runs `pnpm agents:sync`.
  */
 const EDITED_FILES = [
+  ".agents/skills/starting-an-app/SKILL.md",
+  ".claude/skills/starting-an-app/SKILL.md",
   ".env.example",
   "AGENTS.md",
   "README.md",
