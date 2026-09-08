@@ -13,7 +13,7 @@ export const DEFAULT_MAX_TOKENS = 1024;
  * Headers, not the whole answer: the SDK arms this deadline around its inner
  * fetch and clears it as soon as the `Response` resolves, so a provider that
  * sends `200` and then stalls mid-body is not bounded by it.
- * {@link DEFAULT_DEADLINE_MS} is what covers that half, and it covers it
+ * {@link defaultDeadlineMs} is what covers that half, and it covers it
  * whether or not the caller passed an `AbortSignal` of its own.
  *
  * The SDK's own default is ten minutes — a batch job's deadline rather than a
@@ -34,36 +34,61 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
  */
 export const DEFAULT_MAX_RETRIES = 1;
 
+/** The SDK's own ceiling on a computed backoff sleep, per retry. */
+const BACKOFF_CEILING_MS = 8_000;
+
+/** The one stretch `timeoutMs` does not reach: reading the body behind the headers. */
+const BODY_READ_MARGIN_MS = 2_000;
+
 /**
- * How long one whole `generate()` call may take, in milliseconds.
+ * How long one whole `generate()` call may take, in milliseconds, when the
+ * caller does not pass `deadlineMs` explicitly.
  *
  * @remarks
  * Wall clock over the entire call — every attempt and the body read — where
- * {@link DEFAULT_TIMEOUT_MS} is per attempt and reaches only as far as the
- * headers. A provider that answers `200` and then dribbles bytes is the case it
- * exists for: nothing else settles that request, because the caller's
- * `AbortSignal` is optional and the SDK's own timer has already been cleared.
+ * `timeoutMs` is per attempt and reaches only as far as the headers. A
+ * provider that answers `200` and then dribbles bytes is the case it exists
+ * for: nothing else settles that request, because the caller's `AbortSignal`
+ * is optional and the SDK's own timer has already been cleared.
  *
- * The number itself is not a new policy. {@link DEFAULT_MAX_RETRIES} already
- * describes the intended worst case as roughly two timeouts plus one sleep, and
- * this is that bound enforced rather than merely described — which is why it is
- * two timeouts *plus a margin* rather than exactly two: a deadline of `120_000`
- * would fire before the second attempt's own timeout could, and cut off a retry
- * that was still inside the budget `maxRetries` promised it.
+ * Derived rather than fixed, because a fixed constant computed from the
+ * *default* `timeoutMs` and `maxRetries` silently under-cuts a caller who
+ * configures either: `createAnthropicAdapter({ apiKey, timeoutMs: 300_000 })`
+ * implies a single attempt can take five minutes, but a fixed `130_000` total
+ * bound would abort before even that first attempt's own header timeout could
+ * fire. Deriving from the resolved values instead means the two options stay
+ * true to what they say they bound.
  *
- * The margin is not the whole story, because the one stretch of the call the
- * signal cannot reach is the backoff sleep between attempts: the SDK's
- * `retryRequest` awaits it without consulting `options.signal`, so an abort
- * landing mid-sleep is only noticed when the next attempt starts. The chain
- * ends there rather than making another request, but the call overshoots this
- * bound by the remainder of that sleep — bounded by the SDK's 8 s backoff
- * ceiling, or by whatever `retry-after` a `429` asked for.
+ * Three terms:
  *
- * Not an SDK option, unlike the two above: the SDK has nowhere to put a
- * total-request bound, so the adapter composes it into the request's own
- * `AbortSignal` instead.
+ * - `(maxRetries + 1) * timeoutMs` — every attempt, each of which may spend
+ *   its whole `timeoutMs` waiting for response *headers*.
+ * - `maxRetries * BACKOFF_CEILING_MS` — the backoff sleep between attempts,
+ *   each bounded by the SDK's own ceiling on its *computed* backoff
+ *   (`@anthropic-ai/sdk@^0.122.0`). A `retry-after` longer than that ceiling
+ *   still overshoots this budget, because the SDK's `retryRequest` awaits the
+ *   sleep without consulting `options.signal` — that gap is issue #66's to
+ *   close, and nothing here clamps, caps, or inspects `retry-after`.
+ * - `BODY_READ_MARGIN_MS` — exactly one body read, which happens once, behind
+ *   the headers that finally arrive, and is the stretch `timeoutMs` cannot
+ *   reach.
+ *
+ * With the shipped defaults (`DEFAULT_TIMEOUT_MS`, `DEFAULT_MAX_RETRIES`) this
+ * comes to `2 * 60_000 + 1 * 8_000 + 2_000 = 130_000` — the same number this
+ * used to be a fixed constant, so an application that configures neither
+ * option sees no change at all.
+ *
+ * An explicit `deadlineMs` skips this function entirely and is honoured even
+ * when it is shorter than one attempt's `timeoutMs`, because shortest-wins is
+ * what composing a deadline into an `AbortSignal` means: a caller asking for a
+ * hard five-second total bound while leaving a sixty-second per-attempt
+ * timeout is asking for exactly the right thing.
  */
-export const DEFAULT_DEADLINE_MS = 130_000;
+export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number {
+  return (
+    (maxRetries + 1) * timeoutMs + maxRetries * BACKOFF_CEILING_MS + BODY_READ_MARGIN_MS
+  );
+}
 
 /**
  * The largest value {@link AnthropicAdapterOptions.deadlineMs} may take.

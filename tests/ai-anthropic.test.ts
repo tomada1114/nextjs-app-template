@@ -336,6 +336,72 @@ describe("createAnthropicAdapter rejects a deadline the platform cannot arm", ()
   );
 });
 
+describe("createAnthropicAdapter derives its default deadline from timeoutMs and maxRetries (#65)", () => {
+  // The derived deadline is not directly observable — the adapter arms it
+  // inside `generate` and `LlmPort` has nowhere to report it — so this pins
+  // the arithmetic at the one place it *is* observable: the `MAX_DEADLINE_MS`
+  // boundary the constructor already checks. Each pair of rows fixes one term
+  // of `defaultDeadlineMs`'s three: the body-read margin (rows 1-2), and the
+  // per-attempt/per-retry terms together (rows 3-4). Expected numbers are
+  // worked out by hand below, not by re-running the derivation:
+  //
+  //   row 1: (0 + 1) * 4_294_965_295 + 0 * 8_000 + 2_000 = 4_294_967_295
+  //   row 2: (0 + 1) * 4_294_965_296 + 0 * 8_000 + 2_000 = 4_294_967_296
+  //   row 3: (1 + 1) * 2_147_478_647 + 1 * 8_000 + 2_000 = 4_294_967_294
+  //   row 4: (1 + 1) * 2_147_478_648 + 1 * 8_000 + 2_000 = 4_294_967_296
+  it.each([
+    [4_294_965_295, 0, "constructs"],
+    [4_294_965_296, 0, "RangeError"],
+    [2_147_478_647, 1, "constructs"],
+    [2_147_478_648, 1, "RangeError"],
+  ] as const)(
+    "timeoutMs %i with maxRetries %i %s",
+    (timeoutMs, maxRetries, outcome) => {
+      const build = () =>
+        createAnthropicAdapter({ apiKey: "test-key", timeoutMs, maxRetries });
+
+      if (outcome === "constructs") {
+        expect(build).not.toThrow();
+      } else {
+        expect(build).toThrow(RangeError);
+      }
+    },
+  );
+
+  it("constructs for timeoutMs: 300_000 — the combination issue #65 was filed for", () => {
+    // Under the fixed constant this used to be a fixed `130_000`, so the
+    // total bound was cut well before this five-minute attempt's own header
+    // timeout could even fire. Derived instead, with `maxRetries` left at its
+    // default of `1`: 2 * 300_000 + 1 * 8_000 + 2_000 = 610_000, comfortably
+    // under `MAX_DEADLINE_MS`.
+    expect(() =>
+      createAnthropicAdapter({ apiKey: "test-key", timeoutMs: 300_000 }),
+    ).not.toThrow();
+  });
+
+  it("honours an explicit deadlineMs and skips the derivation entirely", () => {
+    // The same `timeoutMs` refused in the boundary table above (it implies
+    // `4_294_967_296`, one past `MAX_DEADLINE_MS`) constructs fine the moment
+    // a total bound is given directly — precedence and the no-cross-check
+    // rule pinned in one assertion.
+    expect(() =>
+      createAnthropicAdapter({
+        apiKey: "test-key",
+        timeoutMs: 4_294_965_296,
+        deadlineMs: 60_000,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects maxRetries: -1 via the negative deadline it derives", () => {
+    // (-1 + 1) * 60_000 + (-1) * 8_000 + 2_000 = -6_000, refused by the same
+    // `deadlineMs <= 0` check an explicit value would hit.
+    expect(() =>
+      createAnthropicAdapter({ apiKey: "test-key", maxRetries: -1 }),
+    ).toThrow(RangeError);
+  });
+});
+
 describe("createAnthropicAdapter builds the provider request", () => {
   it("sends the schema as a json_schema output format and the language as a system instruction", async () => {
     const { fetch, calls } = respondWith(200, messageWithText('{"answer":"x"}'));

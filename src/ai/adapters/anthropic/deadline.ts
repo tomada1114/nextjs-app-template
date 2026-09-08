@@ -10,7 +10,7 @@
  * another attempt, so `maxRetries` no longer multiplies it. Ends it, but not
  * necessarily on time: the SDK's backoff sleep does not consult the signal, so
  * an abort arriving mid-sleep is noticed only when the next attempt begins.
- * See {@link DEFAULT_DEADLINE_MS} for what that costs.
+ * See {@link defaultDeadlineMs} for what that costs.
  *
  * `AbortSignal.any` propagates the *first* aborting source's `reason`, which is
  * what keeps the error identity the port promises: a caller that aborted with

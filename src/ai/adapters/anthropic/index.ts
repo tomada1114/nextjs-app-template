@@ -6,9 +6,11 @@ import type { LlmPort, LlmRequest } from "../../port";
 import {
   type AnthropicClientOptions,
   createAnthropicClient,
-  DEFAULT_DEADLINE_MS,
+  DEFAULT_MAX_RETRIES,
   DEFAULT_MAX_TOKENS,
   DEFAULT_MODEL,
+  DEFAULT_TIMEOUT_MS,
+  defaultDeadlineMs,
   MAX_DEADLINE_MS,
 } from "./client";
 import { requestSignal } from "./deadline";
@@ -37,7 +39,7 @@ export interface AnthropicAdapterOptions extends Omit<
   /** @see DEFAULT_MAX_TOKENS */
   readonly maxTokens?: number;
 
-  /** @see DEFAULT_DEADLINE_MS */
+  /** @see defaultDeadlineMs. Omitted, derived from timeoutMs/maxRetries; given, wins outright even when shorter than timeoutMs. */
   readonly deadlineMs?: number;
 }
 
@@ -76,31 +78,36 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
     apiKey,
     model = DEFAULT_MODEL,
     maxTokens = DEFAULT_MAX_TOKENS,
-    deadlineMs = DEFAULT_DEADLINE_MS,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    deadlineMs = defaultDeadlineMs(timeoutMs, maxRetries),
     ...clientOptions
   } = options;
 
-  // Thrown here, at wiring time, rather than left for `AbortSignal.timeout` to
-  // throw per request: the signal is armed outside every `try` in `generate`,
-  // and `LlmPort` promises that call resolves to a `Result` instead of
-  // rejecting. A deadline outside the platform's range is a mistake in the
-  // composition root, which is where a start-up failure points.
+  // Thrown here, at wiring time, rather than left for `AbortSignal.timeout` to throw
+  // per request: the signal is armed outside every `try` in `generate`, and `LlmPort`
+  // promises a `Result` rather than a rejection. A deadline outside the platform's
+  // range is a composition-root mistake, so the message below names `deadlineMs` only
+  // if the caller passed it, not when timeoutMs/maxRetries alone implied it.
   if (
     !Number.isInteger(deadlineMs) ||
     deadlineMs <= 0 ||
     deadlineMs > MAX_DEADLINE_MS
   ) {
     throw new RangeError(
-      `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
+      options.deadlineMs === undefined
+        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is outside 1..${String(MAX_DEADLINE_MS)}. Pass deadlineMs to bound the call directly.`
+        : `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
     );
   }
 
   // Built once, at construction, so a missing key costs nothing per request and
-  // the credential is read from this scope rather than kept on the port.
+  // the credential is read from this scope rather than kept on the port; timeoutMs/
+  // maxRetries are passed down explicitly so both call sites share one default.
   const client =
     apiKey === undefined || apiKey.trim() === ""
       ? undefined
-      : createAnthropicClient({ apiKey, ...clientOptions });
+      : createAnthropicClient({ apiKey, timeoutMs, maxRetries, ...clientOptions });
 
   return {
     async generate<TSchema extends z.ZodType>(
