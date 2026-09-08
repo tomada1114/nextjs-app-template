@@ -105,9 +105,9 @@ deleting anything:
 pnpm exec vitest run tests/ai-layer-removal.test.ts
 ```
 
-Green means the layer is still separable and the four lists in that file are complete —
+Green means the layer is still separable and the five lists in that file are complete —
 the property it exists to defend, checkable only while the layer is present. It cannot
-be the check you run afterwards, because it is on its own removal list. Those four lists
+be the check you run afterwards, because it is on its own removal list. Those five lists
 are the procedure:
 
 - **`REMOVED_PATHS`** — deleted outright. `src/server/composition.ts` is on it because
@@ -117,11 +117,14 @@ are the procedure:
   its `.claude/skills/` mirror.
 - **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two ways a file
   can name the layer without naming a path.
-- **`EDITED_FILES`** — files that survive but must stop naming it. That this list is
-  short, and holds only files whose subject is the repository rather than the
-  application, _is_ the separability property.
+- **`EDITED_CODE_FILES`** — files that survive but must stop naming it, whose subject is
+  the repository's machinery. That this list is short, and holds no application module,
+  _is_ the separability property.
+- **`EDITED_DOCUMENT_FILES`** — files that survive but must stop describing the layer to
+  a reader. This one claims completeness and nothing else: it grows whenever a skill
+  teaches a rule through the port or the handler, and that growth is expected.
 
-Delete the paths, then work through `EDITED_FILES`:
+Delete the paths, then work through both edited lists:
 
 - `src/server/env.ts` loses the key from its schema and `.env.example` the matching
   line. Keep `src/server/env.ts` itself, empty schema and all — it is the seam the next
@@ -150,9 +153,10 @@ Delete the paths, then work through `EDITED_FILES`:
   request and response types. Both keep everything else: the component and Route Handler
   seams, the traps, and the typed message keys in `src/i18n/messages.ts`, which are not
   the AI layer's.
-- This skill loses its "Removing the AI layer" section — it is on `EDITED_FILES` because
-  a procedure for deleting something already gone is stale prose. Edit the `.agents/`
-  copy and run `pnpm agents:sync`; never hand-edit the mirror.
+- This skill loses its "Removing the AI layer" section — it is on
+  `EDITED_DOCUMENT_FILES` because a procedure for deleting something already gone is
+  stale prose. Edit the `.agents/` copy and run `pnpm agents:sync`; never hand-edit the
+  mirror.
 
 Delete `tests/ai-layer-removal.test.ts` last: it is the checklist while you work, and
 the first dangling reference the moment the paths are gone. The proof that nothing
