@@ -244,6 +244,21 @@ describe("createAnthropicAdapter when the provider stalls after the response hea
   });
 });
 
+describe("createAnthropicAdapter rejects a deadline the platform cannot arm", () => {
+  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN, 4_294_967_296])(
+    "throws at construction rather than per request for deadlineMs %o",
+    (deadlineMs: number) => {
+      // `AbortSignal.timeout` throws a RangeError for anything outside an
+      // unsigned 32-bit delay, and the adapter arms it outside every `try` in
+      // `generate` — so left unchecked here it would surface as a *rejected*
+      // `generate()`, which is the one thing `LlmPort` promises never happens.
+      expect(() => createAnthropicAdapter({ apiKey: "test-key", deadlineMs })).toThrow(
+        RangeError,
+      );
+    },
+  );
+});
+
 describe("createAnthropicAdapter builds the provider request", () => {
   it("sends the schema as a json_schema output format and the language as a system instruction", async () => {
     const { fetch, calls } = respondWith(200, messageWithText('{"answer":"x"}'));

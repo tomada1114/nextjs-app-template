@@ -67,7 +67,9 @@ function isAbortError(reason: unknown): boolean {
  * the reason that ended the request; rebuilding the error from the signal is
  * what lets a caller compare `result.error.cause` against the reason it
  * supplied, by identity, and what carries a fired deadline's own
- * `TimeoutError` through unchanged. See {@link abortedLlmError}.
+ * `TimeoutError` through unchanged. See {@link abortedLlmError}. Required
+ * rather than optional for that reason: a caller with no signal to hand over
+ * would silently lose the identity this exists to keep.
  *
  * Order matters twice. `APIConnectionTimeoutError` and `APIUserAbortError` are
  * both `APIError` subclasses, so the general HTTP case has to come last; and
@@ -75,9 +77,9 @@ function isAbortError(reason: unknown): boolean {
  * its deadline out of an abort and only it can tell that one apart from the
  * caller's.
  */
-export function toLlmError(reason: unknown, signal: AbortSignal | undefined): LlmError {
+export function toLlmError(reason: unknown, signal: AbortSignal): LlmError {
   if (reason instanceof APIUserAbortError) {
-    return abortedLlmError(signal?.reason);
+    return abortedLlmError(signal.reason);
   }
   if (reason instanceof APIConnectionTimeoutError) {
     return new LlmError("ERR_LLM_TIMEOUT", `LLM request timed out: ${reason.message}`, {
@@ -88,7 +90,7 @@ export function toLlmError(reason: unknown, signal: AbortSignal | undefined): Ll
     // An abort the SDK no longer had a chance to label. Reported through the
     // signal, not through `reason`, so `cause` keeps the identity the port
     // promises whichever side of the headers the cancellation landed on.
-    return abortedLlmError(signal?.reason);
+    return abortedLlmError(signal.reason);
   }
   if (reason instanceof APIError) {
     // `APIError`'s status is generic, so an unparameterised `instanceof` narrows
