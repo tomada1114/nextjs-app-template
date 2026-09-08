@@ -1,0 +1,17 @@
+import type { ReactNode } from "react";
+
+/**
+ * The root layout Next.js requires, with nothing in it.
+ *
+ * @remarks
+ * `<html>` and `<body>` belong to `src/app/[locale]/layout.tsx`, which is the
+ * first layout that knows the document's language. Next.js still requires a
+ * layout at the root of the App Router tree, so this one passes its children
+ * through untouched rather than rendering a second, language-less document
+ * shell around them.
+ */
+export default function RootLayout({
+  children,
+}: Readonly<{ children: ReactNode }>): ReactNode {
+  return children;
+}

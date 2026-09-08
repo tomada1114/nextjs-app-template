@@ -1,0 +1,12 @@
+{
+  "HomePage": {
+    "title": "Next.js App Template",
+    "intro": "The App Router skeleton renders in {language}.",
+    "localeCount": "{count, plural, one {# language ships with this template.} other {# languages ship with this template.}}"
+  },
+  "LocaleSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "ja": "Japanese"
+  }
+}

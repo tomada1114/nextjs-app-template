@@ -1,10 +1,38 @@
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactElement } from "react";
 
+import { LOCALES } from "../../i18n/locales";
+import { Link } from "../../i18n/navigation";
+
+/**
+ * The one page this template ships, translated.
+ *
+ * @remarks
+ * The locale links are the smallest honest language switch: `Link` from
+ * `src/i18n/navigation.ts` keeps the current pathname and swaps only the
+ * prefix, so `/ja` is reachable from `/en` without the reader typing a URL.
+ */
 export default function HomePage(): ReactElement {
+  const locale = useLocale();
+  const t = useTranslations("HomePage");
+  const switcher = useTranslations("LocaleSwitcher");
+
   return (
     <main>
-      <h1>Next.js App Template</h1>
-      <p>The App Router skeleton renders. Edit src/app/page.tsx to start.</p>
+      <h1>{t("title")}</h1>
+      <p>{t("intro", { language: switcher(locale) })}</p>
+      <p>{t("localeCount", { count: LOCALES.length })}</p>
+      <nav aria-label={switcher("label")}>
+        <ul>
+          {LOCALES.map((candidate) => (
+            <li key={candidate}>
+              <Link href="/" locale={candidate} hrefLang={candidate}>
+                {switcher(candidate)}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </main>
   );
 }

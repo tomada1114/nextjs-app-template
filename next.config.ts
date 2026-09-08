@@ -1,4 +1,10 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// Points the plugin at the request configuration and wires the message
+// catalogs into the build. Stated explicitly rather than left to the plugin's
+// default search, so `src/i18n/request.ts` can be found by reading this file.
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   // `next dev` otherwise appends a block of its own to AGENTS.md on every
@@ -8,4 +14,4 @@ const nextConfig: NextConfig = {
   agentRules: false,
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

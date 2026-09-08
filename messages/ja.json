@@ -1,0 +1,12 @@
+{
+  "HomePage": {
+    "title": "Next.js アプリテンプレート",
+    "intro": "App Router のひな形を{language}で表示しています。",
+    "localeCount": "{count, plural, other {このテンプレートには # 言語が含まれています。}}"
+  },
+  "LocaleSwitcher": {
+    "label": "言語",
+    "en": "英語",
+    "ja": "日本語"
+  }
+}

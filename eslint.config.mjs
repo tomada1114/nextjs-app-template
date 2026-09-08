@@ -171,9 +171,13 @@ export default defineConfig([
     // Next.js finds a page, layout, loading/error boundary or route handler by
     // its file name and reads it through its default export, so `src/app/**`
     // is the one tree where a default export is the interface rather than an
-    // unnamed hole in one. Everywhere else under `src/` the surface stays
-    // named exports, which is what a reviewer can read a diff of.
-    ignores: ["src/app/**"],
+    // unnamed hole in one. `src/i18n/request.ts` is the same case one directory
+    // over: `createNextIntlPlugin` in next.config.ts loads that exact path and
+    // reads its default export, so the name is the file's and the export cannot
+    // carry one. Both entries are framework-owned entry points, named one by
+    // one; everywhere else under `src/` the surface stays named exports, which
+    // is what a reviewer can read a diff of.
+    ignores: ["src/app/**", "src/i18n/request.ts"],
     rules: {
       "no-restricted-exports": [
         "error",
