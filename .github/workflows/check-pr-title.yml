@@ -22,7 +22,8 @@ jobs:
       pull-requests: read # to read the pull request title
     steps:
       # The squash-merge commit subject is the PR title, so this is what keeps
-      # the generated changelog and the release note categories coherent.
+      # commit history readable as a change log by hand, and it is the input
+      # .github/workflows/pr-label.yml derives a label from.
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -19,6 +19,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Package and Node.js versions
+      label: Node.js version and browser
+      description: Include the browser and OS too if the bug is UI-related.
     validations:
       required: true

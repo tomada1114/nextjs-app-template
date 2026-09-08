@@ -16,7 +16,11 @@ import { describe, expect, it } from "vitest";
 // complete inventory rather than merely forbidding placeholders: a new file
 // that picks one up fails, and so does an inventory entry that has gone stale,
 // which is what makes this list usable as the rename checklist a new app
-// works through.
+// works through. A new app replaces each site the inventory names below and
+// deletes that row from EXPECTED_INVENTORY; it is finished when the list is
+// empty and this suite is green — an empty list then means no identity string
+// of this template survived. `starting-an-app` owns the order and the values
+// to write in; this file owns the list.
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -24,10 +28,19 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
  * Every string that names *this template* rather than a project built from it.
  *
  * @remarks
- * `you@example.com` is listed although nothing carries it today: it is one of
- * the identity strings the template has used, and an author field
- * reintroducing it should fail here rather than ship. A token that matches
- * nothing simply contributes no rows to the inventory below.
+ * `you@example.com` and `your-name` are listed although nothing carries them
+ * today: they are identity strings the template has used, and a field
+ * reintroducing either should fail here rather than ship. A token that
+ * matches nothing simply contributes no rows to the inventory below.
+ *
+ * `tomada1114/nextjs-app-template` is not a blank like the others — it is
+ * this template's real repository slug, and it names this template just as
+ * literally as `my-package` does. A fork that keeps it points its CI badge
+ * and its vulnerability-report link at someone else's repository. Only the
+ * full slug is listed: a bare `tomada1114` would match
+ * `tests/sync-labels.test.ts`'s `tomada1114/typescript-template` fixture
+ * data, and a bare `nextjs-app-template` would produce a duplicate row per
+ * file that carries the full slug.
  */
 const PLACEHOLDERS = [
   "my-package",
@@ -35,6 +48,7 @@ const PLACEHOLDERS = [
   "Your Name",
   "you@example.com",
   "A short description.",
+  "tomada1114/nextjs-app-template",
 ] as const;
 
 /**
@@ -47,16 +61,18 @@ const PLACEHOLDERS = [
  * else in the tree — `src/`, `tests/`, `scripts/`, the skills, the workflows,
  * `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort, so the
  * rename is a bounded edit to four files rather than a repository-wide search
- * that can miss one.
+ * that can miss one. Two of the rows are the template's real repository slug
+ * rather than a blank, deliberately: the CI badge and the security-advisory
+ * link have to resolve *while this repository is the template*, and a fork
+ * replaces them like any other row.
  */
 const EXPECTED_INVENTORY = [
-  ".github/ISSUE_TEMPLATE/config.yml: my-package",
-  ".github/ISSUE_TEMPLATE/config.yml: your-name",
+  ".github/ISSUE_TEMPLATE/config.yml: tomada1114/nextjs-app-template",
   "LICENSE: Your Name",
   "README.md: A short description.",
   "README.md: Your Name",
   "README.md: my-package",
-  "README.md: your-name",
+  "README.md: tomada1114/nextjs-app-template",
   "package.json: A short description.",
   "package.json: my-package",
 ];
@@ -171,5 +187,23 @@ describe("the template's own identity strings", () => {
 
   it("survive only in the four files that carry the template's identity", () => {
     expect(inventory).toStrictEqual(EXPECTED_INVENTORY);
+  });
+});
+
+describe("the template's own repository URLs", () => {
+  // The inventory above only proves the slug appears *somewhere* in each
+  // file; it would pass on a malformed badge URL. This pins the two corrected
+  // URLs by their exact shape, workflow filename included.
+  it.each([
+    [
+      "README.md",
+      "https://github.com/tomada1114/nextjs-app-template/actions/workflows/ci.yml",
+    ],
+    [
+      ".github/ISSUE_TEMPLATE/config.yml",
+      "https://github.com/tomada1114/nextjs-app-template/security/advisories/new",
+    ],
+  ])("%s points at the real repository", (relative, url) => {
+    expect(readText(relative)).toContain(url);
   });
 });
