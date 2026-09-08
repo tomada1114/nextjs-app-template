@@ -1,0 +1,19 @@
+{
+  "status": 200,
+  "body": {
+    "id": "msg_fixture_invalid_output",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "content": [
+      {
+        "type": "text",
+        "citations": null,
+        "text": "{\"answer\": 42, \"confidence\": \"high\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": { "input_tokens": 24, "output_tokens": 17 }
+  }
+}

@@ -2,12 +2,19 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import * as z from "zod";
 
 import {
+  createAnthropicAdapter,
   createFakeLlmPort,
   LlmError,
   type LlmErrorCode,
   type LlmPort,
 } from "../src/ai/index";
 import type { Result } from "../src/core/result";
+import {
+  isRecording,
+  neverResolvingFetch,
+  recordingFetch,
+  replayFetch,
+} from "./llm-replay";
 
 /**
  * The shape every contract case asks a port to fill.
@@ -248,6 +255,64 @@ describeLlmPortContract("createFakeLlmPort", {
   neverAnswers: () => createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 60_000 }),
 });
 
+/**
+ * The fixture each `LlmErrorCode` is provoked by.
+ *
+ * @remarks
+ * Only `success` and `auth-401` are recordings of real exchanges — a `429` or a
+ * `529` cannot be provoked on demand, so those two are written by hand against
+ * the documented error shape. `ERR_LLM_TIMEOUT` has no fixture at all: a
+ * deadline is a property of the connection rather than of a response, so it is
+ * arranged with a `fetch` that never answers and a timeout short enough for a
+ * unit budget.
+ */
+const FIXTURE_FOR_CODE = {
+  ERR_LLM_AUTH: "auth-401",
+  ERR_LLM_RATE_LIMIT: "rate-limit-429",
+  ERR_LLM_UNAVAILABLE: "overloaded-529",
+  ERR_LLM_INVALID_OUTPUT: "invalid-output",
+} as const satisfies Partial<Record<LlmErrorCode, string>>;
+
+/**
+ * The Anthropic adapter, wired to a fixture instead of to the network.
+ *
+ * @remarks
+ * `apiKey` is a placeholder rather than a credential: `fetch` never reaches a
+ * socket, so no key is authenticated, and the adapter needs a non-blank one
+ * only to get past its own "nothing configured" branch.
+ */
+function replaying(fixture: string): LlmPort {
+  return createAnthropicAdapter({
+    apiKey: "test-key",
+    maxRetries: 0,
+    fetch: replayFetch(fixture),
+  });
+}
+
+describeLlmPortContract("createAnthropicAdapter", {
+  succeeds: () => replaying("success"),
+  returnsInvalidOutput: () => replaying("invalid-output"),
+  failsWith: (code) =>
+    code === "ERR_LLM_TIMEOUT"
+      ? createAnthropicAdapter({
+          apiKey: "test-key",
+          maxRetries: 0,
+          // Short enough that the SDK's own deadline, not the test runner's,
+          // is what ends the request.
+          timeoutMs: 5,
+          fetch: neverResolvingFetch(),
+        })
+      : replaying(FIXTURE_FOR_CODE[code]),
+  neverAnswers: () =>
+    createAnthropicAdapter({
+      apiKey: "test-key",
+      maxRetries: 0,
+      // Far longer than the suite's budget, so only the caller's abort ends it.
+      timeoutMs: 60_000,
+      fetch: neverResolvingFetch(),
+    }),
+});
+
 describe("createFakeLlmPort", () => {
   it("fails with ERR_LLM_INVALID_OUTPUT when no response was configured", async () => {
     const error = failureOf(await ask(createFakeLlmPort()));
@@ -330,5 +395,58 @@ describe("createFakeLlmPort", () => {
         vi.useRealTimers();
       }
     });
+  });
+});
+
+/**
+ * Re-captures the two fixtures that are recordings of real exchanges.
+ *
+ * @remarks
+ * Skipped unless `LLM_RECORD=1`, which is a local operation: it spends money
+ * and needs a real credential, so it is never what CI runs. It lives here, next
+ * to {@link CONTRACT_ANSWER}, because the recorded answer has to *be* that
+ * value for the contract suite above to assert on it — building the prompt from
+ * the constant is what stops the fixture and the assertion drifting apart.
+ *
+ * `ERR_LLM_RATE_LIMIT` and `ERR_LLM_UNAVAILABLE` have no entry here: neither a
+ * 429 nor a 529 can be provoked on demand, so their fixtures are written by
+ * hand against the documented error shape.
+ */
+describe.runIf(isRecording())("recording the Anthropic fixtures", () => {
+  it("has a credential to record with", () => {
+    expect(process.env["ANTHROPIC_API_KEY"] ?? "").not.toBe("");
+  });
+
+  it("records a successful exchange", async () => {
+    const result = await createAnthropicAdapter({
+      apiKey: process.env["ANTHROPIC_API_KEY"],
+      maxRetries: 0,
+      fetch: recordingFetch("success"),
+    }).generate({
+      schema: CONTRACT_SCHEMA,
+      prompt: `Reply with exactly this JSON object, copied verbatim: ${JSON.stringify(CONTRACT_ANSWER)}`,
+      outputLanguage: "en",
+    });
+
+    // The recording is only usable if the real answer is the value the replayed
+    // contract suite asserts on, so that is checked at record time rather than
+    // discovered as a failure on the next run.
+    expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+  });
+
+  it("records an authentication failure", async () => {
+    // Deliberately not the real credential: a rejected key is the whole point,
+    // and it is short enough not to look like one to the staged-content guard.
+    const error = failureOf(
+      await ask(
+        createAnthropicAdapter({
+          apiKey: "sk-ant-invalid",
+          maxRetries: 0,
+          fetch: recordingFetch("auth-401"),
+        }),
+      ),
+    );
+
+    expect(error.code).toBe("ERR_LLM_AUTH");
   });
 });

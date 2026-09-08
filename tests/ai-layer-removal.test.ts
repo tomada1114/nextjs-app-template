@@ -39,8 +39,11 @@ const REMOVED_PATHS = [
   "src/app/api",
   "src/server/composition.ts",
   "src/server/handlers/ask.ts",
+  "tests/ai-anthropic.test.ts",
   "tests/ai-layer-removal.test.ts",
   "tests/ai-port.test.ts",
+  "tests/fixtures/llm",
+  "tests/llm-replay.ts",
   "tests/server-handler.test.ts",
 ];
 
@@ -74,8 +77,11 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * @remarks
  * The two gate configs and the two boundary tests assert against the AI
  * layer's shape; `src/server/env.ts` is the only module that reads the
- * credential, and `.env.example` is where its name is published. This half is
- * where the separability property lives: it is the one that has to stay
+ * credential, and `.env.example` is where its name is published.
+ * `package.json` declares the vendor SDK, which is the AI layer's one runtime
+ * dependency and leaves with it — a manifest entry, not an application module,
+ * which is why it can join this half without weakening what it claims. This
+ * half is where the separability property lives: it is the one that has to stay
  * near-empty, and an entry joining it means an application module now has to
  * be edited by the removal — the moment the layer has stopped coming out in
  * one piece.
@@ -83,6 +89,7 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
 const EDITED_CODE_FILES = [
   ".env.example",
   "eslint.config.mjs",
+  "package.json",
   "src/server/env.ts",
   "tests/boundaries.test.ts",
   "tests/server-env.test.ts",
