@@ -63,6 +63,14 @@ overrides:
   # answers the same range queries. Drop this once 6.3.1 regains provenance or
   # nothing reaches for semver@6.
   semver: ^7.7.4
+  # GHSA-2v37-7h3g-55p8: nanoid < 3.3.18 can loop indefinitely when a custom
+  # generator is called with size 0. next pins postcss, whose own nanoid range
+  # still resolves below the patched release, so `pnpm audit --prod` — the
+  # weekly security-audit workflow — fails on it. Scoped to the one edge that
+  # reaches it: nothing in this repository calls nanoid, and postcss is where
+  # Next's build toolchain does. Drop this once postcss ships a range that
+  # resolves past 3.3.18 on its own.
+  postcss>nanoid: ^3.3.18
 
 # Peer-range exceptions, one graph edge each. strictPeerDependencies above
 # stays on: these three plugins arrive only as dependencies of
