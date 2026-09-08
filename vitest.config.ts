@@ -13,13 +13,23 @@ const fixtures = "tests/fixtures/**";
 // The files not listed here are pure unit tests; guard-rules.test.ts is the
 // intentional exception to the usual `src/**` rule because it calls the guard
 // engine's pure functions directly.
+//
+// The three boundary suites — ai-layer-removal, boundaries, placeholders —
+// are listed for the same reason workflows.test.ts is: they assert against
+// files on disk rather than against imported code, walking whole trees to do
+// it. They are fast today, but their cost scales with the repository rather
+// than with what they import, which is exactly the case the short unit budget
+// is not meant to cover.
 const automationTests = [
+  "tests/ai-layer-removal.test.ts",
+  "tests/boundaries.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",
   "tests/clean.test.ts",
   "tests/git-env.test.ts",
   "tests/labels.test.ts",
   "tests/node-tools.test.ts",
+  "tests/placeholders.test.ts",
   "tests/server-env.test.ts",
   "tests/skills-frontmatter.test.ts",
   "tests/sync-agents.test.ts",
