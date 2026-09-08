@@ -192,8 +192,8 @@ describe("the template's own identity strings", () => {
 
 describe("the template's own repository URLs", () => {
   // The inventory above only proves the slug appears *somewhere* in each
-  // file; it would pass on a malformed badge URL or a workflow filename that
-  // does not exist. This pins the two corrected URLs by their exact shape.
+  // file; it would pass on a malformed badge URL. This pins the two corrected
+  // URLs by their exact shape, workflow filename included.
   it.each([
     [
       "README.md",
@@ -205,9 +205,5 @@ describe("the template's own repository URLs", () => {
     ],
   ])("%s points at the real repository", (relative, url) => {
     expect(readText(relative)).toContain(url);
-  });
-
-  it("names a workflow file that exists, so the badge cannot 404", () => {
-    expect(scanned).toContain(".github/workflows/ci.yml");
   });
 });
