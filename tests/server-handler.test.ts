@@ -226,4 +226,19 @@ describe("the composed /api/ask route", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toBeTypeOf("object");
   });
+
+  // Pins the promise README.md and AGENTS.md both make: a fresh checkout with
+  // no ANTHROPIC_API_KEY still answers instead of surfacing ERR_LLM_AUTH as a
+  // 500 (#77). This is the one test in the suite allowed to depend on the
+  // process environment, and only to assert the premise the regression needs:
+  // that this run has no credential configured, the same as a fresh clone.
+  it("answers 200 with no ANTHROPIC_API_KEY configured", async () => {
+    expect(process.env["ANTHROPIC_API_KEY"] ?? "").toBe("");
+
+    const response = await askHandler(
+      postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
+    );
+
+    expect(response.status).toBe(200);
+  });
 });
