@@ -4,9 +4,10 @@ description: >
   Covers turning this template into a new application: the copy-and-rename procedure
   driven by tests/placeholders.test.ts, what a new project keeps untouched, removing the
   AI layer whole under tests/ai-layer-removal.test.ts, and whether to keep both locales
-  or drop one. Use when starting an app from this repository, replacing the package name
-  or the repository slug in a badge or advisory link, deleting src/ai/ and the route
-  that depends on it, or dropping a locale from src/i18n/locales.ts and messages/.
+  or drop one. Use when starting an app from this repository, replacing the package
+  name, the app's display name or the repository slug in a badge or advisory link,
+  deleting src/ai/ and the route that depends on it, or dropping a locale from
+  src/i18n/locales.ts and messages/.
 ---
 
 # Starting an App
@@ -70,6 +71,11 @@ What goes into each site:
   advisory form.
 - **The copyright holder** in `LICENSE`, and the same name wherever the README repeats
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
+- **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
+  `metadata`, which is the browser tab, and the `HomePage.title` key in every
+  `messages/*.json`, which is the page heading. This is the only site the reader of the
+  app sees, and the only one that is per-locale: each catalog gets the name written in
+  its own language.
 
 Emptying `EXPECTED_INVENTORY` is the intended edit and is not weakening a gate. Widening
 `SKIPPED_DIRECTORIES` or `SKIPPED_FILES`, or dropping an entry from `PLACEHOLDERS`, to
