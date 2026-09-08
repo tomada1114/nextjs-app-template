@@ -20,16 +20,23 @@ checked.
 
 ## Overview
 
-A Next.js application on the App Router, written in ESM-only TypeScript. It is private:
-nothing here is packed, published, or consumed as a tarball, so there is no published
-`engines.node` floor — `.node-version` and `devEngines.runtime` carry the Node 24
-development runtime instead. pnpm 11 is the package manager, used through Corepack.
+A template for a Next.js application on the App Router, written in ESM-only TypeScript:
+a locale-prefixed page tree, one JSON endpoint, and one language-model call behind a
+port that an adapter implements. It answers with a fake adapter out of the box, so
+`pnpm dev` works before any credential exists, and the whole AI layer is built to come
+out in one piece for a project that does not want one.
+
+It is private: nothing here is packed, published, or consumed as a tarball, so there is
+no published `engines.node` floor — `.node-version` and `devEngines.runtime` carry the
+Node 24 development runtime instead. pnpm 11 is the package manager, used through
+Corepack.
 
 ## Quick reference
 
 ```sh
 pnpm dev           # start the Next.js development server on http://localhost:3000
 pnpm build         # production build; also type-checks the App Router entry points
+pnpm start         # serve the production build from `pnpm build`
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
 pnpm check:source  # the same gate plus the build, with coverage thresholds enforced
 pnpm fix           # ESLint autofix, then Prettier
@@ -67,30 +74,90 @@ reach for `--config.runtime-on-fail=ignore`: nothing here runs on any other Node
 Run the narrowest check that can fail, then the gate. Reaching for `pnpm check:source`
 on every edit is slow enough that it stops being run at all.
 
-| What you changed                      | The narrowest check that can fail                    |
-| ------------------------------------- | ---------------------------------------------------- |
-| A module under `src/`                 | `pnpm exec vitest run tests/<module>.test.ts`        |
-| A file under `src/app/`               | `pnpm build`                                         |
-| A test                                | `pnpm exec vitest run tests/<name>.test.ts`          |
-| A script under `scripts/`             | `pnpm exec vitest run tests/<script>.test.ts`        |
-| A skill under `.agents/skills/`       | `pnpm agents:sync && pnpm agents:check && pnpm test` |
-| `package.json`, `pnpm-workspace.yaml` | `pnpm install`, then `pnpm check:source`             |
-| Markdown                              | `pnpm fix`                                           |
+| What you changed                                       | The narrowest check that can fail                    |
+| ------------------------------------------------------ | ---------------------------------------------------- |
+| A module under `src/core/` or `src/ai/`                | `pnpm exec vitest run tests/<module>.test.ts`        |
+| A handler or the composition root under `src/server/`  | `pnpm exec vitest run tests/server-handler.test.ts`  |
+| `src/server/env.ts` or `.env.example`                  | `pnpm exec vitest run tests/server-env.test.ts`      |
+| A page, layout or route handler under `src/app/`       | `pnpm build`                                         |
+| A component with a rendered test                       | `pnpm exec vitest run tests/<name>.test.tsx`         |
+| A catalog under `messages/`, or `src/i18n/messages.ts` | `pnpm exec vitest run tests/messages.test.ts`        |
+| `src/proxy.ts` or the locale routing behind it         | `pnpm exec vitest run tests/proxy.test.ts`           |
+| An import that crosses a zone boundary                 | `pnpm exec vitest run tests/boundaries.test.ts`      |
+| A test                                                 | `pnpm exec vitest run tests/<name>.test.ts`          |
+| A script under `scripts/`                              | `pnpm exec vitest run tests/<script>.test.ts`        |
+| A skill under `.agents/skills/`                        | `pnpm agents:sync && pnpm agents:check && pnpm test` |
+| `package.json`, `pnpm-workspace.yaml`                  | `pnpm install`, then `pnpm check:source`             |
+| Markdown                                               | `pnpm fix`                                           |
 
 ## Architecture
 
 ```
 src/
-└── app/          # the Next.js App Router tree: pages, layouts, route handlers
+├── core/     # framework-free vocabulary: a Result, a domain type, a pure function
+├── ai/       # the LlmPort, its error vocabulary, and the adapters behind it
+├── server/   # the environment read, the composition root, and request handlers
+├── i18n/     # the locale list, its URL routing, and the typed message catalogs
+├── app/      # the Next.js App Router tree: pages, layouts, route handlers
+└── proxy.ts  # Next.js's request proxy: locale detection ahead of every page request
+messages/     # one JSON catalog per locale, shaped by en.json
+scripts/      # repository automation, authored as .mjs, never shipped
 ```
 
-Next.js finds a page, layout, boundary or route handler under `src/app/` by file name
-and loads it through its default export, which is why `eslint.config.mjs`'s
-default-export ban stops at that directory and holds everywhere else under `src/`.
-`scripts/*.mjs` is repository automation that never ships.
+Imports run one way — `app` → `server` → `ai` → `core` — with `i18n` a leaf that the
+page tree and the handlers both read. `core` is the bottom of that order: it names no
+framework and no vendor SDK, so it survives a change of either.
 
-The zones the rest of `src/` grows into, and the import boundaries between them, are not
-settled yet; this section is rewritten once they exist.
+### The three seams
+
+Everything a project built from this template is expected to replace sits behind one of
+three seams:
+
+- **The port.** `src/ai/port.ts` declares `LlmPort`, the vendor-neutral interface every
+  model call goes through, and `src/ai/index.ts` is the AI layer's whole surface — the
+  port, its error vocabulary, and whichever adapter that file chooses to publish.
+  `src/ai/adapters/` is private to the layer, so swapping the fake for a provider, or
+  deleting the layer outright, is a bounded edit; `tests/ai-layer-removal.test.ts` is
+  what keeps the deletion bounded rather than trusting that it stays so.
+- **The Web-standard handler.** `src/server/handlers/ask.ts` exports
+  `createAskHandler(dependencies)`, which returns a plain
+  `(request: Request) => Promise<Response>` and imports nothing from `next`. That is
+  what lets a test drive it with `new Request(…)` and no framework, and what keeps
+  `src/app/api/ask/route.ts` a one-line re-export with no logic of its own to test.
+- **The environment.** `src/server/env.ts` is the only module under `src/` that reads
+  `process.env`. It validates the whole environment against one schema and hands every
+  other module what it needs as an argument, so "where does this secret enter the
+  process" is a question a reader answers by opening one file.
+
+`src/server/composition.ts` is where the three meet: the single place the environment,
+an adapter and a handler are joined, and the single line in this repository that names a
+vendor. That choice made anywhere else is the leak these boundaries exist to prevent.
+
+### What is contract and what is private
+
+Nothing here is published, so the contract is not an export map. It is what a caller
+outside the process can observe, plus what each zone publishes to the zone above it:
+
+- **Contract.** The HTTP surface of `POST /api/ask` — its request body, its answer, and
+  the `error.code` vocabulary a client branches on. The `LlmPort` interface, `LlmError`
+  and its `ERR_LLM_*` codes, and everything else `src/ai/index.ts` names. The locale
+  list in `src/i18n/locales.ts` and the message keys `messages/en.json` defines.
+- **Private.** `src/ai/adapters/**`; the wiring inside `src/server/composition.ts`; and
+  any module a zone's own surface does not re-export. A test reaches a private module
+  through the surface that owns it, never around it.
+
+Next.js loads a page, layout, boundary or route handler under `src/app/` by file name
+through its default export, and does the same for `src/proxy.ts` and
+`src/i18n/request.ts`. Those are framework-owned entry points, where the file's path is
+the symbol's name; everywhere else under `src/` the surface is named exports, which is
+what a reviewer can read a diff of.
+
+These edges are enforced twice and their values are written down in neither this file
+nor a skill: `eslint.config.mjs` carries them as `no-restricted-imports` zone blocks and
+a per-file size budget, and `tests/boundaries.test.ts` asserts the same edges from the
+module graph, so a rule deleted from that config still fails the suite. Read the numbers
+and the patterns there — a summary that restated them is the copy that goes stale. How
+to work inside a zone is a skill's subject, not this section's.
 
 ## Skills
 
@@ -114,16 +181,21 @@ names its own boundary with its neighbours.
 
 ## Security and human approval
 
-- **Commit, push, pull request, and publish always need a human.** No file this
-  repository ships blocks the dangerous spellings — `--no-verify`, a plain force-push,
-  `npm`/`pnpm publish`, workflow dispatch — mechanically; this instruction is the rule
-  itself, not a pattern enforcing it. The committed `.claude/settings.json` declares
-  only plugins, and `.mcp.json` only MCP servers; an agent may still carry its own
-  personal permission allow/deny list on top (a Claude Code session's own
-  `~/.claude/settings.json` or the gitignored `.claude/settings.local.json`), but that
-  list is a choice made outside this repository, not something it ships or requires.
+- **Commit, push, and pull request always need a human.** No file this repository ships
+  blocks the dangerous spellings — `--no-verify`, a plain force-push, workflow dispatch
+  — mechanically; this instruction is the rule itself, not a pattern enforcing it. The
+  committed `.claude/settings.json` declares only plugins, and `.mcp.json` only MCP
+  servers; an agent may still carry its own personal permission allow/deny list on top
+  (a Claude Code session's own `~/.claude/settings.json` or the gitignored
+  `.claude/settings.local.json`), but that list is a choice made outside this
+  repository, not something it ships or requires.
 - Never read or write `.env*` (the `.example`, `.sample` and `.template` variants are
-  fine) or anything under `secrets/`.
+  fine) or anything under `secrets/`. A `.env` in a checkout of this template holds a
+  real provider credential, so reading one is already a disclosure whether or not
+  anything is written back: no `cat`, no `grep`, no copy to a temp path, and never a
+  value out of it onto a command line. `src/server/env.ts` is the list of names the
+  process reads, and `.env.example` ships every one of them with an empty value — those
+  two are what to open when you need to know what exists.
 - Never write a credential into a tracked file — no registry auth token, no private key.
 - `pnpm-lock.yaml` is generated by `pnpm install`, never hand-edited;
   `managing-dependencies` holds the reasoning.
