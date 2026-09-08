@@ -308,16 +308,34 @@ describe("the composed /api/ask route", () => {
     expect(POST).toBe(askHandler);
   });
 
-  // Deliberately silent about the status and the answer: which adapter
-  // composition.ts wires is its own decision to change, and a test that pinned
-  // the fake adapter's wording here would have to be edited to swap it.
-  it("answers a real request with a JSON body", async () => {
-    const response = await askHandler(
+  // Pins the answer envelope the route replies with, against the real
+  // composition rather than against a handler this test builds itself, and
+  // with the environment stubbed rather than read: what `askHandler` does
+  // turns on the `API_ACCESS_KEY` the developer's shell happens to hold at
+  // module load, so a case that used the static import would be asserting on
+  // the ambient environment. The body is matched by shape, not by wording --
+  // which adapter composition.ts wires is its own decision to change, but
+  // that the reply is `{answer: <string>}` and not an error envelope is not.
+  it("answers a well-formed request with the answer envelope", async () => {
+    const composed = await composedWith({
+      ANTHROPIC_API_KEY: undefined,
+      API_ACCESS_KEY: undefined,
+    });
+
+    const response = await composed(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
+    expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    await expect(response.json()).resolves.toBeTypeOf("object");
+    const body: unknown = await response.json();
+    expect(body).toBeTypeOf("object");
+    expect(body).not.toBeNull();
+    if (typeof body !== "object" || body === null || !("answer" in body)) {
+      throw new Error(`not an answer envelope: ${JSON.stringify(body)}`);
+    }
+    expect(Object.keys(body)).toStrictEqual(["answer"]);
+    expect(body.answer).toBeTypeOf("string");
   });
 
   /**
