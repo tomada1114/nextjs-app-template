@@ -1,3 +1,6 @@
+import { createRequire } from "node:module";
+import path from "node:path";
+
 import { defineConfig } from "vitest/config";
 
 // Without this, a fixture suite written to fail is collected as one of this
@@ -17,6 +20,7 @@ const automationTests = [
   "tests/git-env.test.ts",
   "tests/labels.test.ts",
   "tests/node-tools.test.ts",
+  "tests/server-env.test.ts",
   "tests/skills-frontmatter.test.ts",
   "tests/sync-agents.test.ts",
   "tests/sync-labels.test.ts",
@@ -24,9 +28,26 @@ const automationTests = [
   "tests/workflows.test.ts",
 ];
 
+// `server-only` is a build-time marker rather than a runtime module: its only
+// entry throws on import, and a React Server Components bundler never loads it
+// because the package's `react-server` export condition points at an empty
+// file instead. Nothing outside such a bundler resolves that condition, so a
+// test importing anything under `src/server/` would fail on the marker rather
+// than on the behavior it asserts. Point the runner at the very file the RSC
+// graph gets. Vite's own condition options do not reach it — the package is
+// externalised and loaded by Node — and `server-only/empty.js` is not a
+// subpath its `exports` map publishes, so the path is derived from the
+// resolved entry instead. This narrows what the runner resolves; it turns no
+// check off.
+const serverOnlyEmptyModule = path.join(
+  path.dirname(createRequire(import.meta.url).resolve("server-only")),
+  "empty.js",
+);
+
 export default defineConfig({
   test: {
     environment: "node",
+    alias: { "server-only": serverOnlyEmptyModule },
     // Cleanup is the runner's job, not each test's. A spy, a stubbed env var or
     // a stubbed global that outlives the test that created it turns a later
     // failure into a mystery whose cause is in a different file, and makes the
