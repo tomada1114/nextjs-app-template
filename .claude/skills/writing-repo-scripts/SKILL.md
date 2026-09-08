@@ -102,12 +102,15 @@ code, and the next safe command to run — and never a secret or an absolute hom
 **REQUIRED:** `designing-errors` for the `ERR_<STAGE>_*` code vocabulary a new script's
 errors should join.
 
-Worked example, from `scripts/lib/node-tools.mjs`:
+Worked example, the report `scripts/sync-agents.mjs` prints when `pnpm agents:check`
+finds the mirror out of step with its source:
 
 ```
-ERR_DEPENDENCY_MISSING: eslint is not installed.
-Expected: node_modules/eslint/package.json
-Next: run `pnpm install --frozen-lockfile`.
+ERR_AGENTS_DRIFT: .claude/skills/ is not a copy of .agents/skills/.
+Expected: a byte-identical mirror of .agents/skills/.
+Actual:
+  differs: .claude/skills/writing-repo-scripts/SKILL.md
+Next: run `pnpm agents:sync`.
 ```
 
 ## Coverage
