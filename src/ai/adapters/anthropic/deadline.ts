@@ -53,8 +53,11 @@ export function resolveDeadlineMs(
  * attempt — an abort landing between retries ends the chain instead of starting
  * another attempt, so `maxRetries` no longer multiplies it. Ends it, but not
  * necessarily on time: the SDK's backoff sleep does not consult the signal, so
- * an abort arriving mid-sleep is noticed only when the next attempt begins.
- * See {@link defaultDeadlineMs} for what that costs.
+ * an abort arriving mid-sleep is noticed only when the next attempt begins. The
+ * overshoot that costs is bounded rather than open-ended — at most
+ * `MAX_RETRY_AFTER_MS`, because no sleep the SDK starts can outlast it once
+ * `declineLongRetryAfter` refuses a longer `retry-after`. See
+ * {@link defaultDeadlineMs} for the arithmetic.
  *
  * `AbortSignal.any` propagates the *first* aborting source's `reason`, which is
  * what keeps the error identity the port promises: a caller that aborted with

@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+import { declineLongRetryAfter } from "./retry-after";
+
 /** The provider model this adapter calls when its caller names none. */
 export const DEFAULT_MODEL = "claude-sonnet-5";
 
@@ -34,7 +36,14 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
  */
 export const DEFAULT_MAX_RETRIES = 1;
 
-/** The SDK's own ceiling on a computed backoff sleep, per retry. */
+/**
+ * The SDK's own ceiling on a computed backoff sleep, per retry.
+ *
+ * @remarks
+ * A report of what the SDK does, not a policy this repository sets. See
+ * `MAX_RETRY_AFTER_MS` in `./retry-after`: the same number for a stated reason,
+ * and the one that would keep its value if the SDK ever moved this one.
+ */
 const BACKOFF_CEILING_MS = 8_000;
 
 /** The one stretch `timeoutMs` does not reach: reading the body behind the headers. */
@@ -65,10 +74,11 @@ const BODY_READ_MARGIN_MS = 2_000;
  *   its whole `timeoutMs` waiting for response *headers*.
  * - `maxRetries * BACKOFF_CEILING_MS` — the backoff sleep between attempts,
  *   each bounded by the SDK's own ceiling on its *computed* backoff
- *   (`@anthropic-ai/sdk@^0.122.0`). A `retry-after` longer than that ceiling
- *   still overshoots this budget, because the SDK's `retryRequest` awaits the
- *   sleep without consulting `options.signal` — that gap is issue #66's to
- *   close, and nothing here clamps, caps, or inspects `retry-after`.
+ *   (`@anthropic-ai/sdk@^0.122.0`). A provider-supplied `retry-after` is the
+ *   other thing that sleep can be, and it fits the same term only because
+ *   {@link declineLongRetryAfter} declines one longer than
+ *   `MAX_RETRY_AFTER_MS`, which is that ceiling's own value. Every sleep
+ *   here is therefore at most 8 s whatever chose its length.
  * - `BODY_READ_MARGIN_MS` — exactly one body read, which happens once, behind
  *   the headers that finally arrive, and is the stretch `timeoutMs` cannot
  *   reach.
@@ -83,12 +93,14 @@ const BODY_READ_MARGIN_MS = 2_000;
  * what composing a deadline into an `AbortSignal` means: a caller asking for a
  * hard five-second total bound while leaving a sixty-second per-attempt
  * timeout is asking for exactly the right thing. What it does not buy is
- * punctuality: a deadline that fires while *any* backoff sleep is in flight —
- * an ordinary computed one, not only a long `retry-after` — is noticed only
- * when that sleep ends, so a short explicit `deadlineMs` overshoots by the
- * remainder of whatever sleep it landed in. Only the derived budget above,
- * which already allows for every sleep, narrows that to a `retry-after`
- * beyond the ceiling.
+ * punctuality: a deadline that fires while any backoff sleep is in flight is
+ * noticed only when that sleep ends, because `retryRequest` awaits it without
+ * consulting the signal. The worst case is therefore
+ * `deadlineMs + MAX_RETRY_AFTER_MS` — 138 s at the shipped defaults — and the
+ * addend is now a sleep this repository chose to afford rather than one the
+ * provider chose for it. The derived budget above already allows for every
+ * sleep, so it is a short *explicit* `deadlineMs` that actually spends the
+ * overshoot.
  */
 export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number {
   return (
@@ -140,6 +152,11 @@ export interface AnthropicClientOptions {
  * that fallback would make this file a second place the process reads its
  * environment — `src/server/env.ts` is meant to be the only one. Taking a
  * definite string closes it.
+ *
+ * {@link declineLongRetryAfter} is installed on every client rather than per
+ * request: what it enforces is a property of this adapter, not of one call, and
+ * the SDK's own computed backoff is invisible to middleware anyway, so sizing a
+ * per-request copy to the deadline still remaining would buy nothing.
  */
 export function createAnthropicClient(options: AnthropicClientOptions): Anthropic {
   const {
@@ -153,6 +170,7 @@ export function createAnthropicClient(options: AnthropicClientOptions): Anthropi
     apiKey,
     timeout: timeoutMs,
     maxRetries,
+    middleware: [declineLongRetryAfter],
     ...(fetch === undefined ? {} : { fetch }),
   });
 }
