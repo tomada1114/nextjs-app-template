@@ -77,10 +77,12 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * the documents that describe the layer to a reader — AGENTS.md's Architecture
  * section, the README's description of the one route, the `starting-an-app`
  * skill, which carries the removal procedure and so names the removal set in
- * prose, and `building-app-routes`, which teaches the Route Handler pattern
- * through the one endpoint this template ships. This list existing — and being
- * short — is the property: an app-level module that had to be edited here
- * would mean the layer is no longer separable.
+ * prose, `building-app-routes`, which teaches the Route Handler pattern
+ * through the one endpoint this template ships, and `writing-typescript` and
+ * `designing-errors`, which illustrate rules that outlive the layer with worked
+ * examples drawn from it. This list existing — and being short — is the
+ * property: an app-level module that had to be edited here would mean the layer
+ * is no longer separable.
  *
  * Each skill's `.claude/skills/` copy is listed too because it is a real
  * committed file, but it is never hand-edited: the removal edits the
@@ -88,9 +90,13 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  */
 const EDITED_FILES = [
   ".agents/skills/building-app-routes/SKILL.md",
+  ".agents/skills/designing-errors/SKILL.md",
   ".agents/skills/starting-an-app/SKILL.md",
+  ".agents/skills/writing-typescript/SKILL.md",
   ".claude/skills/building-app-routes/SKILL.md",
+  ".claude/skills/designing-errors/SKILL.md",
   ".claude/skills/starting-an-app/SKILL.md",
+  ".claude/skills/writing-typescript/SKILL.md",
   ".env.example",
   "AGENTS.md",
   "README.md",

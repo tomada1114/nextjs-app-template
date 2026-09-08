@@ -138,6 +138,10 @@ Delete the paths, then work through `EDITED_FILES`:
 - `building-app-routes` loses the paragraphs written around the one endpoint that is
   going away: the Route Handler pattern it teaches stays, and the first endpoint of your
   own is what it is illustrated with instead.
+- `writing-typescript` and `designing-errors` lose the worked examples drawn from the AI
+  layer — the port's error vocabulary, the handler's `satisfies` status table, the abort
+  helpers. Every rule they illustrate outlives the layer, so each example is replaced by
+  one from your own code rather than deleted with its rule.
 - This skill loses its "Removing the AI layer" section — it is on `EDITED_FILES` because
   a procedure for deleting something already gone is stale prose. Edit the `.agents/`
   copy and run `pnpm agents:sync`; never hand-edit the mirror.
