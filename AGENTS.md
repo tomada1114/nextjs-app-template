@@ -118,10 +118,10 @@ names its own boundary with its neighbours.
   repository ships blocks the dangerous spellings — `--no-verify`, a plain force-push,
   `npm`/`pnpm publish`, workflow dispatch — mechanically; this instruction is the rule
   itself, not a pattern enforcing it. The committed `.claude/settings.json` declares
-  only plugins and MCP servers; an agent may still carry its own personal permission
-  allow/deny list on top (a Claude Code session's own `~/.claude/settings.json` or the
-  gitignored `.claude/settings.local.json`), but that list is a choice made outside this
-  repository, not something it ships or requires.
+  only plugins, and `.mcp.json` only MCP servers; an agent may still carry its own
+  personal permission allow/deny list on top (a Claude Code session's own
+  `~/.claude/settings.json` or the gitignored `.claude/settings.local.json`), but that
+  list is a choice made outside this repository, not something it ships or requires.
 - Never read or write `.env*` (the `.example`, `.sample` and `.template` variants are
   fine) or anything under `secrets/`.
 - Never write a credential into a tracked file — no registry auth token, no private key.
@@ -153,13 +153,13 @@ between layers:
 
 This repository ships no declarative, tool-call-aware permission list (a Claude Code
 `permissions.allow`/`permissions.deny` or equivalent) — the committed
-`.claude/settings.json` declares only plugins and MCP servers, so every generated
-project starts with that and nothing more, and an agent has permission protection only
-if it, or the human running it, has configured a list personally, outside this
-repository. The one rule that must hold regardless of which tool or human is committing
-— a secret about to land in history — is instead the single mechanical layer this
-repository does ship: `lefthook`'s pre-commit hook, which every author goes through the
-same gate for.
+`.claude/settings.json` declares only plugins and `.mcp.json` only MCP servers, so every
+generated project starts with those and nothing more, and an agent has permission
+protection only if it, or the human running it, has configured a list personally,
+outside this repository. The one rule that must hold regardless of which tool or human
+is committing — a secret about to land in history — is instead the single mechanical
+layer this repository does ship: `lefthook`'s pre-commit hook, which every author goes
+through the same gate for.
 
 Two consequences of that shape are worth naming rather than discovering: a shell command
 that reads a secret path outside a commit (`cat .env`, `cp .env /tmp/x`) is invisible to
