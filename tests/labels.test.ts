@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { MANAGED_LABELS } from "../scripts/label-pr.mjs";
 import { parseLabelManifest } from "../scripts/lib/labels-manifest.mjs";
 
 // `.github/labels.yml` is the single declarative source for this
@@ -83,24 +84,18 @@ describe("label taxonomy", () => {
 
   it("every label pr-label.yml can apply is declared in .github/labels.yml", () => {
     // pr-label.yml derives a label from the PR title's Conventional Commit
-    // type and applies it best-effort — `gh pr edit` on a label the repository
-    // does not have prints a notice and exits 0, so a label that was never
+    // type (mapped in scripts/label-pr.mjs, which the workflow calls) and
+    // applies it best-effort — `gh pr edit` on a label the repository does
+    // not have prints a notice and exits 0, so a label that was never
     // declared here is silently never applied. This used to be checked one
     // step further along the chain, against `.github/release.yml`'s changelog
     // categories; that file went with the npm release workflow, and the
     // manifest is the remaining place a label has to exist.
-    const text = readFileSync(
-      path.join(githubDir, "workflows", "pr-label.yml"),
-      "utf8",
-    );
-    const labels = [...text.matchAll(/\blabel=([a-z][a-z-]*)/g)].flatMap(
-      (match) => match[1] ?? [],
-    );
-    expect(labels.length).toBeGreaterThan(0);
-    for (const label of labels) {
+    expect(MANAGED_LABELS.size).toBeGreaterThan(0);
+    for (const label of MANAGED_LABELS) {
       expect(
         manifestNames.has(label),
-        `pr-label.yml applies "${label}", which .github/labels.yml does not declare`,
+        `scripts/label-pr.mjs applies "${label}", which .github/labels.yml does not declare`,
       ).toBe(true);
     }
   });
