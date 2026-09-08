@@ -148,6 +148,7 @@ describe("the import scanner the zone assertions run on", () => {
   it("walks the whole src/ tree, not a subdirectory of it", () => {
     expect(sourceModules.map((module) => module.file)).toStrictEqual([
       "src/ai/adapters/anthropic/client.ts",
+      "src/ai/adapters/anthropic/deadline.ts",
       "src/ai/adapters/anthropic/errors.ts",
       "src/ai/adapters/anthropic/index.ts",
       "src/ai/adapters/anthropic/request.ts",

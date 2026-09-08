@@ -6,9 +6,12 @@ import type { LlmPort, LlmRequest } from "../../port";
 import {
   type AnthropicClientOptions,
   createAnthropicClient,
+  DEFAULT_DEADLINE_MS,
   DEFAULT_MAX_TOKENS,
   DEFAULT_MODEL,
+  MAX_DEADLINE_MS,
 } from "./client";
+import { requestSignal } from "./deadline";
 import { toLlmError } from "./errors";
 import { buildCreateParams, firstTextBlock } from "./request";
 
@@ -33,6 +36,9 @@ export interface AnthropicAdapterOptions extends Omit<
 
   /** @see DEFAULT_MAX_TOKENS */
   readonly maxTokens?: number;
+
+  /** @see DEFAULT_DEADLINE_MS */
+  readonly deadlineMs?: number;
 }
 
 /** The failure every request reports when no credential was configured. */
@@ -70,8 +76,24 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
     apiKey,
     model = DEFAULT_MODEL,
     maxTokens = DEFAULT_MAX_TOKENS,
+    deadlineMs = DEFAULT_DEADLINE_MS,
     ...clientOptions
   } = options;
+
+  // Thrown here, at wiring time, rather than left for `AbortSignal.timeout` to
+  // throw per request: the signal is armed outside every `try` in `generate`,
+  // and `LlmPort` promises that call resolves to a `Result` instead of
+  // rejecting. A deadline outside the platform's range is a mistake in the
+  // composition root, which is where a start-up failure points.
+  if (
+    !Number.isInteger(deadlineMs) ||
+    deadlineMs <= 0 ||
+    deadlineMs > MAX_DEADLINE_MS
+  ) {
+    throw new RangeError(
+      `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
+    );
+  }
 
   // Built once, at construction, so a missing key costs nothing per request and
   // the credential is read from this scope rather than kept on the port.
@@ -108,17 +130,19 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
         );
       }
 
+      // Armed here rather than at the top: every branch above returns without
+      // sending anything, so a request that never reaches the provider arms no
+      // timer at all.
+      const signal = requestSignal(deadlineMs, request.signal);
+
       let text: string | undefined;
       let stopReason: string | null;
       try {
-        const message = await client.messages.create(
-          params,
-          request.signal === undefined ? {} : { signal: request.signal },
-        );
+        const message = await client.messages.create(params, { signal });
         text = firstTextBlock(message.content);
         stopReason = message.stop_reason;
       } catch (reason) {
-        return err(toLlmError(reason, request.signal));
+        return err(toLlmError(reason, signal));
       }
 
       if (text === undefined) {
