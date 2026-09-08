@@ -1,0 +1,20 @@
+{
+  "extraKnownMarketplaces": {
+    "nextjs": {
+      "source": {
+        "source": "github",
+        "repo": "vercel/next.js"
+      }
+    },
+    "anthropic-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "nextjs@nextjs": true,
+    "claude-api@anthropic-agent-skills": true
+  }
+}
