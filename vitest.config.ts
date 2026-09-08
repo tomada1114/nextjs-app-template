@@ -21,7 +21,12 @@ const fixtures = "tests/fixtures/**";
 // than with what they import, which is exactly the case the short unit budget
 // is not meant to cover.
 const automationTests = [
+  // The two LLM suites read committed fixtures from disk, and ai-port.test.ts
+  // additionally reaches the provider under `LLM_RECORD=1` — a real network
+  // call, which no 5 s budget should have to accommodate.
+  "tests/ai-anthropic.test.ts",
   "tests/ai-layer-removal.test.ts",
+  "tests/ai-port.test.ts",
   "tests/boundaries.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",

@@ -1,0 +1,84 @@
+import Anthropic from "@anthropic-ai/sdk";
+
+/** The provider model this adapter calls when its caller names none. */
+export const DEFAULT_MODEL = "claude-sonnet-5";
+
+/** Ceiling on one answer's length, in tokens, when its caller names none. */
+export const DEFAULT_MAX_TOKENS = 1024;
+
+/**
+ * How long one attempt may wait for the response *headers*, in milliseconds.
+ *
+ * @remarks
+ * Headers, not the whole answer: the SDK arms this deadline around its inner
+ * fetch and clears it as soon as the `Response` resolves, so a provider that
+ * sends `200` and then stalls mid-body is not bounded by it. The
+ * `AbortSignal` on the request is what covers that half, which is the other
+ * reason the port takes one.
+ *
+ * The SDK's own default is ten minutes — a batch job's deadline rather than a
+ * web request's, where a route handler holding a connection open that long has
+ * already failed its caller.
+ */
+export const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * How many times a failed attempt is retried.
+ *
+ * @remarks
+ * Stated here rather than inherited, because the SDK's default of `2` multiplies
+ * against {@link DEFAULT_TIMEOUT_MS}: three attempts plus two backoff sleeps put
+ * a single stalled request past three minutes, which is not a deadline anyone
+ * chose. One retry still absorbs the transient failure a retry is for, and
+ * bounds the worst case at roughly two timeouts plus one sleep.
+ */
+export const DEFAULT_MAX_RETRIES = 1;
+
+/** Everything {@link createAnthropicClient} needs that is not a request. */
+export interface AnthropicClientOptions {
+  /** The credential, already known to be present and non-blank. */
+  readonly apiKey: string;
+
+  /** @see DEFAULT_TIMEOUT_MS */
+  readonly timeoutMs?: number;
+
+  /** @see DEFAULT_MAX_RETRIES */
+  readonly maxRetries?: number;
+
+  /**
+   * Substitutes the SDK's HTTP layer.
+   *
+   * @remarks
+   * This is the whole of the record/replay seam: the contract suite hands in a
+   * `fetch` that answers from a committed fixture, so the same adapter code
+   * under test in CI is the code that talks to the provider in production, and
+   * no test dependency is needed to arrange it.
+   */
+  readonly fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * Builds the vendor client.
+ *
+ * @remarks
+ * `apiKey` is required rather than optional on purpose. The SDK falls back to
+ * reading `process.env.ANTHROPIC_API_KEY` itself when handed `undefined`, and
+ * that fallback would make this file a second place the process reads its
+ * environment — `src/server/env.ts` is meant to be the only one. Taking a
+ * definite string closes it.
+ */
+export function createAnthropicClient(options: AnthropicClientOptions): Anthropic {
+  const {
+    apiKey,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    fetch,
+  } = options;
+
+  return new Anthropic({
+    apiKey,
+    timeout: timeoutMs,
+    maxRetries,
+    ...(fetch === undefined ? {} : { fetch }),
+  });
+}
