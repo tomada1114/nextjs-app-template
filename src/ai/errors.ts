@@ -56,11 +56,14 @@ export function asError(reason: unknown, fallback: string): Error {
  * Builds the {@link LlmError} an aborted request reports.
  *
  * @remarks
- * A deadline is not this layer's to invent: it belongs to the provider SDK's
- * own timeout option and to the `AbortSignal` the caller passes. What an
- * adapter owns is translating whatever that abort carried into the one error
- * vocabulary above, without losing the reason's identity — see
- * {@link asError}.
+ * A deadline *is* this layer's to enforce. Giving up early stays the caller's
+ * call, and stays the `AbortSignal` it passes; never hanging is the adapter's,
+ * because a caller is not obliged to pass a signal at all and `LlmPort.generate`
+ * promises to settle regardless — so an adapter composes a bound of its own over
+ * whatever transport it owns. What this function does is narrower than either:
+ * it translates whatever the abort carried into the one error vocabulary above
+ * without losing the reason's identity — see {@link asError} — so which deadline
+ * fired, the caller's or the adapter's, is readable on `cause`.
  */
 export function abortedLlmError(reason: unknown): LlmError {
   const cause = asError(reason, "The LLM request was aborted.");

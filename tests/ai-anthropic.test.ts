@@ -200,6 +200,50 @@ describe("createAnthropicAdapter when the abort lands after the response headers
   });
 });
 
+describe("createAnthropicAdapter when the provider stalls after the response headers", () => {
+  it("ends the request on its own deadline with no caller signal at all", async () => {
+    // The gap this closes. The SDK's `timeout` is armed around the inner fetch
+    // and cleared the moment the `Response` resolves, so a provider that sends
+    // 200 and then dribbles bytes is past it — `timeoutMs` here is deliberately
+    // far longer than the deadline to prove it is not what ends this request.
+    // With no signal supplied, nothing else could: before the adapter composed
+    // a deadline of its own, this promise never settled.
+    const result = await createAnthropicAdapter({
+      apiKey: "test-key",
+      maxRetries: 0,
+      timeoutMs: 60_000,
+      deadlineMs: 25,
+      fetch: headersThenStallFetch(),
+    }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+
+    const error = failureOf(result);
+    const cause = error.cause;
+
+    expect(error).toBeInstanceOf(LlmError);
+    expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    // `AbortSignal.timeout`'s own reason, which is what names the adapter's
+    // deadline rather than the caller's as the thing that fired.
+    expect(cause).toBeInstanceOf(Error);
+    expect((cause as Error).name).toBe("TimeoutError");
+  });
+
+  it("leaves the deadline unfired for a request that answers", async () => {
+    // The other half: the bound must not turn a working call into a failure,
+    // and a deadline that never fires must not keep the run alive either —
+    // `AbortSignal.timeout` is unref'd, which is why it is what composes it.
+    const { fetch } = respondWith(200, messageWithText('{"answer":"x"}'));
+
+    const result = await createAnthropicAdapter({
+      apiKey: "test-key",
+      maxRetries: 0,
+      deadlineMs: 60_000,
+      fetch,
+    }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+
+    expect(result).toStrictEqual({ ok: true, value: { answer: "x" } });
+  });
+});
+
 describe("createAnthropicAdapter builds the provider request", () => {
   it("sends the schema as a json_schema output format and the language as a system instruction", async () => {
     const { fetch, calls } = respondWith(200, messageWithText('{"answer":"x"}'));

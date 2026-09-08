@@ -12,9 +12,9 @@ export const DEFAULT_MAX_TOKENS = 1024;
  * @remarks
  * Headers, not the whole answer: the SDK arms this deadline around its inner
  * fetch and clears it as soon as the `Response` resolves, so a provider that
- * sends `200` and then stalls mid-body is not bounded by it. The
- * `AbortSignal` on the request is what covers that half, which is the other
- * reason the port takes one.
+ * sends `200` and then stalls mid-body is not bounded by it.
+ * {@link DEFAULT_DEADLINE_MS} is what covers that half, and it covers it
+ * whether or not the caller passed an `AbortSignal` of its own.
  *
  * The SDK's own default is ten minutes — a batch job's deadline rather than a
  * web request's, where a route handler holding a connection open that long has
@@ -33,6 +33,28 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
  * bounds the worst case at roughly two timeouts plus one sleep.
  */
 export const DEFAULT_MAX_RETRIES = 1;
+
+/**
+ * How long one whole `generate()` call may take, in milliseconds.
+ *
+ * @remarks
+ * Wall clock over the entire call — every attempt, every backoff sleep between
+ * them, and the body read — where {@link DEFAULT_TIMEOUT_MS} is per attempt and
+ * reaches only as far as the headers. A provider that answers `200` and then
+ * dribbles bytes is the case it exists for: nothing else settles that request,
+ * because the caller's `AbortSignal` is optional and the SDK's own timer has
+ * already been cleared.
+ *
+ * The number itself is not a new policy. {@link DEFAULT_MAX_RETRIES} already
+ * describes the intended worst case as roughly two timeouts plus one sleep;
+ * this is that bound enforced rather than merely described, so a request that
+ * answers today answers exactly as it did.
+ *
+ * Not an SDK option, unlike the two above: the SDK has nowhere to put a
+ * total-request bound, so the adapter composes it into the request's own
+ * `AbortSignal` instead.
+ */
+export const DEFAULT_DEADLINE_MS = 120_000;
 
 /** Everything {@link createAnthropicClient} needs that is not a request. */
 export interface AnthropicClientOptions {

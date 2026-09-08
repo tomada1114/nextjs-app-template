@@ -32,9 +32,11 @@ export interface LlmRequest<TSchema extends z.ZodType> {
    * Cancels the request.
    *
    * @remarks
-   * This is one half of the deadline; the other is the timeout an adapter
-   * configures on its own client. An adapter reports an abort as
-   * `ERR_LLM_TIMEOUT` and keeps the signal's `reason` on the error's `cause`.
+   * An *additional and earlier* deadline, not the only one: an implementation
+   * bounds its own transport whether or not a signal is passed, so this is how
+   * a caller gives up sooner than that bound rather than what keeps the call
+   * from hanging. An adapter reports an abort as `ERR_LLM_TIMEOUT` and keeps
+   * the signal's `reason` on the error's `cause`.
    */
   readonly signal?: AbortSignal;
 }
@@ -47,6 +49,13 @@ export interface LlmRequest<TSchema extends z.ZodType> {
  * {@link Result} whose error branch is an {@link LlmError}. That is what makes
  * the contract testable against a fake and a real provider with the same
  * assertions.
+ *
+ * It also *settles*. Bounding whatever transport it owns, so a provider that
+ * sends its headers and then stalls cannot leave the promise pending forever,
+ * is the implementation's obligation and not its caller's — `signal` above is
+ * an earlier deadline a caller may impose, never the only one there is. An
+ * adapter over a network client therefore composes a total-request deadline of
+ * its own; a fake that answers from memory has no transport and owes nothing.
  */
 export interface LlmPort {
   /**

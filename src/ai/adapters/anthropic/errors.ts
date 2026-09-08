@@ -60,11 +60,14 @@ function isAbortError(reason: unknown): boolean {
  * publishes.
  *
  * @remarks
- * `signal` is the caller's own, not the SDK's. The SDK reports an abort as its
- * `APIUserAbortError`, which carries a message of its own and not the reason
- * the caller passed to `abort()`; rebuilding the error from the signal is what
- * lets a caller compare `result.error.cause` against the reason it supplied,
- * by identity. See {@link abortedLlmError}.
+ * `signal` is the one the request was made under — the adapter's own deadline
+ * composed with the caller's signal when there was one — and never the SDK's
+ * internal controller, which aborts with no reason at all. The SDK reports an
+ * abort as its `APIUserAbortError`, which carries a message of its own and not
+ * the reason that ended the request; rebuilding the error from the signal is
+ * what lets a caller compare `result.error.cause` against the reason it
+ * supplied, by identity, and what carries a fired deadline's own
+ * `TimeoutError` through unchanged. See {@link abortedLlmError}.
  *
  * Order matters twice. `APIConnectionTimeoutError` and `APIUserAbortError` are
  * both `APIError` subclasses, so the general HTTP case has to come last; and
