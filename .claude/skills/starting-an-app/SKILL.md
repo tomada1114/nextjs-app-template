@@ -72,10 +72,13 @@ What goes into each site:
 - **The copyright holder** in `LICENSE`, and the same name wherever the README repeats
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
 - **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
-  `metadata`, which is the browser tab, and the `HomePage.title` key in every
-  `messages/*.json`, which is the page heading. This is the only site the reader of the
-  app sees, and the only one that is per-locale: each catalog gets the name written in
-  its own language.
+  `metadata`, which is the browser tab, and the `HomePage.title` key in
+  `messages/en.json` and `messages/ja.json`, which is the page heading. This is the only
+  reader-visible copy this checklist covers, and the only one that is per-locale: each
+  catalog gets the name written in its own language. Other reader-visible copy — the
+  `description` in that same `metadata` block, and the home page's body text in each
+  catalog's `HomePage.intro` and `HomePage.localeCount` — is deliberately not
+  inventoried here; review it by hand as part of the renaming project.
 
 Emptying `EXPECTED_INVENTORY` is the intended edit and is not weakening a gate. Widening
 `SKIPPED_DIRECTORIES` or `SKIPPED_FILES`, or dropping an entry from `PLACEHOLDERS`, to

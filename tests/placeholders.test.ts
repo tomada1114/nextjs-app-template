@@ -56,8 +56,14 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
  * The last two are the app's display name — what a browser tab and the page
  * heading read — which the package name and the slug do not cover: a project
  * that renamed everything machine-facing still greets its visitors as this
- * template. The Japanese one is the single non-English string in this suite,
- * and unavoidably so: the needle for a catalog value can only be that value.
+ * template. Coverage here is per known value, not per key: each entry is a
+ * catalog's current title string, so a `messages/*.json` added later with its
+ * own translated title contributes no row until that value is added to this
+ * list. The Japanese one is a knowing exception to AGENTS.md's English-only
+ * convention for tests: deriving it from `messages/ja.json`'s `HomePage.title`
+ * at runtime instead would make that inventory row self-fulfilling — it would
+ * still appear after a correct rename, so the list could never empty. Whether
+ * AGENTS.md should record this exception is filed separately.
  */
 const PLACEHOLDERS = [
   "my-package",
