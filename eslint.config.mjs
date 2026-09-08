@@ -214,11 +214,13 @@ export default defineConfig([
   },
   // --- zone boundaries -------------------------------------------------------
   //
-  // `src/` is four zones — `core`, `ai`, `server`, `app` — and the edges
-  // between them are what stop a later edit from collapsing them back into one
-  // tree. The three blocks below state those edges; `tests/boundaries.test.ts`
-  // asserts the same shape from the module graph, so deleting a block here
-  // still fails the suite.
+  // Four of `src/`'s zones — `core`, `ai`, `server`, `app` — have edges worth
+  // stating, and those edges are what stop a later edit from collapsing them
+  // back into one tree. The three blocks below state them;
+  // `tests/boundaries.test.ts` asserts the same shape from the module graph, so
+  // deleting a block here still fails the suite. `src/i18n/` carries no rule on
+  // purpose: it is a leaf every other zone may read, so it has no edge to
+  // protect.
   //
   // `no-restricted-imports` options replace rather than merge across config
   // objects, exactly like `no-restricted-syntax` (see NO_EXPORT_STAR above).
