@@ -93,7 +93,8 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
   } = options;
 
   // Resolved and range-checked at wiring time, not per request: see
-  // `resolveDeadlineMs`, which owns both the derivation and the failure.
+  // `resolveDeadlineMs`, which range-checks timeoutMs and maxRetries on their
+  // own terms before deriving from them, then owns the derivation itself.
   const deadlineMs = resolveDeadlineMs(explicitDeadlineMs, timeoutMs, maxRetries);
 
   // Built once, at construction, so a missing key costs nothing per request and

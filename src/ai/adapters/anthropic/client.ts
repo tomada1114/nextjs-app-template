@@ -109,7 +109,10 @@ export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number
 }
 
 /**
- * The largest value {@link AnthropicAdapterOptions.deadlineMs} may take.
+ * The largest value {@link AnthropicAdapterOptions.deadlineMs} may take —
+ * and, since a per-attempt timeout longer than the largest total bound the
+ * platform can ever arm could never be reached, {@link AnthropicClientOptions.timeoutMs}'s
+ * ceiling too.
  *
  * @remarks
  * `AbortSignal.timeout` takes an unsigned 32-bit delay and throws a
@@ -125,10 +128,16 @@ export interface AnthropicClientOptions {
   /** The credential, already known to be present and non-blank. */
   readonly apiKey: string;
 
-  /** @see DEFAULT_TIMEOUT_MS */
+  /**
+   * @see DEFAULT_TIMEOUT_MS
+   * @remarks Must be an integer in `1..MAX_DEADLINE_MS`; rejected otherwise.
+   */
   readonly timeoutMs?: number;
 
-  /** @see DEFAULT_MAX_RETRIES */
+  /**
+   * @see DEFAULT_MAX_RETRIES
+   * @remarks Must be a non-negative integer; rejected otherwise.
+   */
   readonly maxRetries?: number;
 
   /**

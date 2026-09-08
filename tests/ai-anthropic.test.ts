@@ -497,13 +497,45 @@ describe("createAnthropicAdapter derives its default deadline from timeoutMs and
       }),
     ).not.toThrow();
   });
+});
 
-  it("rejects maxRetries: -1 via the negative deadline it derives", () => {
-    // (-1 + 1) * 60_000 + (-1) * 8_000 + 2_000 = -6_000, refused by the same
-    // `deadlineMs <= 0` check an explicit value would hit.
+describe("createAnthropicAdapter rejects timeoutMs and maxRetries on their own terms (#72)", () => {
+  it.each([0, -1, 100.5, Number.NaN, Number.POSITIVE_INFINITY, 4_294_967_296])(
+    "rejects timeoutMs %o naming the option, not the deadline it would derive",
+    (timeoutMs: number) => {
+      expect(() => createAnthropicAdapter({ apiKey: "test-key", timeoutMs })).toThrow(
+        /timeoutMs/,
+      );
+    },
+  );
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects maxRetries %o naming the option, not the deadline it would derive",
+    (maxRetries: number) => {
+      expect(() => createAnthropicAdapter({ apiKey: "test-key", maxRetries })).toThrow(
+        /maxRetries/,
+      );
+    },
+  );
+
+  it("rejects maxRetries: 0 nowhere — it is the valid boundary the rest of this suite relies on", () => {
     expect(() =>
-      createAnthropicAdapter({ apiKey: "test-key", maxRetries: -1 }),
-    ).toThrow(RangeError);
+      createAnthropicAdapter({ apiKey: "test-key", maxRetries: 0 }),
+    ).not.toThrow();
+  });
+
+  it("rejects an invalid maxRetries even behind an explicit deadlineMs that would otherwise skip the derivation entirely", () => {
+    // Without this option-level check, this combination constructs cleanly:
+    // an explicit deadlineMs skips `defaultDeadlineMs`, so nothing else ever
+    // looks at maxRetries, and `-1` reaches `new Anthropic({ maxRetries: -1 })`
+    // silently turning retries off.
+    expect(() =>
+      createAnthropicAdapter({
+        apiKey: "test-key",
+        maxRetries: -1,
+        deadlineMs: 60_000,
+      }),
+    ).toThrow(/maxRetries/);
   });
 });
 

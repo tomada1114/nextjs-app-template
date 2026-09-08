@@ -1,6 +1,44 @@
 import { defaultDeadlineMs, MAX_DEADLINE_MS } from "./client";
 
 /**
+ * Rejects `timeoutMs` and `maxRetries` on their own terms, before either feeds
+ * the deadline derivation.
+ *
+ * @remarks
+ * An explicit `deadlineMs` skips {@link defaultDeadlineMs} entirely — #65's
+ * design, which {@link resolveDeadlineMs}'s own remarks describe — so that path
+ * is the *only* place these two options are looked at on their own. Without
+ * this check, `{ maxRetries: -1, deadlineMs: 60_000 }` constructs cleanly and
+ * reaches `new Anthropic({ maxRetries: -1 })`, where the SDK's
+ * `retriesRemaining > 0` is never true and retries are silently off.
+ *
+ * This is deliberately not a cross-check against `deadlineMs`: an individually
+ * valid `timeoutMs`/`maxRetries` pair that derives to something unarmable is
+ * still the derived-deadline check's job below, not this one's.
+ *
+ * `timeoutMs` shares {@link MAX_DEADLINE_MS} as its own ceiling: a per-attempt
+ * timeout larger than the largest total bound the platform can ever arm could
+ * never be reached anyway. `maxRetries` has no ceiling beyond being a
+ * non-negative integer — `0` is valid and already relied on by this module's
+ * own tests; this issue asks only that the option be checked, not that a retry
+ * policy be invented.
+ *
+ * @throws A `RangeError` naming whichever option the caller passed.
+ */
+function validateAttemptOptions(timeoutMs: number, maxRetries: number): void {
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_DEADLINE_MS) {
+    throw new RangeError(
+      `timeoutMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(timeoutMs)}.`,
+    );
+  }
+  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+    throw new RangeError(
+      `maxRetries must be a non-negative integer; received ${String(maxRetries)}.`,
+    );
+  }
+}
+
+/**
  * The total deadline one adapter runs its requests under.
  *
  * @remarks
@@ -11,6 +49,11 @@ import { defaultDeadlineMs, MAX_DEADLINE_MS } from "./client";
  * as a *rejected* `generate()`, the one thing `LlmPort` promises never happens.
  * A deadline out of range is a composition-root mistake, and a start-up failure
  * is where that points.
+ *
+ * `timeoutMs` and `maxRetries` are checked on their own terms first, via
+ * {@link validateAttemptOptions} — see its remarks for why that cannot simply be
+ * folded into the check below. What follows here catches the other case: a
+ * `deadlineMs`, explicit or derived, that is itself out of range.
  *
  * `explicit` wins outright when it is given, even when it is shorter than one
  * attempt's `timeoutMs`: shortest-wins is what composing a deadline into an
@@ -25,6 +68,8 @@ export function resolveDeadlineMs(
   timeoutMs: number,
   maxRetries: number,
 ): number {
+  validateAttemptOptions(timeoutMs, maxRetries);
+
   const deadlineMs = explicit ?? defaultDeadlineMs(timeoutMs, maxRetries);
 
   if (
