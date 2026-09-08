@@ -70,17 +70,38 @@ function scan(source: string): Line[] {
   return lines;
 }
 
-/** The lines nested under `lines[headerIndex]`. */
+/**
+ * The lines nested under `lines[headerIndex]`.
+ *
+ * @remarks
+ * Indentation is not the whole story. A block sequence may be written at its
+ * key's own column (`steps:` followed by `- uses:` in the same column), which
+ * is legal YAML that reads as no body at all when only more deeply indented
+ * lines count — and a rule handed an empty body passes without checking
+ * anything. So a key awaiting a block value claims same-column `- ` entries
+ * too. A header that is itself a sequence entry claims none: the next entry at
+ * that column is its sibling, not its child, and swallowing it would merge
+ * every step of a job into the first one.
+ */
 function blockOf(lines: Line[], headerIndex: number): Line[] {
   const header = lines[headerIndex];
   if (header === undefined) {
     return [];
   }
+  const ownsSameColumnSequence = header.text.endsWith(":");
 
   const body: Line[] = [];
   for (let index = headerIndex + 1; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line === undefined || line.indent <= header.indent) {
+    if (line === undefined) {
+      break;
+    }
+    const nested =
+      line.indent > header.indent ||
+      (ownsSameColumnSequence &&
+        line.indent === header.indent &&
+        line.text.startsWith("- "));
+    if (!nested) {
       break;
     }
     body.push(line);
@@ -144,30 +165,6 @@ function eventName(entry: string): string | undefined {
 }
 
 /**
- * The lines an `on:` block is written across.
- *
- * @remarks
- * {@link blockOf} is not enough on its own: a block sequence may be written at
- * its key's own column (`on:\n- push`), which is legal YAML that reads as no
- * body at all when only more deeply indented lines count.
- */
-function triggerBlock(lines: Line[], on: Line): Line[] {
-  const body: Line[] = [];
-  for (let index = lines.indexOf(on) + 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (
-      line === undefined ||
-      (line.indent <= on.indent &&
-        !(line.indent === on.indent && line.text.startsWith("- ")))
-    ) {
-      break;
-    }
-    body.push(line);
-  }
-  return body;
-}
-
-/**
  * Every event `on:` declares, in whichever of its four shapes it is written:
  * an inline scalar, a flow collection, a block sequence, or a mapping.
  *
@@ -192,7 +189,7 @@ function triggerNames(lines: Line[]): Trigger[] {
     return entries.flatMap((entry) => named(eventName(entry), on));
   }
 
-  const events = triggerBlock(lines, on);
+  const events = blockOf(lines, lines.indexOf(on));
   const eventIndent = events[0]?.indent;
   return events.flatMap((line) =>
     line.indent === eventIndent ? named(eventName(line.text), line) : [],
@@ -521,8 +518,22 @@ function lintWorkflow(source: string): Problem[] {
       }
     }
 
+    // A rule that cannot see its input must not report the safety it never
+    // checked. Every step rule below reads `stepsOf`, so a job whose steps the
+    // scanner cannot reach is a hole in all of them at once, and is reported as
+    // one rather than passing. A job that calls a reusable workflow declares
+    // `uses:` on itself and has no steps to find.
+    const jobSteps = stepsOf(job);
+    if (jobSteps.length === 0 && jobKey(job, "uses") === undefined) {
+      report(
+        "ERR_WORKFLOW_JOB_STEPS_UNREADABLE",
+        job.header.number,
+        `Job "${job.name}" declares no steps this lint can read, so every step rule would pass without inspecting anything.`,
+      );
+    }
+
     // Checkout must not leave a usable credential behind for later steps.
-    for (const step of stepsOf(job)) {
+    for (const step of jobSteps) {
       const checkout = usesOf(step).find(({ ref }) =>
         ref.startsWith("actions/checkout@"),
       );
@@ -709,6 +720,41 @@ const MULTI_LINE_RUN_WORKFLOW = CLEAN_WORKFLOW.replace(
   ].join("\n"),
 );
 
+/**
+ * The same workflow with its `steps:` sequence written at the key's own column.
+ *
+ * @remarks
+ * A block sequence may start in the same column as the key it belongs to, so
+ * this is the same workflow GitHub runs. It is also the spelling a body read by
+ * indentation alone sees as no steps at all, which would let every step rule
+ * pass without looking at anything.
+ */
+const STEPS_AT_KEY_COLUMN_WORKFLOW = `name: Example
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: \${{ github.workflow }}-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+`;
+
 function codesOf(problems: Problem[]): string[] {
   return problems.map((problem) => problem.code);
 }
@@ -829,6 +875,41 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CHECKOUT_CREDENTIALS",
     ]);
+  });
+
+  it("accepts a workflow whose steps sequence sits at its key's own column", () => {
+    expect(lintWorkflow(STEPS_AT_KEY_COLUMN_WORKFLOW)).toEqual([]);
+  });
+
+  it("rejects a checkout that keeps its credentials in a steps sequence at its key's own column", () => {
+    const source = withoutLine(
+      STEPS_AT_KEY_COLUMN_WORKFLOW,
+      "persist-credentials: false",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CHECKOUT_CREDENTIALS",
+    ]);
+  });
+
+  it("rejects a job whose steps it cannot read", () => {
+    // Reading nothing must not read as nothing being wrong: with no steps in
+    // hand every step rule below passes without having looked at anything.
+    const source = CLEAN_WORKFLOW.slice(0, CLEAN_WORKFLOW.indexOf("    steps:\n"));
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_JOB_STEPS_UNREADABLE",
+    ]);
+  });
+
+  it("does not ask a job that calls a reusable workflow for steps it cannot have", () => {
+    // `uses:` on the job itself is the whole job; the timeout the rule above
+    // wants is a separate question and stays in the fixture to isolate this one.
+    const source =
+      CLEAN_WORKFLOW.slice(0, CLEAN_WORKFLOW.indexOf("    steps:\n")) +
+      "    uses: ./.github/workflows/reusable.yml\n";
+
+    expect(lintWorkflow(source)).toEqual([]);
   });
 
   it("rejects a pull-request workflow with no concurrency group", () => {
@@ -1004,6 +1085,24 @@ describe("lintWorkflow", () => {
     expect(lintWorkflow(source)).toEqual([]);
   });
 
+  it("rejects setup-node running first in a steps sequence at its key's own column", () => {
+    const source = STEPS_AT_KEY_COLUMN_WORKFLOW.replace(
+      "    - name: Install dependencies\n",
+      [
+        "    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0",
+        "      with:",
+        "        node-version-file: .node-version",
+        "",
+        "    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10",
+        "",
+        "    - name: Install dependencies",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_SETUP_ORDER"]);
+  });
+
   it("rejects a multi-line run block with nothing making it fail closed", () => {
     const source = CLEAN_WORKFLOW.replace(
       "        run: pnpm install --frozen-lockfile\n",
@@ -1078,6 +1177,23 @@ describe("lintWorkflow", () => {
     const source = MULTI_LINE_RUN_WORKFLOW.replace(
       "        run: |\n",
       '        shell: "bash --noprofile --norc -eo pipefail -u {0}"\n        run: |\n',
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("reads a step's own shell out of a steps sequence at its key's own column", () => {
+    // The blindness cuts the other way here: a step the scanner never finds has
+    // no shell either, so a workflow that is safe gets reported as unsafe.
+    const source = STEPS_AT_KEY_COLUMN_WORKFLOW.replace(
+      "      run: pnpm install --frozen-lockfile\n",
+      [
+        '      shell: "bash --noprofile --norc -eo pipefail -u {0}"',
+        "      run: |",
+        "        pnpm install --frozen-lockfile",
+        "        node ./scripts/after.mjs",
+        "",
+      ].join("\n"),
     );
 
     expect(lintWorkflow(source)).toEqual([]);
@@ -1486,6 +1602,22 @@ describe("package.json is the only place the pnpm version is written", () => {
         "          version: 11.18.0",
         "",
         "      - name: Install dependencies",
+        "",
+      ].join("\n"),
+    );
+
+    expect(pnpmSetupVersions(stated)).toEqual(["11.18.0"]);
+  });
+
+  it("would notice a version stated in a steps sequence at its key's own column", () => {
+    const stated = STEPS_AT_KEY_COLUMN_WORKFLOW.replace(
+      "    - name: Install dependencies\n",
+      [
+        "    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10",
+        "      with:",
+        "        version: 11.18.0",
+        "",
+        "    - name: Install dependencies",
         "",
       ].join("\n"),
     );

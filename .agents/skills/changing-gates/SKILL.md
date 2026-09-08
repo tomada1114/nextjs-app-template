@@ -66,7 +66,10 @@ own `ERR_WORKFLOW_*` code:
   having no SHA to pin.
 - a missing top-level `permissions`, or one wider than `{}` or `contents: read`.
 - a job that declares no `permissions` of its own, or grants `write-all`.
-- a workflow that declares no jobs at all.
+- a workflow that declares no jobs at all, and a job whose steps the scanner cannot
+  reach — every step rule reads the same step list, so a job it cannot read is a hole in
+  all of them at once and is reported rather than passed. A job that calls a reusable
+  workflow through its own `uses:` is exempt, having no steps to find.
 - a job with no `timeout-minutes`. A step-level timeout does not substitute.
 - an `actions/checkout` step without `persist-credentials: false`.
 - `actions/setup-node` ordered before `pnpm/action-setup`, whose failure mode is a
@@ -78,6 +81,13 @@ own `ERR_WORKFLOW_*` code:
   fail-closed `defaults.run.shell`. `shell: bash` is not enough: it leaves `-u` off.
 - a `pnpm … install` without `--frozen-lockfile`, which would make every other gate
   advisory.
+
+Reading each of those blocks is `blockOf`, and indentation is not all it goes on: YAML
+lets a block sequence start in the same column as the key it belongs to, so a key
+awaiting a block value claims same-column `- ` entries as well as more deeply indented
+ones. That is what keeps `steps:` written at its own column from reading as a job with
+no steps, and it is why a fix for one such blind spot belongs in `blockOf` rather than
+in the caller that noticed it.
 
 Those rules hold for **every** workflow this repository ever gains, a deploy workflow
 included: the suite runs `lintWorkflow` over whatever `.github/workflows/` contains. Two
