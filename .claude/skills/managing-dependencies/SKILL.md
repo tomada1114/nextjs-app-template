@@ -151,7 +151,10 @@ the file for the current values rather than trusting a number copied here.
   `parent>child` edge, and adding one asserts the package really does work against the
   version it did not declare — it is not a way to quiet an inconvenient failure.
   `overrides` is the same shape of exception for a resolved version, with the same
-  burden: name the single edge, say why, and say what would let it be dropped.
+  burden: prefer naming the single `parent>child` edge, say why, and say what would let
+  it be dropped. A package-wide override is the exception to that, and needs its own
+  reason in the comment — that several independent edges reach the bad version, so an
+  edge list would be incomplete the moment a new transitive dependency reopens it.
 - `minimumReleaseAgeStrict` and `minimumReleaseAgeIgnoreMissingTime` close two specific
   bypasses of the cooldown above: an already-lockfiled version skipping the check, and
   registry metadata with no publish time being treated as old enough, respectively.
