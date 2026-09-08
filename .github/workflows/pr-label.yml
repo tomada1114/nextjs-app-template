@@ -16,12 +16,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # The one job in this repository that writes anything. It writes a label
-      # and nothing else, and a fork PR's token cannot even do that — see the
-      # fallback below. `pull_request` (never `pull_request_target`) is used, so
-      # no fork code runs with this token.
-      pull-requests: write # to add one label to the pull request
+      # The one job in this repository that writes anything. It writes labels
+      # and nothing else. `pull_request` (never `pull_request_target`) is used,
+      # so GitHub downgrades this token to read-only for a fork PR regardless
+      # of the `write` requested here — see the fallback below. For a
+      # same-repo branch PR the token genuinely is writable, so the checkout
+      # step below deliberately runs the *base* branch's copy of
+      # scripts/label-pr.mjs rather than the pull request's own — otherwise a
+      # PR could rewrite the very script that runs with this write access.
+      pull-requests: write # to add/remove labels on the pull request
     steps:
+      # Checked out at the base branch's SHA, not the pull request's head:
+      # this job passes GH_TOKEN into scripts/label-pr.mjs below, so running
+      # the PR's own copy of that script would let a same-repo PR modify the
+      # script that executes with its own write access. Deliberate
+      # consequence: a change to the script itself is exercised only after it
+      # merges to the base branch, never by the PR that makes it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: |
+            scripts
+            .node-version
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      # The mapping and the stale-label removal both live in scripts/label-pr.mjs
+      # (tested by tests/label-pr.test.ts) rather than in this shell step, so
+      # `pnpm check:source`'s scripts/** coverage floor covers the logic. This
+      # script only ever creates or updates a label the mapping resolves to; the
+      # labels themselves are declared in .github/labels.yml and
+      # created/updated ahead of time by `pnpm repo:labels`
+      # (scripts/sync-labels.mjs), run manually by a maintainer.
       - name: Apply the label matching the PR title type
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,25 +59,14 @@ jobs:
           # Read through the environment, never interpolated into the script:
           # a PR title is attacker-controlled text.
           PR_TITLE: ${{ github.event.pull_request.title }}
+        # Guarded because the checkout above is pinned to the base branch: a
+        # pull request opened against a base that predates this script -- the
+        # one introducing it, most of all -- would otherwise fail the job on a
+        # missing module. Labelling is best effort and never fails a check.
+        shell: bash -euo pipefail {0}
         run: |
-          set -euo pipefail
-          type="${PR_TITLE%%:*}"
-          type="${type%%(*}"
-          case "$type" in
-            feat) label=enhancement ;;
-            fix) label=bug ;;
-            docs) label=documentation ;;
-            chore) label=chore ;;
-            ci) label=ci ;;
-            deps) label=dependencies ;;
-            *) echo "No label mapping for type: $type"; exit 0 ;;
-          esac
-          # Labels are declared in .github/labels.yml and created/updated ahead
-          # of time by `pnpm repo:labels` (scripts/sync-labels.mjs), run
-          # manually by a maintainer — this job only applies one, it never
-          # creates one.
-          # Best effort: never fail the check over a label. A fork PR's
-          # read-only token is one reason this can fail; a label that has not
-          # been synced yet (`pnpm repo:labels`) is another.
-          gh pr edit "$PR_NUMBER" --add-label "$label" \
-            || echo "::notice::Could not apply label '$label' (missing on the repository, or a fork PR's read-only token)."
+          if [ ! -f scripts/label-pr.mjs ]; then
+            echo "::notice::scripts/label-pr.mjs is not on the base branch yet; skipping labelling."
+            exit 0
+          fi
+          node scripts/label-pr.mjs
