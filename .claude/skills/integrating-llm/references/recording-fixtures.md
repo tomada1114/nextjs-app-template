@@ -43,10 +43,10 @@ LLM_RECORD=1 pnpm exec vitest run tests/ai-port.test.ts
 ```
 
 `describe.runIf(isRecording())` at the bottom of `tests/ai-port.test.ts` is the only
-block that runs; without `LLM_RECORD=1` it is skipped entirely. The credential comes
-from your own environment (`ANTHROPIC_API_KEY`), which `.env.example` names and
-`src/server/env.ts` declares — never read a `.env` file to get one, and never put a key
-on a command line.
+block that reaches the provider — the replayed suites above it run either way — and
+without `LLM_RECORD=1` it is skipped entirely. The credential comes from your own
+environment (`ANTHROPIC_API_KEY`), which `.env.example` names and `src/server/env.ts`
+declares — never read a `.env` file to get one, and never put a key on a command line.
 
 Two properties of the recorder are worth knowing before you use it:
 

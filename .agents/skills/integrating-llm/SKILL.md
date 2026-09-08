@@ -45,11 +45,12 @@ and the fake is what the contract suite and `pnpm dev` run on.
 
 `@anthropic-ai/*` is importable **only** under `src/ai/adapters/anthropic/`. Enforced
 by: `eslint.config.mjs`'s `boundaries/*` blocks, asserted again from the module graph by
-`tests/boundaries.test.ts`. Those gates cover every zone _outside_ `src/ai/`; inside the
-layer the rule is yours to hold, and that half matters most — `src/ai/port.ts`,
-`errors.ts`, `index.ts` and the fake adapter must stay SDK-free, or the port stops being
-an interface a second vendor could implement. `src/ai/index.ts` is the layer's whole
-surface, and `src/server/composition.ts` the single line naming a vendor.
+`tests/boundaries.test.ts`. Those gates cover `src/core/`, `src/app/` and `src/server/`
+and nothing else — not `src/i18n/`, not `src/proxy.ts`, and not inside `src/ai/` itself,
+where the rule is yours to hold and matters most: `src/ai/port.ts`, `errors.ts`,
+`index.ts` and the fake adapter must stay SDK-free, or the port stops being an interface
+a second vendor could implement. `src/ai/index.ts` is the layer's whole surface, and
+`src/server/composition.ts` the single line naming a vendor.
 
 ## Two layers of structured output, and only one is guaranteed
 
@@ -92,9 +93,10 @@ adapter may never assume someone else will time it out. Three bounds compose:
   headers**. The SDK clears it the moment the `Response` resolves, so a provider that
   answers `200` and then dribbles bytes is already past it. `DEFAULT_MAX_RETRIES` is
   pinned in the same file because the SDK's own default multiplies against that timeout.
-- **The adapter's own total deadline** — `DEFAULT_DEADLINE_MS`, armed per request by
-  `requestSignal` in `src/ai/adapters/anthropic/deadline.ts` — covers the whole call,
-  every attempt and the body read, and covers it with no caller signal at all.
+- **The adapter's own total deadline** — `DEFAULT_DEADLINE_MS`, declared in that same
+  `client.ts` and armed per request by `requestSignal` in
+  `src/ai/adapters/anthropic/deadline.ts` — covers the whole call, every attempt and the
+  body read, and covers it with no caller signal at all.
 - **The caller's `AbortSignal`** is an _additional and earlier_ deadline layered on top,
   never the only one there is.
 

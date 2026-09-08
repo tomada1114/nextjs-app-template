@@ -11,10 +11,10 @@ under the per-file budget `eslint.config.mjs` sets.
 review record it owes is settled before the code, not after. **REQUIRED:**
 `writing-tests` for the contract suite's own conventions.
 
-The adapter itself is the smaller half of this work. The larger half is the six gate and
+The adapter itself is the smaller half of this work. The larger half is the gate and
 boundary files that assert against the AI layer's shape, listed under "The gates that
-know the vendor" below; each one names `@anthropic-ai` because there has only ever been
-one vendor, and each needs the second one added rather than substituted.
+know the vendor" below; each was written when there had only ever been one vendor, so
+each needs the second one added rather than substituted.
 
 ## The adapter
 
@@ -47,8 +47,10 @@ describeLlmPortContract("createMyAdapter", {
   succeeds: () => replaying("success"),
   // A fixture whose answer does not match CONTRACT_SCHEMA.
   returnsInvalidOutput: () => replaying("invalid-output"),
-  // One port per LlmErrorCode, provoked however that vendor produces it.
-  failsWith: (code) => replaying(FIXTURE_FOR_CODE[code]),
+  // One port per LlmErrorCode, provoked however that vendor produces it — a
+  // timeout is a property of the connection rather than of a response, so it
+  // has no fixture and is arranged with `neverAnswering()` and a short timeout.
+  failsWith: (code) => portFor(code),
   // A fetch that never resolves, under a timeout longer than the suite budget.
   neverAnswers: () => neverAnswering(),
 });
@@ -75,7 +77,10 @@ shared contract.
   to it. That last failure is intended; it is how a new module is noticed at all.
 - `tests/ai-layer-removal.test.ts` — `AI_LAYER_TOKENS` gains the new package name, and
   the new environment variable name if there is one. Without that, a file naming the new
-  vendor is invisible to the removal check.
+  vendor is invisible to the removal check. `REMOVED_PATHS` gains the adapter's own
+  suite, beside `tests/ai-anthropic.test.ts`: it reads `tests/fixtures/llm` and imports
+  `tests/llm-replay.ts`, so a suite left off that list fails this test as a surviving
+  file naming a removed one.
 - `src/server/env.ts` and `.env.example` — a second credential is a second name in the
   schema and a matching line in the example. `tests/server-env.test.ts` asserts the
   correspondence.
