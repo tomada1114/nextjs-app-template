@@ -133,11 +133,11 @@ glob to either narrows it in a way nothing reports. When a new extension enters 
 ## What `check:staged` actually covers
 
 `scripts/check-staged.mjs` inspects the git index: for each staged change it classifies
-the **path** through `scripts/lib/guard/paths.mjs`'s `checkRead` (the `.env*` and
-`secrets/**` shapes) and, when the path passes, the staged **blob content** through
-`scripts/lib/guard/credentials.mjs`'s `checkCredentials`. That is the whole of its
-scope. It judges nothing about whether a commit weakens a gate — that is the pull
-request's job.
+the **path** through `scripts/lib/guard/paths.mjs`'s `checkRead` (the `.env*`,
+`secrets/**`, and `.claude/settings.local.json` shapes) and, when the path passes, the
+staged **blob content** through `scripts/lib/guard/credentials.mjs`'s
+`checkCredentials`. That is the whole of its scope. It judges nothing about whether a
+commit weakens a gate — that is the pull request's job.
 
 Two properties are worth knowing before relying on it or editing it:
 

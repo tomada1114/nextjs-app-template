@@ -51,6 +51,16 @@ describe("paths: checkRead", () => {
     expect(checkRead(".claude/settings.local.json")).toMatch(/settings\.local\.json/);
   });
 
+  it.each([
+    ["an absolute path", "/Users/dev/repo/.claude/settings.local.json"],
+    ["a nested path", "packages/app/.claude/settings.local.json"],
+  ])("blocks the personal .claude/settings.local.json via %s", (_label, path) => {
+    // An agent's Read call arrives as an absolute path, and a checkout can
+    // sit under any directory — the rule matches by trailing segments, the
+    // same way its `.env*` and `secrets/` siblings do, so it still fires.
+    expect(checkRead(path)).toMatch(/settings\.local\.json/);
+  });
+
   it("allows the shared, committed .claude/settings.json", () => {
     expect(checkRead(".claude/settings.json")).toBeNull();
   });
@@ -60,9 +70,9 @@ describe("paths: checkRead", () => {
   });
 
   it("does not block a settings.local.json outside .claude/", () => {
-    // The rule is anchored to the exact repository-root path `.gitignore`
-    // carries, not to the basename alone — a nested or differently-placed
-    // file of the same name is not this rule's concern.
+    // The rule matches by trailing segments, not by basename alone — a
+    // `settings.local.json` whose immediate parent is not `.claude/` is not
+    // this rule's concern.
     expect(checkRead("some/other/settings.local.json")).toBeNull();
   });
 });
