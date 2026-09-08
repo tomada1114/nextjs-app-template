@@ -105,6 +105,39 @@ caller. `src/server/handlers/ask.ts` maps codes to statuses through a `satisfies
 so an added code fails to compile rather than falling through to a default.
 **BACKGROUND:** `designing-errors` for the code vocabulary itself.
 
+### Who may call it, and how often
+
+An endpoint under `src/app/api/` has nothing in front of it. `src/proxy.ts`'s matcher
+excludes `api` outright, so no middleware runs; whatever the handler does not check, is
+not checked. Two consequences, and they are answered differently.
+
+**Authentication is a schema rule, not a per-request decision.** `src/server/env.ts`
+requires `API_ACCESS_KEY` as soon as any billed provider credential
+(`PROVIDER_CREDENTIAL_NAMES`, today just `ANTHROPIC_API_KEY`) is configured, so a
+deployment that pays for its answers cannot boot with the endpoint open —
+`readServerEnv` throws and the server stops as it starts. `src/server/composition.ts`
+passes the value down and `src/server/handlers/ask.ts` compares it, in constant time,
+against the caller's `Authorization: Bearer` credential **before** the body is read and
+before the port is reached; a mismatch is `401 ERR_UNAUTHORIZED` with a
+`WWW-Authenticate: Bearer` challenge and a fixed sentence. Adding a second provider
+means adding its name to that list and nothing else — write any new gate the same way,
+keyed off the list rather than off one variable, or it silently stops applying the
+moment the vendor changes.
+
+The zero-credential quick start is untouched by all of this: with the fake adapter and
+no provider key, nothing is required and the endpoint answers anyone, which is the
+promise `pnpm dev` makes.
+
+**This template ships no rate limit and no concurrency limit, and that is deliberate.**
+Doing it properly needs a store shared across every instance — a Redis, a database row,
+a platform primitive — and which one is a deployment decision this template cannot make
+for you. So an access key holder can still spend without bound, and a key that leaks is
+a bill. When you add one, it goes in the same place the access-key check does: at the
+top of the handler in `src/server/handlers/ask.ts`, ahead of `llm.generate`, with the
+store injected through `AskHandlerDependencies` like every other dependency — never read
+from `process.env` in the handler, and never in `src/proxy.ts`, which does not run for
+`api` paths at all.
+
 The endpoint all of this is illustrated with is the AI layer's only caller, so removing
 that layer deletes `src/app/api/` and `src/server/composition.ts` outright. The pattern
 above outlives them — the first endpoint of your own restores the composition root — but
