@@ -86,16 +86,20 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * which would make the expected value agree with the thing under test.
  *
  * Only the authored `.agents/skills/` half is read; the `.claude/skills/`
- * entry beside it names the same skill. A nested path under a skill
- * contributes nothing, since its last segment is not a skill name.
+ * entry beside it names the same skill. The *first* segment is the name, so an
+ * entry written as a file or a subdirectory rather than as the skill directory
+ * — `.agents/skills/foo/SKILL.md` — still yields `foo` rather than nothing.
+ * Taking the last segment there would yield `SKILL.md`, and rejecting it would
+ * reopen this list's own hole for the next skill removed: the guard below
+ * cannot catch that, because a name never derived leaves the list unchanged.
  */
-const REMOVED_SKILL_NAMES = REMOVED_PATHS.flatMap((removed) => {
-  if (!removed.startsWith(AUTHORED_SKILLS_ROOT)) {
-    return [];
-  }
-  const name = removed.slice(AUTHORED_SKILLS_ROOT.length);
-  return name.includes("/") ? [] : [name];
-});
+const REMOVED_SKILL_NAMES = [
+  ...new Set(
+    REMOVED_PATHS.filter((removed) => removed.startsWith(AUTHORED_SKILLS_ROOT)).map(
+      (removed) => removed.slice(AUTHORED_SKILLS_ROOT.length).split("/")[0] ?? "",
+    ),
+  ),
+].filter((name) => name !== "");
 
 /**
  * Files that survive the removal but have to be edited by it, whose subject is
