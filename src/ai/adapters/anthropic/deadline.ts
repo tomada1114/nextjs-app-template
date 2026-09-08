@@ -1,3 +1,47 @@
+import { defaultDeadlineMs, MAX_DEADLINE_MS } from "./client";
+
+/**
+ * The total deadline one adapter runs its requests under.
+ *
+ * @remarks
+ * Resolved once, at construction, and validated there rather than left for
+ * {@link requestSignal} to throw per request. `AbortSignal.timeout` rejects a
+ * delay outside an unsigned 32-bit range with a `RangeError`, and the signal is
+ * armed outside every `try` in `generate` — so an unchecked value would surface
+ * as a *rejected* `generate()`, the one thing `LlmPort` promises never happens.
+ * A deadline out of range is a composition-root mistake, and a start-up failure
+ * is where that points.
+ *
+ * `explicit` wins outright when it is given, even when it is shorter than one
+ * attempt's `timeoutMs`: shortest-wins is what composing a deadline into an
+ * `AbortSignal` means, and a caller asking for a hard bound below its
+ * per-attempt timeout is asking for exactly the right thing. The two messages
+ * differ for the same reason — only one of these is a value the caller typed.
+ *
+ * @throws A `RangeError` naming whichever option the caller can act on.
+ */
+export function resolveDeadlineMs(
+  explicit: number | undefined,
+  timeoutMs: number,
+  maxRetries: number,
+): number {
+  const deadlineMs = explicit ?? defaultDeadlineMs(timeoutMs, maxRetries);
+
+  if (
+    !Number.isInteger(deadlineMs) ||
+    deadlineMs <= 0 ||
+    deadlineMs > MAX_DEADLINE_MS
+  ) {
+    throw new RangeError(
+      explicit === undefined
+        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is outside 1..${String(MAX_DEADLINE_MS)}. Pass deadlineMs to bound the call directly.`
+        : `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
+    );
+  }
+
+  return deadlineMs;
+}
+
 /**
  * The signal one request is actually made under.
  *

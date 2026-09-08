@@ -10,10 +10,8 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT_MS,
-  defaultDeadlineMs,
-  MAX_DEADLINE_MS,
 } from "./client";
-import { requestSignal } from "./deadline";
+import { requestSignal, resolveDeadlineMs } from "./deadline";
 import { toLlmError } from "./errors";
 import { buildCreateParams, firstTextBlock } from "./request";
 
@@ -39,7 +37,14 @@ export interface AnthropicAdapterOptions extends Omit<
   /** @see DEFAULT_MAX_TOKENS */
   readonly maxTokens?: number;
 
-  /** @see defaultDeadlineMs. Omitted, derived from timeoutMs/maxRetries; given, wins outright even when shorter than timeoutMs. */
+  /**
+   * The whole call's wall-clock bound.
+   *
+   * @remarks
+   * Omitted, it is derived from the resolved `timeoutMs` and `maxRetries` — see
+   * {@link defaultDeadlineMs}. Given, it wins outright, even when it is shorter
+   * than one attempt's `timeoutMs`; {@link resolveDeadlineMs} says why.
+   */
   readonly deadlineMs?: number;
 }
 
@@ -80,26 +85,12 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
     maxTokens = DEFAULT_MAX_TOKENS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxRetries = DEFAULT_MAX_RETRIES,
-    deadlineMs = defaultDeadlineMs(timeoutMs, maxRetries),
     ...clientOptions
   } = options;
 
-  // Thrown here, at wiring time, rather than left for `AbortSignal.timeout` to throw
-  // per request: the signal is armed outside every `try` in `generate`, and `LlmPort`
-  // promises a `Result` rather than a rejection. A deadline outside the platform's
-  // range is a composition-root mistake, so the message below names `deadlineMs` only
-  // if the caller passed it, not when timeoutMs/maxRetries alone implied it.
-  if (
-    !Number.isInteger(deadlineMs) ||
-    deadlineMs <= 0 ||
-    deadlineMs > MAX_DEADLINE_MS
-  ) {
-    throw new RangeError(
-      options.deadlineMs === undefined
-        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is outside 1..${String(MAX_DEADLINE_MS)}. Pass deadlineMs to bound the call directly.`
-        : `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
-    );
-  }
+  // Resolved and range-checked at wiring time, not per request: see
+  // `resolveDeadlineMs`, which owns both the derivation and the failure.
+  const deadlineMs = resolveDeadlineMs(options.deadlineMs, timeoutMs, maxRetries);
 
   // Built once, at construction, so a missing key costs nothing per request and
   // the credential is read from this scope rather than kept on the port; timeoutMs/
