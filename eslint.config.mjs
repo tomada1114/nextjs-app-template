@@ -37,7 +37,34 @@ const NO_EXPORT_STAR = {
 
 /** What `src/internal/**` is, in the words of the rule that made it private. */
 const INTERNAL_IS_PRIVATE =
-  'src/internal/ is private: see "Architecture" in AGENTS.md. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on package internals at all.';
+  "src/internal/ is private: see the `public-api-contract` skill. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on module internals at all.";
+
+/**
+ * The Anthropic SDK, under every subpath it publishes.
+ *
+ * @remarks
+ * `no-restricted-imports` matches the specifier as written and never resolves
+ * it, so this ban holds before the package is a dependency and keeps holding
+ * if it stops being one. That is what lets the zone boundaries below be
+ * stated once, ahead of the adapter that will consume the SDK.
+ */
+const ANTHROPIC_SDK = ["@anthropic-ai/**"];
+
+/**
+ * Any module inside an `ai/adapters/` tree, however the importer spells the
+ * way there.
+ *
+ * @remarks
+ * This repository has no `@/*` path alias — `tsconfig.json` declares neither
+ * `baseUrl` nor `paths` — so every intra-`src/` import is relative and the
+ * same adapter is `../ai/adapters/fake/index` from one file and
+ * `../../ai/adapters/fake/index` from another. A leading globstar absorbs any
+ * number of `../` segments, so one pattern covers every depth rather than one
+ * pattern per caller. The bare form is listed alongside the recursive one
+ * because a directory import (`../ai/adapters`) has no trailing segment for a
+ * trailing globstar to match.
+ */
+const AI_ADAPTER_MODULES = ["**/ai/adapters", "**/ai/adapters/**"];
 
 export default defineConfig([
   // Only generated trees are ignored; everything hand-written is linted,
@@ -163,36 +190,103 @@ export default defineConfig([
     },
   },
   {
-    // Parked, not retired: `src/index.ts` no longer exists — the demo library
-    // it fronted is gone — and issue #10 re-targets this at the zone entry
-    // points. Deleting it here would lose the rule before its replacement
-    // lands.
-    name: "public-api/internal-stays-private",
-    files: ["src/index.ts"],
+    name: "src/size-budget",
+    files: ["src/**/*.ts", "src/**/*.tsx"],
     rules: {
-      // src/index.ts is the whole published contract, so a re-export here is
-      // the one edit that can publish a private symbol by accident. The
-      // directory name is not the boundary — this line is.
+      // Blank lines and comments count, deliberately: the budget is on how
+      // much a reader has to hold at once, and a file is not easier to follow
+      // because two thirds of it is prose. 200 is a ceiling, not a target —
+      // every module under `src/` is well under it today, so the rule fires
+      // only on a file that grew past the point where it does one thing.
+      // Splitting is the answer; raising the number or writing a disable
+      // directive is what AGENTS.md's "never weaken a gate" rules out.
       //
-      // Anchored on the path segment, not on the bare word: an unanchored
-      // /internal/ also matches a specifier that merely starts with those
-      // letters, so a legitimate `./internal-format.js` re-export would be
-      // rejected for a private directory it is not in. src/index.ts sits
-      // beside the directory, so `./internal/` is the only spelling that can
-      // reach it.
-      "no-restricted-syntax": [
+      // `tests/**` and `scripts/**` are deliberately outside this: a table-
+      // driven suite and a repository automation entry point are both long by
+      // nature, and capping them would buy nothing but split files.
+      "max-lines": ["error", { max: 200, skipBlankLines: false, skipComments: false }],
+    },
+  },
+  // --- zone boundaries -------------------------------------------------------
+  //
+  // `src/` is four zones — `core`, `ai`, `server`, `app` — and the edges
+  // between them are what stop a later edit from collapsing them back into one
+  // tree. The three blocks below state those edges; `tests/boundaries.test.ts`
+  // asserts the same shape from the module graph, so deleting a block here
+  // still fails the suite.
+  //
+  // `no-restricted-imports` options replace rather than merge across config
+  // objects, exactly like `no-restricted-syntax` (see NO_EXPORT_STAR above).
+  // The three blocks match disjoint file sets on purpose, so none of them can
+  // silently drop another's patterns; keep them disjoint when adding a fourth.
+  {
+    name: "boundaries/core-is-framework-free",
+    files: ["src/core/**/*.ts", "src/core/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": [
         "error",
-        NO_ENUM,
-        NO_EXPORT_STAR,
         {
-          selector: "ExportNamedDeclaration[source.value=/^\\.\\/internal\\//]",
-          message:
-            "exporting an internal symbol publishes it — move it to a public module first",
+          patterns: [
+            {
+              group: [
+                "next",
+                "next/**",
+                "react",
+                "react/**",
+                "react-dom",
+                "react-dom/**",
+                ...ANTHROPIC_SDK,
+              ],
+              message:
+                "src/core/ holds the vocabulary the other zones are written in — a Result, a domain type, a pure function — and it stays free of the framework and of any vendor SDK so it survives a change of either. Put the framework-aware code in src/app/ or src/server/ and the vendor-aware code behind src/ai/.",
+            },
+          ],
         },
+      ],
+    },
+  },
+  {
+    name: "boundaries/adapters-are-reached-through-src-ai",
+    files: [
+      "src/app/**/*.ts",
+      "src/app/**/*.tsx",
+      "src/server/**/*.ts",
+      "src/server/**/*.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
         {
-          selector: "ExportAllDeclaration[source.value=/^\\.\\/internal\\//]",
-          message:
-            "exporting an internal symbol publishes it — move it to a public module first",
+          patterns: [
+            {
+              group: AI_ADAPTER_MODULES,
+              message:
+                "src/ai/index.ts is the AI layer's whole surface. Importing an adapter directly is what makes the vendor choice leak out of src/server/composition.ts, which is the one file allowed to make it.",
+            },
+            {
+              group: ANTHROPIC_SDK,
+              message:
+                "Only an adapter under src/ai/adapters/ talks to a vendor SDK. A request or a response crossing this zone is an LlmPort call, so the layer can be swapped — or removed whole — without touching src/app/ or src/server/.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    name: "boundaries/port-does-not-know-its-adapters",
+    files: ["src/ai/port.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/adapters", "**/adapters/**"],
+              message:
+                "The port is the interface adapters implement, so it cannot depend on one. An import here inverts the dependency and makes the fake — or the next vendor — impossible to remove.",
+            },
+          ],
         },
       ],
     },
@@ -264,7 +358,7 @@ export default defineConfig([
     },
   },
   {
-    name: "boundaries/internal-is-not-importable",
+    name: "boundaries/private-trees-are-not-importable",
     files: ["tests/**/*.ts", "tests/**/*.tsx", "scripts/**/*.mjs"],
     rules: {
       "no-restricted-imports": [
@@ -272,16 +366,23 @@ export default defineConfig([
         {
           patterns: [
             {
-              // Both trees: `src/internal` is the module, `dist/internal` is
-              // the same module after a build, and neither is importable from
-              // outside `src/**`.
-              group: [
-                "**/src/internal",
-                "**/src/internal/**",
-                "**/dist/internal",
-                "**/dist/internal/**",
-              ],
+              // `dist/internal` used to be listed beside this: the same module
+              // after a build, back when this repository published a tarball.
+              // Nothing builds to `dist/` any more (issue #4 removed the
+              // packaging gates), so the built spelling is gone and the source
+              // one is the whole rule.
+              group: ["**/src/internal", "**/src/internal/**"],
               message: INTERNAL_IS_PRIVATE,
+            },
+            {
+              // The zone equivalent, for the trees outside `src/`: an adapter
+              // is private to the AI layer, and a test asserts against it
+              // through `src/ai/index.ts` — which is what makes the contract
+              // suite in tests/ai-port.test.ts run unchanged against whichever
+              // adapter src/ai/index.ts publishes.
+              group: ["**/src/ai/adapters", "**/src/ai/adapters/**"],
+              message:
+                "src/ai/adapters/ is private to the AI layer: import what src/ai/index.ts publishes instead.",
             },
           ],
         },
