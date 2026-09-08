@@ -1,8 +1,18 @@
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // The template ships with its identity written out as placeholder strings —
 // a package name, a repository slug, an author, a one-line description — which
@@ -77,10 +87,21 @@ const EXPECTED_INVENTORY = [
   "package.json: my-package",
 ];
 
-// Directories with nothing hand-written in them: dependencies, version control
+// Names with nothing hand-written under them: dependencies, version control
 // internals, build and coverage output, data under test (a fixture is
 // committed precisely because it is odd), and the full checkouts an agent
 // session leaves behind, which are scanned in their own checkout.
+//
+// Matched by name whatever the entry turns out to be, not only when it is a
+// directory: inside a linked git worktree `.git` is a *file* holding a
+// `gitdir:` pointer, so a type-gated skip walks straight into what it means to
+// exclude — and in an ordinary checkout that is a `.git/config` whose remote
+// URL can carry a credential.
+//
+// `secrets` is named here as well, although `checkRead` already drops every
+// entry inside it: without the name, the directory is still `readdirSync`'d,
+// and a checkout that keeps it unreadable throws EACCES at module scope —
+// outside any `it()`, so the suite errors out instead of failing.
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".git",
@@ -91,6 +112,7 @@ const SKIPPED_DIRECTORIES = new Set([
   "worktrees",
   ".idea",
   ".vscode",
+  "secrets",
 ]);
 
 // Generated files and tool caches: nothing here is authored, and a placeholder
@@ -112,29 +134,30 @@ const SKIPPED_FILES = new Set([
 const THIS_FILE = "tests/placeholders.test.ts";
 
 /**
- * Whether the walk must not read `name`.
+ * Every readable, hand-written file under `root`, as root-relative paths.
  *
  * @remarks
- * `.env` and any real environment file are off limits outright (AGENTS.md's
- * "Security and human approval"); the tracked example variants are the
- * exception and are scanned like any other file.
+ * What must never be read — `.env*`, `.envrc*`, anything under `secrets/` —
+ * is decided by the guard engine `scripts/check-staged.mjs` already uses, not
+ * by a second list here: AGENTS.md keeps a rule in exactly one place, and a
+ * copy of it here is the copy that goes stale. `checkRead` judges a file by
+ * its whole path and stays the rule of record; `SKIPPED_DIRECTORIES` names
+ * `secrets` on top of it only so the directory is never enumerated.
+ *
+ * `root` is a parameter so the exclusions can be asserted over a synthetic
+ * tree; a checkout with no `secrets/` in it would pass vacuously.
  */
-function isOffLimits(name: string): boolean {
-  if (!name.startsWith(".env")) {
-    return false;
-  }
-  return ![".env.example", ".env.sample", ".env.template"].includes(name);
-}
-
-/** Every readable, hand-written file in the tree, as repo-relative paths. */
-function walk(directory: string): string[] {
-  const absolute = directory === "" ? repoRoot : path.join(repoRoot, directory);
+function walk(root: string, directory = ""): string[] {
+  const absolute = directory === "" ? root : path.join(root, directory);
   return readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
     const relative = directory === "" ? entry.name : `${directory}/${entry.name}`;
-    if (entry.isDirectory()) {
-      return SKIPPED_DIRECTORIES.has(entry.name) ? [] : walk(relative);
+    if (SKIPPED_DIRECTORIES.has(entry.name) || checkRead(relative) !== null) {
+      return [];
     }
-    if (!entry.isFile() || SKIPPED_FILES.has(entry.name) || isOffLimits(entry.name)) {
+    if (entry.isDirectory()) {
+      return walk(root, relative);
+    }
+    if (!entry.isFile() || SKIPPED_FILES.has(entry.name)) {
       return [];
     }
     return entry.name.endsWith(".tsbuildinfo") || entry.name.endsWith(".log")
@@ -149,7 +172,7 @@ function readText(relative: string): string | undefined {
   return bytes.includes(0) ? undefined : bytes.toString("utf8");
 }
 
-const scanned = walk("").filter((relative) => relative !== THIS_FILE);
+const scanned = walk(repoRoot).filter((relative) => relative !== THIS_FILE);
 
 const inventory = scanned
   .flatMap((relative) => {
@@ -205,5 +228,48 @@ describe("the template's own repository URLs", () => {
     ],
   ])("%s points at the real repository", (relative, url) => {
     expect(readText(relative)).toContain(url);
+  });
+});
+
+describe("the walk that feeds the inventory", () => {
+  // Every path the walk returns is opened by `readText`, so what it must *not*
+  // return is a property of its own — and AGENTS.md counts the read itself as
+  // the disclosure. Driven over a synthetic tree because a checkout usually has
+  // no `secrets/` in it, and an assertion over the real one would then hold for
+  // the wrong reason.
+  const body = "placeholder body, nothing sensitive\n";
+  let root = "";
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "placeholders-walk-"));
+    mkdirSync(path.join(root, "secrets"));
+    for (const relative of [
+      "secrets/token.txt",
+      ".env",
+      ".env.local",
+      ".envrc",
+      ".env.example",
+      "README.md",
+    ]) {
+      writeFileSync(path.join(root, relative), body);
+    }
+    // What `.git` is inside a linked worktree: a pointer file, not a directory.
+    writeFileSync(path.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/1\n");
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("does not read anything under secrets/", () => {
+    expect(walk(root)).not.toContain("secrets/token.txt");
+  });
+
+  it("does not read a linked worktree's .git, which is a file and not a directory", () => {
+    expect(walk(root)).not.toContain(".git");
+  });
+
+  it("reads the tracked env example and no real dotenv or direnv file", () => {
+    expect(walk(root).sort()).toStrictEqual([".env.example", "README.md"]);
   });
 });

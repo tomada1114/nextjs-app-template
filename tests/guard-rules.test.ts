@@ -20,8 +20,27 @@ describe("paths: checkRead", () => {
     expect(checkRead(".env")).toMatch(/\.env\*/);
   });
 
+  it("blocks reading a direnv .envrc", () => {
+    // direnv's file is neither `.env` nor `.env.`-prefixed, so it is named
+    // rather than derived; its content is the same kind as a dotenv file's.
+    expect(checkRead(".envrc")).toMatch(/\.env\*/);
+  });
+
+  it.each([".envrc.local", ".envrc.private"])(
+    "blocks reading a direnv override such as %s",
+    (name) => {
+      // These, not the bare `.envrc`, are where direnv convention keeps real
+      // values; the bare name is usually secret-free boilerplate.
+      expect(checkRead(name)).toMatch(/\.env\*/);
+    },
+  );
+
   it("allows reading the env example", () => {
     expect(checkRead(".env.example")).toBeNull();
+  });
+
+  it("allows reading a direnv example", () => {
+    expect(checkRead(".envrc.example")).toBeNull();
   });
 
   it("blocks a path under secrets/", () => {

@@ -36,6 +36,34 @@ export function isEnvExample(name) {
 }
 
 /**
+ * Report whether a basename is an environment file that can hold real values.
+ *
+ * @remarks
+ * `.envrc` is direnv's file rather than dotenv's, so neither the `.env` name
+ * nor the `.env.` prefix reaches it — yet it holds the same kind of content,
+ * and AGENTS.md writes the prohibition as `.env*`, which covers it. The
+ * `.envrc.` prefix carries more risk than the bare name: direnv convention
+ * keeps boilerplate in `.envrc` and the real values in `.envrc.local` or
+ * `.envrc.private`.
+ *
+ * `checkRead` is not only the agent-read rule — scripts/check-staged.mjs
+ * reuses it as a hard pre-commit block, with no per-path exemption. A bare
+ * `.envrc` is therefore uncommittable here, and a direnv project built from
+ * this template is expected to keep its `.envrc` untracked.
+ *
+ * @param {string} name - Basename of the file.
+ * @returns {boolean} True when the file is an environment file, example or not.
+ */
+export function isDotenvName(name) {
+  return (
+    name === ".env" ||
+    name.startsWith(".env.") ||
+    name === ".envrc" ||
+    name.startsWith(".envrc.")
+  );
+}
+
+/**
  * Return a block reason when a file must not be read.
  *
  * @param {string} filePath - Path the call targets.
@@ -46,7 +74,7 @@ export function checkRead(filePath) {
     return null;
   }
   const { name, parts } = describePath(filePath);
-  if ((name === ".env" || name.startsWith(".env.")) && !isEnvExample(name)) {
+  if (isDotenvName(name) && !isEnvExample(name)) {
     return "Files named .env* may hold secrets and must not be read by the agent — read the matching .env.example instead.";
   }
   if (parts.slice(0, -1).includes("secrets")) {
