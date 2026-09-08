@@ -285,11 +285,14 @@ describe("createAnthropicAdapter under its real retry configuration", () => {
     // The interaction #62 introduced. `AbortSignal.timeout` runs on the real
     // clock regardless of `vi.useFakeTimers` (it is not a `setTimeout` a fake
     // timer install can see), so unlike the test above this one cannot fake
-    // the backoff sleep away — both timers have to run for real. A short
-    // `deadlineMs` keeps that real wait a fraction of the SDK's own ~0.4s
-    // first backoff rather than matching it: comfortably longer than the
-    // synchronous first attempt takes, comfortably shorter than the backoff
-    // sleep it needs to fire inside of.
+    // the backoff sleep away — both timers have to run for real, so
+    // `deadlineMs` has to sit inside a window rather than merely be small.
+    // The SDK's first backoff is `0.5s * (1 - random()*0.25)`, so 375 ms is
+    // its floor, and dispatching the first attempt costs roughly 10 ms here.
+    // 200 ms is the midpoint of that window: far enough above the dispatch
+    // cost that a loaded CI worker cannot fire the deadline before the first
+    // request goes out (which would leave `calls` empty), and far enough
+    // below 375 ms that the deadline still lands inside the sleep.
     const { fetch, calls } = respondWith(429, {
       type: "error",
       error: { type: "rate_limit_error", message: "slow down" },
@@ -297,7 +300,7 @@ describe("createAnthropicAdapter under its real retry configuration", () => {
 
     const result = await createAnthropicAdapter({
       apiKey: "test-key",
-      deadlineMs: 50,
+      deadlineMs: 200,
       fetch,
     }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
 
