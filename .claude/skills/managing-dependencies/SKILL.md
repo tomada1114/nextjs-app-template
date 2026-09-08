@@ -1,12 +1,14 @@
 ---
 name: managing-dependencies
 description: >
-  Covers whether a package may be added to this repository at all and what happens to it
-  at install time: the review record a PR adding a runtime dependency must carry, SemVer
-  range versus exact pin, the minimumReleaseAge cooldown and its exception process, the
-  supply-chain settings in pnpm-workspace.yaml, and the typescript version ceiling. Use
-  when adding or bumping a dependency, editing package.json's dependencies, an install
-  fails on a peer range or the cooldown, or someone proposes raising typescript.
+  Covers whether a package may be added to this repository and what happens at install
+  time: the review record a PR adding a runtime dependency must carry, how a dependency
+  change is verified before it lands, SemVer range versus exact pin, the
+  minimumReleaseAge cooldown and its exception process, the supply-chain settings in
+  pnpm-workspace.yaml and its allowBuilds allowlist, and the typescript version ceiling.
+  Use when adding or bumping a dependency, editing package.json's dependencies, an
+  install fails on a peer range or a lifecycle script, or someone proposes raising
+  typescript.
 ---
 
 # Managing Dependencies
@@ -14,77 +16,87 @@ description: >
 **Owns:** whether a package may exist in this repository at all, and what happens at
 install time. **Does not own:** landing an existing bot PR (`merge-dependabot`).
 
+This repository is a private application. Nothing here is packed, published, or consumed
+as a tarball, so a dependency is judged by what it costs to install and to run — never
+by what it would do to a published surface.
+
 ## The review record a new runtime dependency needs
 
 Adding a runtime dependency is a permanent supply-chain commitment, so before adding
 one, record all of the following in the PR that adds it. Missing one item is not a
 detail to fill in later — it means the review has not actually happened yet.
 
-- Why a small hand-written helper or a Node builtin cannot replace it. For a package
-  with a `bin`, check `node:util`'s `parseArgs` first: it covers subcommands
-  (`allowPositionals`) and rejects unknown flags (`strict`), so an argument-parser
-  dependency needs a reason beyond convenience.
+- Why a small hand-written helper or a Node builtin cannot replace it. `node:util`'s
+  `parseArgs` covers subcommands (`allowPositionals`) and rejects unknown flags
+  (`strict`), so an argument-parser dependency needs a reason beyond convenience.
 - Maintainer and release continuity — actively maintained, not abandoned.
-- License compatibility (MIT/BSD/Apache-class; a copyleft license needs a deliberate,
-  explicit reason for a published library).
+- License compatibility. `.github/workflows/dependency-review.yml` denies a copyleft
+  license outright, so a package under one does not merge; find another.
 - Direct and transitive package count it pulls in — a large transitive surface is a real
   cost even behind a small direct API.
 - Whether it runs an install script, ships a native binary, or does network access —
-  each needs its own justification, and an install script also needs an `allowBuilds`
-  entry (see below).
-- Unpacked size and its effect on install time here.
+  each needs its own justification, and an install script also needs a ruling in
+  `allowBuilds` (see below).
 - Supported Node versions and module format (ESM/CJS) against this repository's own
   `devEngines.runtime` and `"type": "module"` in `package.json`.
 - Open security advisories and npm provenance.
-- Which of `dependencies`, `devDependencies`, `peerDependencies`, or
-  `optionalDependencies` it belongs in, and why.
+- Which of `dependencies`, `devDependencies`, or `optionalDependencies` it belongs in,
+  and why. There is no fourth option: this repository publishes nothing, so it declares
+  no `peerDependencies` of its own. Every peer range you will meet was declared by
+  something you installed.
 
-## The first runtime dependency in a generated repository
+A runtime entry is the expensive one: `dependencies` is what ships to the running
+application and what the weekly `security-audit.yml` job audits with
+`pnpm audit --prod`. A build- or test-only package belongs in `devDependencies`, where
+an advisory is handled by a bot PR instead of paging whoever reads that schedule.
 
-The repository's packaging tests cover a declared dependency separately from a bundled
-installed-dependency directory, and the consumer smoke suite may mock npm at its
-subprocess boundary for fast branch coverage. That mock does not prove that a package
-manager can resolve the dependency, or that this repository's cooldown, trust, and
-lifecycle rules permit it.
+## Verifying a dependency change before it lands
 
-When a repository adds its first runtime dependency, land the manifest and lockfile
-change only after a real `pnpm install` and a green `pnpm run check:source`. Keep the
-dependency declared in `dependencies`, and do not treat a mocked unit/automation case as
-a substitute for the real install.
+A manifest and lockfile change is verified by a real install and a real run, never by a
+test that mocks a package manager at its subprocess boundary. Run, in order:
 
-## What a `peerDependencies` entry actually does here
+```bash
+pnpm install            # regenerates pnpm-lock.yaml; must succeed under the policy below
+pnpm check:quick        # format, lint, typecheck, tests
+pnpm build              # next build — the App Router entry points and the framework's
+                        # own build pipeline, which no unit test exercises
+pnpm test:coverage      # the coverage floors, which a swapped dependency can move
+```
 
-No gate asserts that a declared peer range is satisfiable. What the two package managers
-do with one differs, which is worth knowing before you rely on either:
+The last three are together what `pnpm check:source` runs, so one green run of that
+covers them all. One narrower run is worth naming, because the gate reports its failure
+only as a wall of output: the suite for the module that actually consumes the bumped
+package, run on its own.
 
-- `pnpm install` auto-installs an unsatisfied peer of this package as an ordinary
-  dependency, picking the **highest** version matching the range. A `devDependencies`
-  entry naming the same package wins instead, and pnpm does not complain when that entry
-  falls outside the declared peer range.
-- Whether the declared range is satisfiable by anything on the registry is not tested
-  anywhere here — asserting that needs the real network by definition.
+```bash
+pnpm exec vitest run tests/<module>.test.ts
+```
 
-## Testing against a version the ceiling forbids
+A `zod` bump surfaces first in whichever contract suite parses with it; a `react` bump
+in the component tests. Every suite here runs against a fake rather than a live service,
+so there is no record or replay command to reach for — do not invent one until a suite
+that needs it exists.
 
-The TypeScript ceiling below is a real ceiling: `typescript@7` as a `devDependencies`
-entry fails the install outright under `strictPeerDependencies`. The same holds for any
-peer runtime this repository's own toolchain caps.
-
-A package whose product must _support_ such a version does not raise the ceiling for it.
-It installs that version into a fixture project under `tests/fixtures/` and drives it as
-a child process, keeping the version under test out of this repository's own dependency
-graph entirely.
+Two checks run only on the PR. The `Dependency review` workflow fails on a new advisory
+or a denied license, and the weekly production audit above is now a gate that can
+actually fail: with runtime `dependencies` no longer empty, `pnpm audit --prod` is no
+longer the no-op it was, so a red one is a finding about a package this application
+ships, not noise.
 
 ## Range vs. pin, and how a change lands
 
-- A runtime dependency declares a SemVer **range**, never an exact pin — the library
-  does not own reproducibility here, `pnpm-lock.yaml` does.
+- A runtime dependency declares a SemVer **range**, never an exact pin — a range plus
+  `pnpm-lock.yaml` reproduces the install, and a pin only removes the fallback that
+  makes the cooldown below survivable.
 - Add or bump through `pnpm add`, never by hand-writing a version into `package.json`. A
   hand-typed recent version can be younger than the cooldown below, and a pin has no
   older version to fall back to, so the install fails outright rather than resolving to
   something older.
 - A dependency change and its `pnpm-lock.yaml` update belong in the same commit. The
-  lockfile is generated, never hand-edited.
+  lockfile is generated by `pnpm install`, never hand-edited: a hand-written entry
+  states an integrity hash and a resolved graph nobody verified against the registry,
+  and nothing downstream can tell that apart from a real resolution. Regenerate instead,
+  with `pnpm install --lockfile-only` when you want the lockfile without the install.
 - Dev dependencies are kept current by bot PRs plus the lockfile, not by hand.
   **REQUIRED:** `merge-dependabot` to land one.
 
@@ -120,16 +132,29 @@ scoped to one exact version, not to the package forever.
 the file for the current values rather than trusting a number copied here.
 
 - `strictDepBuilds` plus `allowBuilds`: an install-time lifecycle script from a
-  dependency that is not allowlisted fails the install **on purpose** — that is the
-  intended outcome, not a bug to route around. `lefthook` is the one currently
-  allowlisted entry, a reviewed exception because its postinstall is how its Git-hook
-  binary is downloaded and linked. Adding another entry carries the same review weight
+  dependency nobody has ruled on fails the install **on purpose** — that is the intended
+  outcome, not a bug to route around. A Next.js dependency tree reaches several packages
+  that want to run one, so this is a case-by-case review now rather than a single
+  standing exception. Three questions settle an entry: what the script actually does
+  (download a binary, compile native code, probe for a prebuilt one); whether anything
+  this repository runs needs its result, or it belongs to a feature never turned on; and
+  whether the package already ships a prebuilt platform binary as an optional
+  dependency, making the script a fallback rather than the only path. `false` is as much
+  a decision as `true` — it records that the script was reviewed and refused, so the
+  next install failure is not answered with a reflexive `true`. Read the file's comments
+  for the ruling each entry carries; adding a `true` one carries the same review weight
   as adding a new dependency.
-- `strictPeerDependencies`: a peer range declared by an installed **dependency** and
-  left unmet or conflicting is a hard install failure, not a warning. This is what makes
-  the TypeScript ceiling below an enforced constraint instead of an advisory one. It
-  says nothing about a peer this package declares for its own consumers — see "What a
-  `peerDependencies` entry actually does here" above for that.
+- `strictPeerDependencies`: a peer range declared by an installed dependency and left
+  unmet or conflicting is a hard install failure, not a warning. This is what makes the
+  TypeScript ceiling below an enforced constraint instead of an advisory one. The only
+  sanctioned way past it is a `peerDependencyRules.allowedVersions` entry naming one
+  `parent>child` edge, and adding one asserts the package really does work against the
+  version it did not declare — it is not a way to quiet an inconvenient failure.
+  `overrides` is the same shape of exception for a resolved version, with the same
+  burden: prefer naming the single `parent>child` edge, say why, and say what would let
+  it be dropped. A package-wide override is the exception to that, and needs its own
+  reason in the comment — that several independent edges reach the bad version, so an
+  edge list would be incomplete the moment a new transitive dependency reopens it.
 - `minimumReleaseAgeStrict` and `minimumReleaseAgeIgnoreMissingTime` close two specific
   bypasses of the cooldown above: an already-lockfiled version skipping the check, and
   registry metadata with no publish time being treated as old enough, respectively.
@@ -138,26 +163,33 @@ the file for the current values rather than trusting a number copied here.
   regression, refuse to trust the trust metadata recorded in a contributor's lockfile,
   and refuse transitive dependencies fetched from git or arbitrary tarball URLs,
   respectively.
+- `verifyDepsBeforeRun: error`: a `pnpm run` whose `node_modules` no longer matches the
+  lockfile fails instead of letting a gate pass against stale dependencies. The fix is
+  `pnpm install`, never a weaker value.
+- `pmOnFail: download`: a local pnpm that does not satisfy `devEngines.packageManager`
+  makes the install fetch the pinned one rather than fail. It is the only convenience
+  here rather than a gate — it changes which pnpm resolves the lockfile, never what the
+  policy above admits.
 
 When one of these fires, find out why the install is actually failing; AGENTS.md holds
 the prohibition on relaxing it.
 
-- `verifyDepsBeforeRun: error`: a `pnpm run` whose `node_modules` no longer matches the
-  lockfile fails instead of letting a gate pass against stale dependencies. The fix is
-  `pnpm install`, never a weaker value. pnpm compares dependency fields and the settings
-  above, so an unrelated manifest rewrite — the minimum-Node CI leg's
-  `git restore package.json` — only costs a deeper check, not a failure.
-
 ## TypeScript version ceiling
 
-`typescript` is held below the version that `typescript-eslint` caps its peer support at
-(see `package.json`'s `devDependencies` for the current range). With
-`strictPeerDependencies` on, a bump past that ceiling fails the install rather than
-merely warning.
+`typescript` is held below the version `typescript-eslint` caps its peer support at.
+That package is now the only thing setting this ceiling, and it caps at a **minor**, not
+just below the next major, so read the real range instead of assuming:
+
+```bash
+node -p "require('typescript-eslint/package.json').peerDependencies.typescript"
+```
+
+Compare it to `package.json`'s `devDependencies` range. With `strictPeerDependencies`
+on, a bump past the ceiling fails the install rather than merely warning, and
+`.github/dependabot.yml` keeps a `typescript` major from arriving as a PR at all.
 
 Do not "upgrade typescript to latest." Raising this ceiling is a coordinated upgrade —
-`typescript-eslint` has to raise its own peer range first — not a routine dependency
-bump.
+`typescript-eslint` has to raise its own peer range first — not a routine bump.
 
 ## Handoff
 
