@@ -46,6 +46,25 @@ describe("paths: checkRead", () => {
   it("blocks a path under secrets/", () => {
     expect(checkRead("secrets/token.txt")).toMatch(/secrets\//);
   });
+
+  it("blocks the personal .claude/settings.local.json", () => {
+    expect(checkRead(".claude/settings.local.json")).toMatch(/settings\.local\.json/);
+  });
+
+  it("allows the shared, committed .claude/settings.json", () => {
+    expect(checkRead(".claude/settings.json")).toBeNull();
+  });
+
+  it("allows a skill file under .claude/skills/", () => {
+    expect(checkRead(".claude/skills/writing-tests/SKILL.md")).toBeNull();
+  });
+
+  it("does not block a settings.local.json outside .claude/", () => {
+    // The rule is anchored to the exact repository-root path `.gitignore`
+    // carries, not to the basename alone — a nested or differently-placed
+    // file of the same name is not this rule's concern.
+    expect(checkRead("some/other/settings.local.json")).toBeNull();
+  });
 });
 
 describe("credentials: checkCredentials", () => {
