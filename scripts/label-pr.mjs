@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 // Apply the label matching a pull request's Conventional Commit title type,
-// and remove any other label from this workflow's own managed set that no
-// longer matches after a retitle. Called by .github/workflows/pr-label.yml.
+// and remove a stale type label left over from an earlier title — but only
+// when that stale label is the PR's *only* managed label, since that is the
+// one case this script can call unambiguous. See computeLabelUpdate for why.
+// Called by .github/workflows/pr-label.yml.
 //
 // Usage:
 //   PR_NUMBER=123 PR_TITLE="feat: x" node scripts/label-pr.mjs
 //
 // Requires the `gh` CLI, authenticated (GH_TOKEN/GH_REPO in the
-// environment). Best effort: a `gh` failure — a fork PR's read-only token, or
-// a label `pnpm repo:labels` has not created yet — is reported as a GitHub
-// Actions notice, never a non-zero exit.
+// environment). Best effort for a `gh` failure — a fork PR's read-only
+// token, or a label `pnpm repo:labels` has not created yet — which is
+// reported as a GitHub Actions notice, never a non-zero exit. A missing
+// PR_NUMBER is a misconfiguration rather than an expected read-only case, and
+// exits non-zero instead.
 import { spawnSync } from "node:child_process";
 import console from "node:console";
 import process from "node:process";
@@ -19,8 +23,14 @@ import { parseJson, readKey, readString } from "./lib/json.mjs";
 
 /**
  * Conventional Commit type -> the label `.github/labels.yml` declares for
- * it. The values of this map are also the *only* labels this workflow is
- * ever allowed to add or remove; a human-added label is never touched.
+ * it. The values of this map are also the full set of labels this workflow
+ * is ever allowed to add or remove ({@link MANAGED_LABELS}) — but membership
+ * in that set is the only test applied. A human or another bot routinely
+ * applies one of these same label names by hand (`documentation` on a docs
+ * fix, `dependencies` from Dependabot's own default), and this script has no
+ * way to tell that apart from a label it applied itself on an earlier run.
+ * {@link computeLabelUpdate} resolves that by removing a label only when it
+ * is the PR's sole managed label, never otherwise.
  */
 const TYPE_LABELS = new Map([
   ["feat", "enhancement"],
@@ -63,9 +73,15 @@ export function resolveLabel(title) {
 
 /**
  * Decide the label update for a pull request: which label to add, if any,
- * and which of this workflow's *other* managed labels are stale and should
- * be removed. A label outside {@link MANAGED_LABELS} is never proposed for
- * removal, whatever the title says.
+ * and whether the PR's one stale managed label should be removed.
+ *
+ * A label outside {@link MANAGED_LABELS} is never proposed for removal,
+ * whatever the title says. Among managed labels, removal is proposed only
+ * when the PR carries **exactly one** and the title maps to a **different**
+ * one — the only shape in which the present label can be read as this
+ * workflow's own earlier output rather than something a human or another
+ * bot added. Two or more managed labels present, or a title that maps to no
+ * label at all, both leave every current label alone and only ever add.
  *
  * @param {string} title - The pull request's current title.
  * @param {readonly string[]} currentLabels - Labels currently on the pull request.
@@ -73,9 +89,13 @@ export function resolveLabel(title) {
  */
 export function computeLabelUpdate(title, currentLabels) {
   const addLabel = resolveLabel(title);
-  const removeLabels = currentLabels.filter(
-    (label) => label !== addLabel && MANAGED_LABELS.has(label),
-  );
+  const managedPresent = currentLabels.filter((label) => MANAGED_LABELS.has(label));
+  const removeLabels =
+    addLabel !== null &&
+    managedPresent.length === 1 &&
+    managedPresent.every((label) => label !== addLabel)
+      ? managedPresent
+      : [];
   return { addLabel, removeLabels };
 }
 
@@ -195,9 +215,34 @@ export function applyLabelUpdate({ prNumber, title, run = spawnGh }) {
   }
 }
 
+/**
+ * CLI entry point: validate the environment this workflow is expected to
+ * set, then apply the label update. A missing `PR_NUMBER` is reported and
+ * exits non-zero, distinguishing misconfiguration from the best-effort
+ * `gh` failures {@link applyLabelUpdate} itself only ever logs as a notice.
+ *
+ * @param {object} [options]
+ * @param {Record<string, string | undefined>} [options.env] - Environment to
+ *   read `PR_NUMBER`/`PR_TITLE` from; defaults to `process.env`.
+ * @param {GhRunner} [options.run] - The `gh` runner to use; defaults to the real CLI.
+ * @returns {number} Process exit code.
+ */
+export function main({ env = process.env, run = spawnGh } = {}) {
+  const prNumber = env["PR_NUMBER"] ?? "";
+  if (prNumber === "") {
+    console.error(
+      "ERR_LABEL_PR_MISSING_PR_NUMBER: PR_NUMBER is empty.\n" +
+        "Expected: a non-empty pull request number — .github/workflows/pr-label.yml " +
+        "sets it from `github.event.pull_request.number`.\n" +
+        "Next: run this script only from that workflow, or pass a non-empty " +
+        "PR_NUMBER yourself when invoking it directly.",
+    );
+    return 1;
+  }
+  applyLabelUpdate({ prNumber, title: env["PR_TITLE"] ?? "", run });
+  return 0;
+}
+
 if (isMain(import.meta.url)) {
-  applyLabelUpdate({
-    prNumber: process.env["PR_NUMBER"] ?? "",
-    title: process.env["PR_TITLE"] ?? "",
-  });
+  process.exitCode = main();
 }

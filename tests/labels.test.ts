@@ -99,4 +99,17 @@ describe("label taxonomy", () => {
       ).toBe(true);
     }
   });
+
+  it("pr-label.yml still runs scripts/label-pr.mjs, not an inlined mapping", () => {
+    // MANAGED_LABELS being a subset of the manifest (above) says nothing
+    // about whether the workflow still calls this script at all — re-inlining
+    // the type -> label mapping in the YAML, or renaming the script, would
+    // leave that check green while the labels actually applied at runtime
+    // went unverified.
+    const workflowText = readFileSync(
+      path.join(githubDir, "workflows", "pr-label.yml"),
+      "utf8",
+    );
+    expect(workflowText).toMatch(/run:\s*node scripts\/label-pr\.mjs\s*$/m);
+  });
 });

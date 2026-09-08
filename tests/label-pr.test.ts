@@ -7,6 +7,7 @@ import {
   computeLabelUpdate,
   extractType,
   fetchCurrentLabels,
+  main,
   resolveLabel,
 } from "../scripts/label-pr.mjs";
 
@@ -82,8 +83,9 @@ describe("computeLabelUpdate", () => {
   // The pre-fix workflow never called `gh pr edit --remove-label` at all, so
   // retitling a PR left every previously applied type label in place. This
   // is the case that pins the fix: removing the stale label the new type no
-  // longer matches.
-  it("proposes removing the stale type label on a retitle", () => {
+  // longer matches — the PR carries exactly one managed label, so it can
+  // only be this workflow's own earlier output.
+  it("proposes removing the stale type label on a retitle when it is the only managed label present", () => {
     expect(computeLabelUpdate("fix: x", ["enhancement"])).toEqual({
       addLabel: "bug",
       removeLabels: ["enhancement"],
@@ -104,10 +106,33 @@ describe("computeLabelUpdate", () => {
     });
   });
 
-  it("proposes only removal when the new title maps to no label", () => {
+  // Two managed labels present means one of them was added by something
+  // other than this workflow's own single-label output — a maintainer who
+  // hand-adds `documentation` to a `feat:` PR that also touches docs, here.
+  // Removing nothing is the only choice that never fights that maintainer.
+  it("removes nothing when two or more managed labels are present, even though one is stale", () => {
+    expect(computeLabelUpdate("feat: x", ["enhancement", "documentation"])).toEqual({
+      addLabel: "enhancement",
+      removeLabels: [],
+    });
+  });
+
+  // Dependabot's github-actions updates title with `ci:` (.github/dependabot.yml)
+  // but Dependabot itself applies its own default `dependencies` label, never
+  // `ci`. That is a single managed label that differs from the resolved one —
+  // structurally identical to the retitle case above — so this conservative
+  // rule cannot tell the two apart and proposes removing it here too.
+  it("cannot distinguish Dependabot's own default label from a stale self-applied one", () => {
+    expect(computeLabelUpdate("ci: bump x", ["dependencies"])).toEqual({
+      addLabel: "ci",
+      removeLabels: ["dependencies"],
+    });
+  });
+
+  it("proposes only adding, never removing, when the new title maps to no label", () => {
     expect(computeLabelUpdate("wip: x", ["bug", "chore"])).toEqual({
       addLabel: null,
-      removeLabels: ["bug", "chore"],
+      removeLabels: [],
     });
   });
 });
@@ -189,5 +214,46 @@ describe("applyLabelUpdate", () => {
     ).not.toThrow();
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("::notice::"));
     logSpy.mockRestore();
+  });
+});
+
+describe("main", () => {
+  it("fails hard with ERR_LABEL_PR_MISSING_PR_NUMBER and makes no gh call when PR_NUMBER is empty", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { run, calls } = makeFakeGh(() => ok());
+
+    const exitCode = main({ env: { PR_TITLE: "feat: x" }, run });
+
+    expect(exitCode).toBe(1);
+    expect(calls).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ERR_LABEL_PR_MISSING_PR_NUMBER"),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("fails hard the same way when PR_NUMBER is present but empty", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { run, calls } = makeFakeGh(() => ok());
+
+    const exitCode = main({ env: { PR_NUMBER: "", PR_TITLE: "feat: x" }, run });
+
+    expect(exitCode).toBe(1);
+    expect(calls).toEqual([]);
+    errorSpy.mockRestore();
+  });
+
+  it("applies the label update and exits 0 when PR_NUMBER is set", () => {
+    const { run, calls } = makeFakeGh((args) =>
+      args[1] === "view" ? ok(JSON.stringify({ labels: [] })) : ok(),
+    );
+
+    const exitCode = main({ env: { PR_NUMBER: "7", PR_TITLE: "feat: x" }, run });
+
+    expect(exitCode).toBe(0);
+    expect(calls).toEqual([
+      ["pr", "view", "7", "--json", "labels"],
+      ["pr", "edit", "7", "--add-label", "enhancement"],
+    ]);
   });
 });
