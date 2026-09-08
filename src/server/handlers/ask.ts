@@ -22,10 +22,11 @@ export interface AskHandlerDependencies {
    * The shared secret a caller must present, or `undefined` to answer anyone.
    *
    * @remarks
-   * `src/server/env.ts` makes `API_ACCESS_KEY` mandatory as soon as a billed
-   * provider credential is configured, so the open shape is reachable only
-   * while the fake adapter is what answers. It arrives as an argument because
-   * that module is the only one under `src/` that may read the environment.
+   * `src/server/env.ts` makes `API_ACCESS_KEY` mandatory as soon as
+   * `src/server/composition.ts` wires an adapter that bills a provider, so the
+   * open shape is reachable only while the fake adapter is what answers. It
+   * arrives as an argument because that module is the only one under `src/`
+   * that may read the environment.
    */
   readonly accessKey?: string | undefined;
 }
@@ -107,6 +108,10 @@ function failure(
  * client library, a proxy and a log redactor all already know to treat that
  * one as a secret.
  *
+ * The scheme is matched case-insensitively: RFC 9110 §11.1 makes the auth-scheme
+ * token case-insensitive, and a proxy or gateway that normalises it to `bearer`
+ * is sending a spec-legal request that must not be answered with a 401.
+ *
  * The comparison is constant time. A byte-by-byte `===` answers sooner the
  * earlier it differs, which is enough to recover a secret one character at a
  * time; hashing both sides first is what makes the lengths equal, since
@@ -114,7 +119,7 @@ function failure(
  * configured key's length.
  */
 function isAuthorized(request: Request, accessKey: string): boolean {
-  const presented = /^Bearer +(?<token>\S.*)$/u.exec(
+  const presented = /^Bearer +(?<token>\S.*)$/iu.exec(
     request.headers.get("authorization")?.trim() ?? "",
   )?.groups?.["token"];
   return (

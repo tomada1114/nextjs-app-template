@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type * as z from "zod";
 
 import {
@@ -241,15 +241,25 @@ describe("the ask handler with an access key configured", () => {
     );
   }
 
-  it("answers a request carrying the configured key", async () => {
-    const { handler, seen } = guarded();
+  // RFC 9110 §11.1 makes the auth-scheme token case-insensitive, and a client,
+  // a proxy or a gateway may normalise it, so the spelling a caller sends must
+  // not decide whether the correct key is accepted.
+  it.each([
+    ["Bearer", `Bearer ${ACCESS_KEY}`],
+    ["bearer", `bearer ${ACCESS_KEY}`],
+    ["BEARER", `BEARER ${ACCESS_KEY}`],
+  ])(
+    "answers a request carrying the configured key under the %s scheme",
+    async (_label, authorization) => {
+      const { handler, seen } = guarded();
 
-    const response = await handler(askWith(`Bearer ${ACCESS_KEY}`));
+      const response = await handler(askWith(authorization));
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual(ANSWER);
-    expect(seen).toHaveLength(1);
-  });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual(ANSWER);
+      expect(seen).toHaveLength(1);
+    },
+  );
 
   it.each([
     ["no Authorization header", undefined],
@@ -310,18 +320,54 @@ describe("the composed /api/ask route", () => {
     await expect(response.json()).resolves.toBeTypeOf("object");
   });
 
+  /**
+   * The composition root rebuilt against `env`, module registry and all.
+   *
+   * @remarks
+   * `src/server/composition.ts` reads the environment once at module load, so
+   * a test about what a given environment composes has to load the module
+   * again rather than reuse the instance the static import above already
+   * built.
+   */
+  async function composedWith(
+    env: Readonly<Record<string, string | undefined>>,
+  ): Promise<(request: Request) => Promise<Response>> {
+    for (const [name, value] of Object.entries(env)) {
+      vi.stubEnv(name, value);
+    }
+    vi.resetModules();
+    return (await import("../src/server/composition")).askHandler;
+  }
+
   // Pins the promise README.md and AGENTS.md both make: a fresh checkout with
   // no ANTHROPIC_API_KEY still answers instead of surfacing ERR_LLM_AUTH as a
   // 500 (#77), and with no API_ACCESS_KEY it answers an anonymous caller rather
-  // than a 401 (#82). This is the one test in the suite allowed to depend on
-  // the process environment, and only to assert the premise the regression
-  // needs: that this run has neither variable configured, the same as a fresh
-  // clone.
+  // than a 401 (#82).
   it("answers 200 with no credential of either kind configured", async () => {
-    expect(process.env["ANTHROPIC_API_KEY"] ?? "").toBe("");
-    expect(process.env["API_ACCESS_KEY"] ?? "").toBe("");
+    const composed = await composedWith({
+      ANTHROPIC_API_KEY: undefined,
+      API_ACCESS_KEY: undefined,
+    });
 
-    const response = await askHandler(
+    const response = await composed(
+      postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  // What closes the endpoint is the adapter composition.ts wires, not what the
+  // machine exports: a developer who has ANTHROPIC_API_KEY set for something
+  // else -- recording the LLM fixtures under `LLM_RECORD=1` needs it -- still
+  // runs the fake adapter, which bills nothing, so nothing is required and the
+  // quick start still answers (#82).
+  it("answers 200 while the fake adapter is wired, whatever provider credential is exported", async () => {
+    const composed = await composedWith({
+      ANTHROPIC_API_KEY: "an-example-value",
+      API_ACCESS_KEY: undefined,
+    });
+
+    const response = await composed(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 

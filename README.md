@@ -36,11 +36,13 @@ route runs against a fake language-model adapter, so it needs no credentials;
 `src/server/composition.ts` is the single place that decides which adapter is behind it.
 Copy `.env.example` to `.env` when you swap in one that needs a key.
 
-Swapping one in also closes the endpoint. `src/server/env.ts` requires `API_ACCESS_KEY`
-as soon as a provider credential is configured — a deployment that pays for its answers
-refuses to start rather than serving anyone who finds the URL — and the route then
-answers `401` unless the request carries that key as `Authorization: Bearer <value>`.
-That is authentication and nothing more: this template ships no rate limit.
+Swapping one in also closes the endpoint. `src/server/composition.ts` declares that the
+adapter it wires bills a provider, and `readServerEnv` then requires `API_ACCESS_KEY` —
+a deployment that pays for its answers refuses to start rather than serving anyone who
+finds the URL — after which the route answers `401` unless the request carries that key
+as `Authorization: Bearer <value>`. Exporting a provider credential does not on its own
+close anything: while the fake adapter answers, nothing is billed and nothing is
+required. That is authentication and nothing more: this template ships no rate limit.
 
 ## Starting a new app from this template
 
