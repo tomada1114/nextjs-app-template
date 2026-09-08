@@ -14,10 +14,10 @@ description: >
 
 **Owns:** the shape of an error type and the vocabulary of `code` strings, in both
 `src/**` and `scripts/**`. **Does not own:** which `ERR_LLM_*` code an adapter produces
-for a given provider failure (`integrating-llm`, when it lands); general type-system
-judgment (`writing-typescript`); how an error is asserted in a test (`writing-tests`);
-the HTTP status and response body a code is answered with (`building-app-routes`); the
-full stderr message shape for repository automation (`writing-repo-scripts` — the `ERR_`
+for a given provider failure (`integrating-llm`); general type-system judgment
+(`writing-typescript`); how an error is asserted in a test (`writing-tests`); the HTTP
+status and response body a code is answered with (`building-app-routes`); the full
+stderr message shape for repository automation (`writing-repo-scripts` — the `ERR_`
 prefix rule below is shared with it).
 
 ## The one rule that matters

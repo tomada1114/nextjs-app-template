@@ -15,8 +15,8 @@ description: >
 keeps, removing the AI layer whole, and the locale decision. **Does not own:** how a
 skill is authored or mirrored (`authoring-skills`); the README's own prose
 (`updating-docs`); what a gate file may contain (`changing-gates`); working inside the
-App Router tree, or swapping the fake adapter for a real provider, which
-`building-app-routes` and `integrating-llm` own when those land.
+App Router tree (`building-app-routes`); the port, its adapters, and swapping one
+provider for another (`integrating-llm`).
 
 There is deliberately no bootstrap script. The one this repository used to ship was
 profile-driven machinery that rewrote the tree and then deleted itself, so the only
@@ -105,16 +105,15 @@ deleting anything:
 pnpm exec vitest run tests/ai-layer-removal.test.ts
 ```
 
-Green means the layer is still separable and the five lists in that file are complete —
+Green means the layer is still separable and the four lists in that file are complete —
 the property it exists to defend, checkable only while the layer is present. It cannot
-be the check you run afterwards, because it is on its own removal list. Those five lists
+be the check you run afterwards, because it is on its own removal list. Those four lists
 are the procedure:
 
 - **`REMOVED_PATHS`** — deleted outright. `src/server/composition.ts` is on it because
-  wiring a port is the whole of what that file does, and `src/app/api` because the one
-  route there is the layer's only caller.
-- **`OPTIONAL_REMOVED_PATHS`** — deleted when present: the `integrating-llm` skill and
-  its `.claude/skills/` mirror.
+  wiring a port is the whole of what that file does, `src/app/api` because the one route
+  there is the layer's only caller, and the `integrating-llm` skill with its
+  `.claude/skills/` mirror because the subject it documents is what leaves.
 - **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two ways a file
   can name the layer without naming a path.
 - **`EDITED_CODE_FILES`** — files that survive but must stop naming it, whose subject is
@@ -148,6 +147,7 @@ Delete the paths, then work through both edited lists:
 - `localizing-ui` loses its `outputLanguage` section — that seam is the port's, and the
   UI locale it maps from has nowhere left to reach. Everything else in it, the catalogs
   and the locale routing, is untouched by this removal.
+- `integrating-llm` is deleted rather than edited: its whole subject is the layer.
 - `writing-tests` loses the two seams that are going away — the port contract suite and
   the handler driven with `new Request()` — and `type-testing` the port's generic
   request and response types. Both keep everything else: the component and Route Handler

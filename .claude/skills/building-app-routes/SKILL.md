@@ -15,9 +15,9 @@ description: >
 **Owns:** what goes where when a request is served — the Server/Client boundary inside
 `src/app/`, the shape of a Route Handler and the handler behind it, `src/proxy.ts`, and
 how configuration reaches any of them. **Does not own:** the `LlmPort` contract and the
-adapter behind it (`integrating-llm`, when it lands); message catalogs and the locale
-routing they configure (`localizing-ui`); how a test case is written (`writing-tests`)
-and which vitest project it joins (`placing-tests`); TypeScript idiom inside a module
+adapter behind it (`integrating-llm`); message catalogs and the locale routing they
+configure (`localizing-ui`); how a test case is written (`writing-tests`) and which
+vitest project it joins (`placing-tests`); TypeScript idiom inside a module
 (`writing-typescript`).
 
 The zones, the direction imports run in, and what each zone publishes are AGENTS.md's
