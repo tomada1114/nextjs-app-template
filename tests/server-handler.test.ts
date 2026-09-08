@@ -308,16 +308,25 @@ describe("the composed /api/ask route", () => {
     expect(POST).toBe(askHandler);
   });
 
-  // Deliberately silent about the status and the answer: which adapter
-  // composition.ts wires is its own decision to change, and a test that pinned
-  // the fake adapter's wording here would have to be edited to swap it.
-  it("answers a real request with a JSON body", async () => {
-    const response = await askHandler(
+  // Drives a handler the test builds itself, not the real composed
+  // `askHandler` above: that handler's behavior depends on whatever
+  // `API_ACCESS_KEY` the developer's shell happens to hold at module load, so
+  // asserting on its response here would be asserting on the ambient
+  // environment rather than on this repository's own code (the case below,
+  // `composedWith`, is where the real composition is exercised, with the
+  // environment pinned explicitly). What this case proves instead is the
+  // shape `POST /api/ask` answers with when nothing rejects the request
+  // first — status, `content-type`, and the JSON body — and a 500 fails it.
+  it("answers a well-formed request with a JSON body", async () => {
+    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+
+    const response = await handler(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
+    expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    await expect(response.json()).resolves.toBeTypeOf("object");
+    await expect(response.json()).resolves.toStrictEqual(ANSWER);
   });
 
   /**
