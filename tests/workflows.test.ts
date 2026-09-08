@@ -88,7 +88,8 @@ function blockOf(lines: Line[], headerIndex: number): Line[] {
   if (header === undefined) {
     return [];
   }
-  const ownsSameColumnSequence = header.text.endsWith(":");
+  const ownsSameColumnSequence =
+    header.text.endsWith(":") && !header.text.startsWith("- ");
 
   const body: Line[] = [];
   for (let index = headerIndex + 1; index < lines.length; index += 1) {
@@ -755,6 +756,29 @@ jobs:
       run: pnpm install --frozen-lockfile
 `;
 
+/**
+ * The same workflow with a first step whose `- ` line is itself a block key.
+ *
+ * @remarks
+ * `- env:` ends in a colon like any other key, so a body reader that decides
+ * ownership on the colon alone lets this step claim every sibling step that
+ * follows it. Nothing about the workflow is wrong: it is here to prove that a
+ * sequence *entry* never claims its own siblings, whatever its first key is.
+ */
+const BLOCK_KEY_FIRST_STEP_WORKFLOW = CLEAN_WORKFLOW.replace(
+  "      - name: Install dependencies\n        run: pnpm install --frozen-lockfile\n",
+  [
+    "      - env:",
+    "          FOO: bar",
+    "        run: echo hi",
+    "",
+    "      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0",
+    "",
+    "      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0",
+    "",
+  ].join("\n"),
+);
+
 function codesOf(problems: Problem[]): string[] {
   return problems.map((problem) => problem.code);
 }
@@ -890,6 +914,26 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CHECKOUT_CREDENTIALS",
     ]);
+  });
+
+  it("does not let a step whose own line is a block key swallow its siblings", () => {
+    // `- env:` ends in a colon, so a reader that decides ownership on the
+    // colon alone merges every following step into this one -- which reads
+    // setup-node's index as the merged step's own, and reports an ordering
+    // failure this workflow does not have.
+    expect(lintWorkflow(BLOCK_KEY_FIRST_STEP_WORKFLOW)).toEqual([]);
+  });
+
+  it("still reads a later step's own shell past a step whose line is a block key", () => {
+    // The same merge cuts the other way: `stepShellAtLine` finds the merged
+    // step first and answers with a sibling's `shell:`, so a multi-line `run:`
+    // with no shell of its own stops being reported at all.
+    const source = BLOCK_KEY_FIRST_STEP_WORKFLOW.replace(
+      "        run: echo hi\n",
+      ["        run: |", "          echo hi", "          echo there", ""].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_RUN_NOT_PIPEFAIL"]);
   });
 
   it("rejects a job whose steps it cannot read", () => {
