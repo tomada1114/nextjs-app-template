@@ -34,19 +34,25 @@ workflow step or a hook line.
 `package.json`'s `check:source` composes as one script the same ground
 `.github/workflows/ci.yml` covers as separate `run:` steps — split there so a reader
 sees which step failed rather than only that the composite did. `tests/ci-sync.test.ts`
-holds the two together: it extracts every `pnpm run <name>` token out of `check:source`
-and out of ci.yml's `static` and `test` jobs, and fails when a `check:source` step is
-not also a CI step of its own or a documented entry in that test's `CI_SYNC_EXCEPTIONS`
-map (empty today, and adding an entry is a claim to argue in the PR).
+holds the two together, both ways: it extracts every `pnpm run <name>` token out of
+`check:source` and out of every job `ci.yml` declares — the job list is parsed from the
+file rather than named in the test, so a third job counts the day it lands — and fails
+when a step on either side has no counterpart on the other.
+
+The exceptions are two maps, one per direction, each value a stated reason rather than a
+comment: `CHECK_SOURCE_ONLY_EXCEPTIONS`, empty today, and `CI_ONLY_EXCEPTIONS`, which
+holds `test`. That one is ci.yml's `Run tests without coverage` step, the
+`matrix.os != 'ubuntu-latest'` branch that keeps coverage collected exactly once should
+a second OS join the matrix; `check:source` runs `test:coverage`, the same suite plus
+the coverage floors, so a local run is not missing a gate. Adding an entry to either map
+is a claim to argue in the PR, and a stale one fails the suite — each key has to still
+name a real step on its own side.
 
 A new gate is therefore three edits, not one: the package script, the `check:source`
-composition, and the matching `ci.yml` step. Two gaps the test cannot close are yours to
-check by hand:
-
-- The assertion runs one way only. A step added to `ci.yml` with no `check:source`
-  counterpart passes — and is a check nobody can run locally before pushing.
-- It reads `static` and `test` and no other job. A step parked in a third job satisfies
-  nothing here.
+composition, and the matching `ci.yml` step — and the suite now fails if either of the
+last two is skipped, whichever way round. What it does not judge is _which_ job a CI
+step lands in: steps are collected across all jobs, so a check that belongs in `static`
+but sits in `test` satisfies both directions. That one is still read by a human.
 
 ## CI workflows
 
