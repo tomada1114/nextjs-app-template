@@ -85,9 +85,8 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * it — the port contract suite and the handler test as the seams a test is
  * written through, and the port's generic request/response types as what a
  * compile-time assertion is worth making about. This list existing — and being
- * short — is the
- * property: an app-level module that had to be edited here would mean the layer
- * is no longer separable.
+ * short — is the property: an app-level module that had to be edited here would
+ * mean the layer is no longer separable.
  *
  * Each skill's `.claude/skills/` copy is listed too because it is a real
  * committed file, but it is never hand-edited: the removal edits the
