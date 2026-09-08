@@ -147,8 +147,8 @@ formality:
 - Treat a **minor bump of a `0.x` package as a major** one — pre-1.0 tools ship breaking
   changes in minor releases. The survey script labels these `minor`; you still read the
   release notes.
-- Confirm the `Dependency Review` check passed on the PR — it is the advisory gate for
-  new and changed dependencies.
+- Confirm the `Review new dependencies` check passed on the PR — it is the advisory gate
+  for new and changed dependencies.
 - A bump that changes `pnpm-workspace.yaml`, `eslint.config.mjs`, or anything under
   `.github/workflows/` is changing _what_ runs rather than _which version_ runs, and
   deserves a closer read.
