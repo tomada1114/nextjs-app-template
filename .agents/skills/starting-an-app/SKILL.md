@@ -4,9 +4,10 @@ description: >
   Covers turning this template into a new application: the copy-and-rename procedure
   driven by tests/placeholders.test.ts, what a new project keeps untouched, removing the
   AI layer whole under tests/ai-layer-removal.test.ts, and whether to keep both locales
-  or drop one. Use when starting an app from this repository, replacing the package name
-  or the repository slug in a badge or advisory link, deleting src/ai/ and the route
-  that depends on it, or dropping a locale from src/i18n/locales.ts and messages/.
+  or drop one. Use when starting an app from this repository, replacing the package
+  name, the app's display name or the repository slug in a badge or advisory link,
+  deleting src/ai/ and the route that depends on it, or dropping a locale from
+  src/i18n/locales.ts and messages/.
 ---
 
 # Starting an App
@@ -53,6 +54,12 @@ remain against the sites the list expects. Replace one site, delete its row from
 is green: an empty inventory means no identity string of this template survived anywhere
 in the tree, not merely in the files someone remembered to open.
 
+The suite's second block, over the CI badge and the security-advisory link, checks those
+two URLs by their _shape_ — the path segments and the workflow filename — and leaves the
+owner and the repository unconstrained. It passes on your slug exactly as it did on the
+template's, so it needs no edit during the rename; what pins the slug itself is the
+inventory row for each of those files.
+
 What goes into each site:
 
 - **The package identity** — `package.json`'s `name` and `description`. `private: true`
@@ -64,6 +71,14 @@ What goes into each site:
   advisory form.
 - **The copyright holder** in `LICENSE`, and the same name wherever the README repeats
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
+- **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
+  `metadata`, which is the browser tab, and the `HomePage.title` key in
+  `messages/en.json` and `messages/ja.json`, which is the page heading. This is the only
+  reader-visible copy this checklist covers, and the only one that is per-locale: each
+  catalog gets the name written in its own language. Other reader-visible copy — the
+  `description` in that same `metadata` block, and the home page's body text in each
+  catalog's `HomePage.intro` and `HomePage.localeCount` — is deliberately not
+  inventoried here; review it by hand as part of the renaming project.
 
 Emptying `EXPECTED_INVENTORY` is the intended edit and is not weakening a gate. Widening
 `SKIPPED_DIRECTORIES` or `SKIPPED_FILES`, or dropping an entry from `PLACEHOLDERS`, to
