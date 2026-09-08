@@ -48,7 +48,7 @@ export const MAX_RETRY_AFTER_MS = 8_000;
  * `undefined` therefore means exactly one thing: the SDK would fall through to
  * `calculateDefaultRetryTimeoutMillis`, whose result is already bounded.
  */
-export function honoredRetryAfterMs(headers: Headers): number | undefined {
+function honoredRetryAfterMs(headers: Headers): number | undefined {
   let timeoutMillis: number | undefined;
 
   const retryAfterMillisHeader = headers.get("retry-after-ms");
@@ -110,9 +110,13 @@ export function honoredRetryAfterMs(headers: Headers): number | undefined {
  *   one divergence that must not ship.
  * - **The `>= 400` gate** keeps the replacement off the statuses that forbid a
  *   body (`204`, `205`, `304`), where `new Response(body, …)` throws. It is a
- *   deliberate superset of `shouldRetry`'s status list rather than a copy of
- *   it: the header is simply never read on a response the SDK would not have
- *   retried, so the looser test is the cheaper one to keep correct.
+ *   deliberate superset of `shouldRetry`'s *status* list
+ *   (`408`/`409`/`429`/`5xx`) rather than a copy of it, so the looser test is
+ *   the cheaper one to keep correct. What it does not cover is a `3xx`
+ *   carrying a provider-sent `x-should-retry: true`, which `shouldRetry` obeys
+ *   ahead of every status rule; `fetch` follows redirects, so reaching that
+ *   takes a `3xx` with no `Location` at all, and a `304` could not carry the
+ *   replacement's body anyway.
  *
  * A delay at or under {@link MAX_RETRY_AFTER_MS} is left alone and the SDK
  * retries exactly as it does today, as is a `NaN` or negative delay — both of

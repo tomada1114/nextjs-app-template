@@ -355,8 +355,10 @@ describe("createAnthropicAdapter declines a retry-after it cannot afford (#66)",
   // `!timeoutMillis`, not `!== undefined`); an unparsable `retry-after-ms`,
   // which the SDK also falls past; a provider that explicitly asked for a
   // retry, which is overridden because *whether* to retry is the provider's
-  // call and *how long to wait* is this client's; and the HTTP-date form, five
-  // minutes past the fixed clock set below.
+  // call and *how long to wait* is this client's; the HTTP-date form, five
+  // minutes past the fixed clock set below; and one millisecond past
+  // MAX_RETRY_AFTER_MS, which pins the comparison as `>` — a `>=` would decline
+  // the boundary case the sibling suite below asserts is still honored.
   it.each([
     [{ "retry-after": "300" }],
     [{ "retry-after-ms": "600000" }],
@@ -364,6 +366,7 @@ describe("createAnthropicAdapter declines a retry-after it cannot afford (#66)",
     [{ "retry-after-ms": "later", "retry-after": "300" }],
     [{ "x-should-retry": "true", "retry-after": "300" }],
     [{ "retry-after": "Wed, 01 Jan 2025 00:05:00 GMT" }],
+    [{ "retry-after-ms": "8001" }],
   ])("answers at once rather than retrying, given %o", async (headers) => {
     const { fetch, calls } = respondWith(429, RATE_LIMITED, headers);
 
@@ -393,12 +396,14 @@ describe("createAnthropicAdapter still honors a retry-after it can afford (#66)"
   // The half that stops the fix from degenerating into "never retry". In
   // order: one second; five hundred milliseconds; a malformed header, which
   // `Date.parse` turns into `NaN` and the SDK sleeps ~0 on rather than
-  // computing a backoff; and no header at all, where the SDK's own backoff
-  // applies and is already bounded by its 8 s ceiling.
+  // computing a backoff; exactly MAX_RETRY_AFTER_MS, the longest wait this
+  // client will still sit out; and no header at all, where the SDK's own
+  // backoff applies and is already bounded by its 8 s ceiling.
   it.each([
     [{ "retry-after": "1" }],
     [{ "retry-after-ms": "500" }],
     [{ "retry-after": "later" }],
+    [{ "retry-after": "8" }],
     [{}],
   ])("sleeps and makes a second attempt, given %o", async (headers) => {
     const { fetch, calls } = respondWith(429, RATE_LIMITED, headers);
@@ -407,7 +412,8 @@ describe("createAnthropicAdapter still honors a retry-after it can afford (#66)"
     try {
       const pending = askUnderRetries(fetch);
 
-      // MAX_RETRY_AFTER_MS: past every sleep any of these cases can ask for.
+      // MAX_RETRY_AFTER_MS: the longest sleep any of these cases can ask for,
+      // and the largest one honored at all.
       await vi.advanceTimersByTimeAsync(8_000);
       const error = failureOf(await pending);
 
