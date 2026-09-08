@@ -64,6 +64,17 @@ export interface LlmPort {
    * @returns The parsed value, or the {@link LlmError} describing why there is
    * none. The success type is inferred from the schema, so a caller never
    * restates it.
+   *
+   * @remarks
+   * A successful parse does not end a deadline's authority over the call.
+   * `schema` validation runs with `safeParseAsync`, so a schema carrying an
+   * async `refine`/`transform` keeps the call open after the raw answer has
+   * already arrived — and `signal`, or whatever bound an adapter composes over
+   * it, can fire while that validation is still running. An implementation
+   * re-checks the signal once validation resolves and reports `ERR_LLM_TIMEOUT`
+   * rather than the parsed value when it fired, even though the parse itself
+   * succeeded: the deadline bounds the whole call, and validation is part of
+   * it, not a step that happens after the call is already over.
    */
   generate<TSchema extends z.ZodType>(
     request: LlmRequest<TSchema>,

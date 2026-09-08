@@ -188,6 +188,12 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
         );
       }
 
+      // Against the composed `signal`, not `request.signal`: validation is
+      // async, so a fired deadline needs catching here too. See `LlmPort`.
+      if (signal.aborted) {
+        return err(abortedLlmError(signal.reason));
+      }
+
       return ok(parsed.data);
     },
   };
