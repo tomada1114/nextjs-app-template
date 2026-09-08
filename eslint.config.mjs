@@ -37,7 +37,7 @@ const NO_EXPORT_STAR = {
 
 /** What `src/internal/**` is, in the words of the rule that made it private. */
 const INTERNAL_IS_PRIVATE =
-  "src/internal/ is private: see the `public-api-contract` skill. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on module internals at all.";
+  "src/internal/ is private. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on module internals at all.";
 
 /**
  * The Anthropic SDK, under every subpath it publishes.
