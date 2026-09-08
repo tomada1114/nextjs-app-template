@@ -20,17 +20,18 @@ checked.
 
 ## Overview
 
-An ESM-only TypeScript package. It is private: nothing here is packed, published, or
-consumed as a tarball, so there is no published `engines.node` floor — `.node-version`
-and `devEngines.runtime` carry the Node 24 development runtime instead. pnpm 11 is the
-package manager, used through Corepack. A package may also ship one command entry in
-`src/cli.ts`; that command is not an import surface.
+A Next.js application on the App Router, written in ESM-only TypeScript. It is private:
+nothing here is packed, published, or consumed as a tarball, so there is no published
+`engines.node` floor — `.node-version` and `devEngines.runtime` carry the Node 24
+development runtime instead. pnpm 11 is the package manager, used through Corepack.
 
 ## Quick reference
 
 ```sh
+pnpm dev           # start the Next.js development server on http://localhost:3000
+pnpm build         # production build; also type-checks the App Router entry points
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
-pnpm check:source  # the same gate with coverage thresholds enforced
+pnpm check:source  # the same gate plus the build, with coverage thresholds enforced
 pnpm fix           # ESLint autofix, then Prettier
 pnpm test          # tests only
 pnpm test:coverage # tests with the coverage thresholds enforced
@@ -41,10 +42,11 @@ pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
 
-`pnpm check:quick` is the full local source gate, and CI runs those same checks as
-separate steps, so a green run here means those are green too. `lefthook`'s pre-commit
-hook runs a staged-file-scoped version of the same tools — format applied rather than
-merely checked, tests limited to the ones reachable from the staged files — before every
+`pnpm check:quick` is the everyday local gate; `pnpm check:source` adds the build and
+the coverage floors on top of it. CI runs those same checks as separate steps, so a
+green `pnpm check:source` here means those are green too. `lefthook`'s pre-commit hook
+runs a staged-file-scoped version of the same tools — format applied rather than merely
+checked, tests limited to the ones reachable from the staged files — before every
 commit. Nothing — not a hook, not a workflow — defines a check of its own; they all call
 these scripts.
 
@@ -60,6 +62,7 @@ on every edit is slow enough that it stops being run at all.
 | What you changed                      | The narrowest check that can fail                    |
 | ------------------------------------- | ---------------------------------------------------- |
 | A module under `src/`                 | `pnpm exec vitest run tests/<module>.test.ts`        |
+| A file under `src/app/`               | `pnpm build`                                         |
 | A test                                | `pnpm exec vitest run tests/<name>.test.ts`          |
 | A script under `scripts/`             | `pnpm exec vitest run tests/<script>.test.ts`        |
 | A skill under `.agents/skills/`       | `pnpm agents:sync && pnpm agents:check && pnpm test` |
@@ -70,17 +73,18 @@ on every edit is slow enough that it stops being run at all.
 
 ```
 src/
-├── index.ts      # the public contract: the only module consumers can import
-├── cli.ts        # optional command entry; not an import surface
-├── internal/     # private; never re-exported from index.ts
-└── *.ts          # implementation modules, re-exported by name from index.ts
+└── app/          # the Next.js App Router tree: pages, layouts, route handlers
 ```
 
-`src/index.ts` is the single consumer-importable entry point of the published contract.
-`src/cli.ts` may additionally be the command entry named by `package.json#bin`, but it
-is not an import surface. `scripts/*.mjs` is repository automation that never ships.
-What may appear on the import surface, and what a change to it obliges, are the
-`public-api-contract` and `release-impact` skills.
+Next.js finds a page, layout, boundary or route handler under `src/app/` by file name
+and loads it through its default export, which is why `eslint.config.mjs`'s
+default-export ban stops at that directory and holds everywhere else under `src/`.
+`scripts/*.mjs` is repository automation that never ships.
+
+The zones the rest of `src/` grows into, and the import boundaries between them, are not
+settled yet; this section is rewritten once they exist. What may appear on a module's
+import surface, and what a change to it obliges, are the `public-api-contract` and
+`release-impact` skills.
 
 ## Skills
 

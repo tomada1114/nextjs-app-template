@@ -40,10 +40,10 @@ catch clause, or a script's own error handling that matches on `message` text â€
   without that being a contract change.
 - When a function forwards an abort onto an `AbortSignal`, abort the controller with the
   exact same error instance the returned promise rejects with, not a fresh error
-  carrying the same message. `withTimeout` in `src/timeout.ts` is the model: the
-  `TimeoutError` it builds is passed to both `controller.abort(timeout)` and
-  `reject(timeout)`, so a cooperating operation reading `signal.reason` sees the
-  identical object the caller's `catch` receives.
+  carrying the same message. A deadline helper is the model: the `TimeoutError` it
+  builds is passed to both `controller.abort(timeout)` and `reject(timeout)`, so a
+  cooperating operation reading `signal.reason` sees the identical object the caller's
+  `catch` receives.
 
 ```ts
 /**

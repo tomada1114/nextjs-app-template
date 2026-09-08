@@ -6,14 +6,12 @@ A short description.
 
 ## Quick start
 
-```ts
-import { normalizeIdentifier } from "my-package";
-
-console.log(normalizeIdentifier("Hello World"));
-// => "hello-world"
+```sh
+pnpm install
+pnpm dev
 ```
 
-All public symbols are named exports from `src/index.ts`; `src/internal/` is private.
+Then open <http://localhost:3000>. The page it renders is `src/app/page.tsx`.
 
 ## Development
 

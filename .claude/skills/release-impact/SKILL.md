@@ -3,10 +3,8 @@ name: release-impact
 description: >
   Use when deciding whether a change is breaking and which semver level (MAJOR, MINOR,
   PATCH) it deserves, whether a PR needs a release at all, or how to word the `Release
-  impact:` line in a PR body; when adding, removing, renaming, or retyping anything
-  exported from src/index.ts — normalizeIdentifier, withTimeout, InvalidInputError,
-  TimeoutError, NormalizeIdentifierOptions, WithTimeoutOptions — or changing an error
-  `code`.
+  impact:` line in a PR body; when adding, removing, renaming, or retyping anything a
+  module exports, or changing an error `code`.
 ---
 
 # Release Impact

@@ -32,8 +32,11 @@ import process from "node:process";
  * so the transport and credential variables in that prefix have nothing to
  * carry: `git init`, `add`, `ls-files` and `show` against a local directory.
  *
- * @param {NodeJS.ProcessEnv} [env] - Environment to copy. Defaults to the
- * current process environment.
+ * @param {Readonly<Record<string, string | undefined>>} [env] - Environment to
+ * copy. Defaults to the current process environment. Typed by what this
+ * function reads rather than as `NodeJS.ProcessEnv`, which `next` narrows with
+ * a required `NODE_ENV` a caller building a fixture environment has no reason
+ * to supply.
  * @returns {NodeJS.ProcessEnv} A copy holding no `GIT_*` variable.
  *
  * @example
@@ -42,12 +45,14 @@ import process from "node:process";
  * ```
  */
 export function isolatedGitEnv(env = process.env) {
-  /** @type {NodeJS.ProcessEnv} */
+  /** @type {Record<string, string | undefined>} */
   const isolated = {};
   for (const [key, value] of Object.entries(env)) {
     if (!key.startsWith("GIT_")) {
       isolated[key] = value;
     }
   }
-  return isolated;
+  // The loop copies every variable that is not `GIT_*`, `NODE_ENV` included,
+  // but a record assembled key by key cannot prove that to the compiler.
+  return /** @type {NodeJS.ProcessEnv} */ (isolated);
 }

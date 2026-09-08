@@ -47,7 +47,7 @@ pre-commit:
           # keeps a generated file that happens to be staged from failing the
           # run on a warning about being out of scope.
           - name: eslint
-            glob: "*.{ts,mts,cts,js,mjs,cjs}"
+            glob: "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
             run: pnpm exec eslint --max-warnings 0 --no-warn-ignored {staged_files}
 
           # Type-checks the whole program, not only the staged files — a
@@ -55,7 +55,7 @@ pre-commit:
           # commit does not touch. Cheap enough (~2s) to run on every commit
           # that touches code.
           - name: typecheck
-            glob: "*.{ts,mts,cts,js,mjs,cjs}"
+            glob: "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
             run: pnpm run typecheck
 
           # Only the test files reachable from the staged files' module
@@ -66,9 +66,11 @@ pre-commit:
           - name: test:related
             run: pnpm run test:related {staged_files}
 
-          # Content-based checks git itself can see: a credential in a staged
-          # file, a quality gate stripped out of a gate file, a staged
-          # deletion of one, an .env*/secrets/** file about to be committed.
+          # Content-based checks git itself can see: a credential in a
+          # staged file, and an .env*/secrets/** file about to be committed.
+          # It deliberately does not judge whether a commit weakens a gate —
+          # that is a judgement call for the pull request, not the hook (see
+          # AGENTS.md's "Enforcement layers").
           # No glob: this is the layer that must see every staged file,
           # whatever its extension — see scripts/check-staged.mjs's header
           # for what it does and does not cover. Runs after `format` above,
