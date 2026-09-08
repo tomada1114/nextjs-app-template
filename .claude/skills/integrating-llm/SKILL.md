@@ -93,10 +93,14 @@ adapter may never assume someone else will time it out. Three bounds compose:
   headers**. The SDK clears it the moment the `Response` resolves, so a provider that
   answers `200` and then dribbles bytes is already past it. `DEFAULT_MAX_RETRIES` is
   pinned in the same file because the SDK's own default multiplies against that timeout.
-- **The adapter's own total deadline** — `DEFAULT_DEADLINE_MS`, declared in that same
-  `client.ts` and armed per request by `requestSignal` in
-  `src/ai/adapters/anthropic/deadline.ts` — covers the whole call, every attempt and the
-  body read, and covers it with no caller signal at all.
+- **The adapter's own total deadline** — `defaultDeadlineMs(timeoutMs, maxRetries)` in
+  that same `client.ts`, applied when the caller omits `deadlineMs`, and armed per
+  request by `requestSignal` in `src/ai/adapters/anthropic/deadline.ts` — covers the
+  whole call, every attempt and the body read, and covers it with no caller signal at
+  all. Derived from the _resolved_ `timeoutMs`/`maxRetries` rather than fixed, so a
+  caller who configures either still gets a total bound that fits what they asked for;
+  an explicit `deadlineMs` skips the derivation and is honoured verbatim, even when
+  shorter than one attempt's `timeoutMs`.
 - **The caller's `AbortSignal`** is an _additional and earlier_ deadline layered on top,
   never the only one there is.
 
@@ -107,11 +111,13 @@ into the signal the request is made under_, with `AbortSignal.any`, so firing it
 actually cancels the transport — and so an abort between attempts ends the retry chain
 rather than starting another one. `deadline.ts`'s TSDoc is the argument in full.
 
-Two limits are known and tracked rather than papered over: the default deadline is
-derived from the _default_ timeout and retry count, so a configured `timeoutMs` can
-silently under-cut it (#65), and the SDK's backoff sleep does not consult the signal, so
-a call can overshoot by the remainder of a long `retry-after` (#66). Do not claim a
-tighter bound than that in a comment or a document.
+One limit is known and tracked rather than papered over: the SDK's backoff sleep does
+not consult the signal, so a deadline firing mid-sleep is noticed only when that sleep
+ends (#66). Under the _derived_ deadline, whose budget already allows for every sleep,
+that costs an overshoot only when a `retry-after` runs past the SDK's own backoff
+ceiling; under a short explicit `deadlineMs` any ordinary computed backoff is enough,
+and the call overshoots by the remainder of it. Do not claim a tighter bound than that
+in a comment or a document.
 
 An out-of-range `deadlineMs` throws a `RangeError` at construction — the one place this
 layer throws rather than answering with a `Result`. The signal is armed outside every

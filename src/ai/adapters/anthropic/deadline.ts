@@ -1,3 +1,47 @@
+import { defaultDeadlineMs, MAX_DEADLINE_MS } from "./client";
+
+/**
+ * The total deadline one adapter runs its requests under.
+ *
+ * @remarks
+ * Resolved once, at construction, and validated there rather than left for
+ * {@link requestSignal} to throw per request. `AbortSignal.timeout` rejects a
+ * delay outside an unsigned 32-bit range with a `RangeError`, and the signal is
+ * armed outside every `try` in `generate` — so an unchecked value would surface
+ * as a *rejected* `generate()`, the one thing `LlmPort` promises never happens.
+ * A deadline out of range is a composition-root mistake, and a start-up failure
+ * is where that points.
+ *
+ * `explicit` wins outright when it is given, even when it is shorter than one
+ * attempt's `timeoutMs`: shortest-wins is what composing a deadline into an
+ * `AbortSignal` means, and a caller asking for a hard bound below its
+ * per-attempt timeout is asking for exactly the right thing. The two messages
+ * differ for the same reason — only one of these is a value the caller typed.
+ *
+ * @throws A `RangeError` naming whichever option the caller can act on.
+ */
+export function resolveDeadlineMs(
+  explicit: number | undefined,
+  timeoutMs: number,
+  maxRetries: number,
+): number {
+  const deadlineMs = explicit ?? defaultDeadlineMs(timeoutMs, maxRetries);
+
+  if (
+    !Number.isInteger(deadlineMs) ||
+    deadlineMs <= 0 ||
+    deadlineMs > MAX_DEADLINE_MS
+  ) {
+    throw new RangeError(
+      explicit === undefined
+        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is not an integer between 1 and ${String(MAX_DEADLINE_MS)}. Correct timeoutMs and maxRetries: passing deadlineMs bounds the call but leaves those two as they are.`
+        : `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
+    );
+  }
+
+  return deadlineMs;
+}
+
 /**
  * The signal one request is actually made under.
  *
@@ -10,7 +54,7 @@
  * another attempt, so `maxRetries` no longer multiplies it. Ends it, but not
  * necessarily on time: the SDK's backoff sleep does not consult the signal, so
  * an abort arriving mid-sleep is noticed only when the next attempt begins.
- * See {@link DEFAULT_DEADLINE_MS} for what that costs.
+ * See {@link defaultDeadlineMs} for what that costs.
  *
  * `AbortSignal.any` propagates the *first* aborting source's `reason`, which is
  * what keeps the error identity the port promises: a caller that aborted with
