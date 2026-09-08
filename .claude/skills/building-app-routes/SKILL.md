@@ -16,9 +16,9 @@ description: >
 `src/app/`, the shape of a Route Handler and the handler behind it, `src/proxy.ts`, and
 how configuration reaches any of them. **Does not own:** the `LlmPort` contract and the
 adapter behind it (`integrating-llm`, when it lands); message catalogs and the locale
-routing they configure (`localizing-ui`, when it lands); how a test case is written
-(`writing-tests`) and which vitest project it joins (`placing-tests`); TypeScript idiom
-inside a module (`writing-typescript`).
+routing they configure (`localizing-ui`); how a test case is written (`writing-tests`)
+and which vitest project it joins (`placing-tests`); TypeScript idiom inside a module
+(`writing-typescript`).
 
 The zones, the direction imports run in, and what each zone publishes are AGENTS.md's
 Architecture section; their literal patterns and budgets are `eslint.config.mjs`'s
@@ -71,8 +71,8 @@ locale prefix, so a route added outside that segment is one the proxy prefixes a
 tree then fails to match. Link to it with `Link` from `src/i18n/navigation.ts` and an
 unprefixed pathname — `next/link` produces a URL with no locale, which costs a proxy
 redirect round trip and drops the locale the reader was on. Then run `pnpm build` and
-open the page. **BACKGROUND:** `localizing-ui`, when it lands, for the catalog the page
-reads its strings from.
+open the page. **BACKGROUND:** `localizing-ui` for the catalog the page reads its
+strings from.
 
 ## A Route Handler is one re-export line
 

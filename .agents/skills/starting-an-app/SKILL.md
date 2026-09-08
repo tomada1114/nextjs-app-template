@@ -142,6 +142,9 @@ Delete the paths, then work through `EDITED_FILES`:
   layer — the port's error vocabulary, the handler's `satisfies` status table, the abort
   helpers. Every rule they illustrate outlives the layer, so each example is replaced by
   one from your own code rather than deleted with its rule.
+- `localizing-ui` loses its `outputLanguage` section — that seam is the port's, and the
+  UI locale it maps from has nowhere left to reach. Everything else in it, the catalogs
+  and the locale routing, is untouched by this removal.
 - `writing-tests` loses the two seams that are going away — the port contract suite and
   the handler driven with `new Request()` — and `type-testing` the port's generic
   request and response types. Both keep everything else: the component and Route Handler
