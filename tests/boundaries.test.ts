@@ -152,6 +152,7 @@ describe("the import scanner the zone assertions run on", () => {
       "src/ai/adapters/anthropic/errors.ts",
       "src/ai/adapters/anthropic/index.ts",
       "src/ai/adapters/anthropic/request.ts",
+      "src/ai/adapters/anthropic/retry-after.ts",
       "src/ai/adapters/fake/index.ts",
       "src/ai/errors.ts",
       "src/ai/index.ts",

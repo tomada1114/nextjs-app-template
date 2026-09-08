@@ -10,10 +10,15 @@ import { headersThenStallFetch, LLM_FIXTURES_DIR, replayFetch } from "./llm-repl
 
 const SCHEMA = z.object({ answer: z.string() });
 
-/** A `fetch` that answers once with `status` and `body`, recording what it got. */
+/**
+ * A `fetch` that answers every call with `status` and `body`, recording what it
+ * got. `headers` is merged in after `content-type`, so a case can dictate the
+ * `retry-after` the SDK reads.
+ */
 function respondWith(
   status: number,
   body: unknown,
+  headers: Readonly<Record<string, string>> = {},
 ): { fetch: typeof globalThis.fetch; calls: RequestInit[] } {
   const calls: RequestInit[] = [];
   return {
@@ -23,7 +28,7 @@ function respondWith(
       return Promise.resolve(
         new Response(JSON.stringify(body), {
           status,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...headers },
         }),
       );
     },
@@ -318,6 +323,100 @@ describe("createAnthropicAdapter under its real retry configuration", () => {
     // about to start a second attempt, the deadline has already fired — so no
     // second request ever goes out.
     expect(calls).toHaveLength(1);
+  });
+});
+
+/** The body every rate-limit case below answers with. */
+const RATE_LIMITED = {
+  type: "error",
+  error: { type: "rate_limit_error", message: "slow down" },
+};
+
+/** One rate-limited `generate()` call under the real retry configuration. */
+function askUnderRetries(
+  fetch: typeof globalThis.fetch,
+): Promise<Result<z.infer<typeof SCHEMA>, LlmError>> {
+  return createAnthropicAdapter({ apiKey: "test-key", maxRetries: 1, fetch }).generate({
+    schema: SCHEMA,
+    prompt: "?",
+    outputLanguage: "en",
+  });
+}
+
+describe("createAnthropicAdapter declines a retry-after it cannot afford (#66)", () => {
+  // The SDK sleeps a `retry-after` verbatim — `retryRequest` awaits
+  // `sleep(timeoutMillis)` with no signal — so a provider asking for five
+  // minutes parks the call five minutes past a deadline it was given. The
+  // adapter's middleware answers the SDK's own `x-should-retry` header
+  // instead, and the chain ends on the first attempt.
+  //
+  // The table, in order: the seconds form; the millisecond form; a falsy
+  // `retry-after-ms` that still lets `retry-after` through (the SDK writes
+  // `!timeoutMillis`, not `!== undefined`); an unparsable `retry-after-ms`,
+  // which the SDK also falls past; a provider that explicitly asked for a
+  // retry, which is overridden because *whether* to retry is the provider's
+  // call and *how long to wait* is this client's; and the HTTP-date form, five
+  // minutes past the fixed clock set below.
+  it.each([
+    [{ "retry-after": "300" }],
+    [{ "retry-after-ms": "600000" }],
+    [{ "retry-after-ms": "0", "retry-after": "300" }],
+    [{ "retry-after-ms": "later", "retry-after": "300" }],
+    [{ "x-should-retry": "true", "retry-after": "300" }],
+    [{ "retry-after": "Wed, 01 Jan 2025 00:05:00 GMT" }],
+  ])("answers at once rather than retrying, given %o", async (headers) => {
+    const { fetch, calls } = respondWith(429, RATE_LIMITED, headers);
+
+    vi.useFakeTimers();
+    try {
+      // Fixed so the HTTP-date case is five minutes out rather than long past.
+      vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+      const error = failureOf(await askUnderRetries(fetch));
+
+      expect(error.code).toBe("ERR_LLM_RATE_LIMIT");
+      // Settled with no timer advanced at all: nothing was ever scheduled to
+      // sleep on, so the answer cannot have cost wall-clock time.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The assertion that fails loudly on a regression. A reintroduced sleep
+    // would also hang until Vitest's own timeout, which is red either way but
+    // far less legible than a count.
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("createAnthropicAdapter still honors a retry-after it can afford (#66)", () => {
+  // The half that stops the fix from degenerating into "never retry". In
+  // order: one second; five hundred milliseconds; a malformed header, which
+  // `Date.parse` turns into `NaN` and the SDK sleeps ~0 on rather than
+  // computing a backoff; and no header at all, where the SDK's own backoff
+  // applies and is already bounded by its 8 s ceiling.
+  it.each([
+    [{ "retry-after": "1" }],
+    [{ "retry-after-ms": "500" }],
+    [{ "retry-after": "later" }],
+    [{}],
+  ])("sleeps and makes a second attempt, given %o", async (headers) => {
+    const { fetch, calls } = respondWith(429, RATE_LIMITED, headers);
+
+    vi.useFakeTimers();
+    try {
+      const pending = askUnderRetries(fetch);
+
+      // MAX_RETRY_AFTER_MS: past every sleep any of these cases can ask for.
+      await vi.advanceTimersByTimeAsync(8_000);
+      const error = failureOf(await pending);
+
+      expect(error.code).toBe("ERR_LLM_RATE_LIMIT");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(calls).toHaveLength(2);
   });
 });
 
