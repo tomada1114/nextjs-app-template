@@ -1,5 +1,5 @@
 /**
- * Every failure an {@link ./port#LlmPort | LlmPort} may report.
+ * Every failure an `LlmPort` may report.
  *
  * @remarks
  * The vocabulary is deliberately about what a caller can *do*, not about which
