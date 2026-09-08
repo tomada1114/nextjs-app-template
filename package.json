@@ -19,7 +19,7 @@
     }
   },
   "scripts": {
-    "clean": "node scripts/clean.mjs .next coverage .eslintcache",
+    "clean": "node scripts/clean.mjs .next coverage .eslintcache tsconfig.tsbuildinfo",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

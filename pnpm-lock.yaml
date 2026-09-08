@@ -204,7 +204,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  eslint-import-resolver-typescript: 3.8.7
+  eslint-config-next>eslint-import-resolver-typescript: 3.8.7
   semver: ^7.7.4
 
 importers:

@@ -51,7 +51,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["tests/**/*.test.ts"],
+          include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
           exclude: [...automationTests, fixtures],
           testTimeout: 5_000,
           hookTimeout: 5_000,

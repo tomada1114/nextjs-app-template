@@ -219,7 +219,7 @@ export default defineConfig([
     // "warn", starting with the two that quietly shrink the suite.
     ...vitest.configs.recommended,
     name: "tests/vitest-rules",
-    files: ["tests/**/*.ts"],
+    files: ["tests/**/*.ts", "tests/**/*.tsx"],
     rules: {
       ...vitest.configs.recommended.rules,
 
@@ -257,7 +257,7 @@ export default defineConfig([
   },
   {
     name: "tests/relaxations",
-    files: ["tests/**/*.ts"],
+    files: ["tests/**/*.ts", "tests/**/*.tsx"],
     rules: {
       // Tests deliberately construct invalid input to prove it is rejected.
       "@typescript-eslint/no-confusing-void-expression": "off",
@@ -265,7 +265,7 @@ export default defineConfig([
   },
   {
     name: "boundaries/internal-is-not-importable",
-    files: ["tests/**/*.ts", "scripts/**/*.mjs"],
+    files: ["tests/**/*.ts", "tests/**/*.tsx", "scripts/**/*.mjs"],
     rules: {
       "no-restricted-imports": [
         "error",
