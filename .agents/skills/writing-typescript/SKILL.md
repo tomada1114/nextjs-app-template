@@ -13,9 +13,8 @@ description: >
 # Writing TypeScript
 
 **Owns:** type-system judgment, naming, and constant placement inside a `src/**/*.ts`
-module. **Does not own:** the shape of an error class (`designing-errors`); what may be
-exported from `src/index.ts` (`public-api-contract`); the `.mjs` files under `scripts/`
-(`writing-repo-scripts`).
+module. **Does not own:** the shape of an error class (`designing-errors`); the `.mjs`
+files under `scripts/` (`writing-repo-scripts`).
 
 ## Naming and constants
 

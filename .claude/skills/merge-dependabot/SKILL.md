@@ -14,8 +14,7 @@ description: >
 **Owns:** landing already-open Dependabot/Renovate PRs — triage, landing mode, the
 combined branch, and cleanup. **Does not own:** whether a package may be added or bumped
 at all, the release-age cooldown, and the supply-chain settings
-(`managing-dependencies`); the release-impact note a consumer-visible bump owes
-(`release-impact`).
+(`managing-dependencies`).
 
 Branch names, commit messages, and PR text follow AGENTS.md's English-only convention.
 
@@ -154,9 +153,6 @@ git push -u origin HEAD
 gh pr create --title "deps: batch dependency updates" \
   --label dependencies --body "<filled PR template>"
 ```
-
-A dependency bump that changes behavior (a new runtime dependency, a changed peer range)
-needs a release-impact note (`release-impact`); a devDependency bump does not.
 
 ## Step 5: Land and clean up
 

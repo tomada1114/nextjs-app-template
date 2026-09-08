@@ -11,8 +11,8 @@ description: >
 # Updating Documentation
 
 **Owns:** whether a change needs a documentation update, and which surface it lands on.
-**Does not own:** the release-impact note (`release-impact`); TSDoc release tags
-(`public-api-contract`).
+**Does not own:** what a TSDoc comment for a given symbol actually says
+(`writing-typescript`).
 
 ## Decide on observability, not location
 
@@ -34,13 +34,6 @@ first one that seems relevant:
 - The README example, if the change affects what it shows.
 - `CONTRIBUTING.md`, if the change affects setup, the commands, or the PR process.
 - TSDoc comments in `src/**` for the symbol that changed.
-- The `Release impact:` line in the PR body, when the change is user-observable.
-  **REQUIRED:** follow `release-impact` for its wording; this skill only flags that one
-  is owed.
-
-**REQUIRED:** `release-impact`'s same-PR checklist is what requires the README example
-to land in the same pull request as a public-API change; this skill decides which
-surface the update belongs on, not whether one is owed.
 
 ## Purpose per file
 
@@ -51,8 +44,7 @@ Each file has one job; do not blur them:
   API reference. Nothing more.
 - `CONTRIBUTING.md` — local setup, the main `pnpm` commands, how to run tests, release
   intent, and the PR process.
-- There is no `CHANGELOG.md` and no `docs/` tree here; the `Release impact:` line in the
-  pull request body carries what a changelog would have (`release-impact`).
+- There is no `CHANGELOG.md` and no `docs/` tree here.
 
 ## What belongs in prose
 

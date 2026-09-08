@@ -84,5 +84,4 @@ export class RateLimitError extends Error {
 
 Adding, renaming, or removing a `code` on a publicly reachable error changes what a
 consumer's `switch (error.code)` compiles against — it is a change to the published
-contract, not an implementation detail. **REQUIRED:** `release-impact` for what that
-means for the semver bump.
+contract, not an implementation detail.
