@@ -16,8 +16,8 @@ updates:
     # A TypeScript major is not installable here: typescript-eslint caps its
     # peer range below it, and `strictPeerDependencies: true` turns that into a
     # failed install rather than a warning. See "TypeScript version ceiling" in
-    # AGENTS.md. Remove this entry once that package publishes a peer range
-    # that admits the next major.
+    # .agents/skills/managing-dependencies/SKILL.md. Remove this entry once
+    # that package publishes a peer range that admits the next major.
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]

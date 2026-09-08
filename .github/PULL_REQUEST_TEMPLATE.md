@@ -1,9 +1,10 @@
 ## Summary
 
-<!-- Explain the change and why it is needed. -->
+<!-- One or two lines: what does this change do, and why? -->
 
 ## Checklist
 
 - [ ] `pnpm check:source` passes
-- [ ] Public API changes include behavior tests and type tests
-- [ ] README and affected docs are updated
+- [ ] New environment variables are documented in `.env.example` and validated in
+      `src/server/env.ts`
+- [ ] New UI strings are added to every locale catalog under `messages/*.json`
