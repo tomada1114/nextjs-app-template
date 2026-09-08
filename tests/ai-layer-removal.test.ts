@@ -33,8 +33,16 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
  * compose, that file splits rather than staying half-deleted here. This test
  * file is on the list too — it names every path above and would itself be the
  * first dangling reference left behind.
+ *
+ * The `integrating-llm` skill is deleted rather than edited, because the whole
+ * of its subject is the layer that is going away. Both its authored copy and
+ * its generated `.claude/skills/` mirror are named: the mirror is a real
+ * committed file, and `pnpm agents:sync` will not remove a skill the source
+ * tree no longer has unless the source is deleted first.
  */
 const REMOVED_PATHS = [
+  ".agents/skills/integrating-llm",
+  ".claude/skills/integrating-llm",
   "src/ai",
   "src/app/api",
   "src/server/composition.ts",
@@ -45,19 +53,6 @@ const REMOVED_PATHS = [
   "tests/fixtures/llm",
   "tests/llm-replay.ts",
   "tests/server-handler.test.ts",
-];
-
-/**
- * Paths the removal deletes when they exist.
- *
- * @remarks
- * The `integrating-llm` skill and its generated mirror are issue #16's to
- * write. Listing them now means the removal set is already complete when they
- * land, instead of silently missing them; until then they contribute nothing.
- */
-const OPTIONAL_REMOVED_PATHS = [
-  ".agents/skills/integrating-llm",
-  ".claude/skills/integrating-llm",
 ];
 
 /**
@@ -211,17 +206,10 @@ function readText(relative: string): string | undefined {
 
 /** Whether `relative` is one of the removed paths, or lives under one. */
 function isRemoved(relative: string): boolean {
-  return removedPaths.some(
+  return REMOVED_PATHS.some(
     (removed) => relative === removed || relative.startsWith(`${removed}/`),
   );
 }
-
-const removedPaths = [
-  ...REMOVED_PATHS,
-  ...OPTIONAL_REMOVED_PATHS.filter((relative) =>
-    existsSync(path.join(repoRoot, relative)),
-  ),
-];
 
 const everyFile = walk("");
 const survivingFiles = everyFile.filter((relative) => !isRemoved(relative));
@@ -232,7 +220,7 @@ function referencesIn(relative: string): string[] {
   if (text === undefined) {
     return [];
   }
-  return [...removedPaths, ...AI_LAYER_TOKENS].filter((token) => text.includes(token));
+  return [...REMOVED_PATHS, ...AI_LAYER_TOKENS].filter((token) => text.includes(token));
 }
 
 const survivorsNamingTheAiLayer = survivingFiles
