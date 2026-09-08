@@ -9,8 +9,11 @@ import { Link } from "../../i18n/navigation";
  *
  * @remarks
  * The locale links are the smallest honest language switch: `Link` from
- * `src/i18n/navigation.ts` keeps the current pathname and swaps only the
- * prefix, so `/ja` is reachable from `/en` without the reader typing a URL.
+ * `src/i18n/navigation.ts` adds the locale prefix to the unprefixed pathname
+ * it is given, so `/ja` is reachable from `/en` without the reader typing a
+ * URL. The pathname here is the literal `/` rather than the current one — the
+ * template ships a single page; a switcher on a tree of pages would read
+ * `usePathname()` from the same module instead.
  */
 export default function HomePage(): ReactElement {
   const locale = useLocale();
