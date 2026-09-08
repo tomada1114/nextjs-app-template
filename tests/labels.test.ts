@@ -110,6 +110,9 @@ describe("label taxonomy", () => {
       path.join(githubDir, "workflows", "pr-label.yml"),
       "utf8",
     );
-    expect(workflowText).toMatch(/run:\s*node scripts\/label-pr\.mjs\s*$/m);
+    // Matched anywhere in the file rather than immediately after `run:`: the
+    // step is a block scalar, because it first has to tolerate a base branch
+    // that predates the script.
+    expect(workflowText).toMatch(/^\s*node scripts\/label-pr\.mjs\s*$/m);
   });
 });

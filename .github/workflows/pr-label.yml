@@ -59,4 +59,14 @@ jobs:
           # Read through the environment, never interpolated into the script:
           # a PR title is attacker-controlled text.
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: node scripts/label-pr.mjs
+        # Guarded because the checkout above is pinned to the base branch: a
+        # pull request opened against a base that predates this script -- the
+        # one introducing it, most of all -- would otherwise fail the job on a
+        # missing module. Labelling is best effort and never fails a check.
+        shell: bash -euo pipefail {0}
+        run: |
+          if [ ! -f scripts/label-pr.mjs ]; then
+            echo "::notice::scripts/label-pr.mjs is not on the base branch yet; skipping labelling."
+            exit 0
+          fi
+          node scripts/label-pr.mjs
