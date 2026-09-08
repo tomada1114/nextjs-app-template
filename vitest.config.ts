@@ -28,6 +28,7 @@ const automationTests = [
   "tests/clean.test.ts",
   "tests/git-env.test.ts",
   "tests/labels.test.ts",
+  "tests/messages.test.ts",
   "tests/node-tools.test.ts",
   "tests/placeholders.test.ts",
   "tests/server-env.test.ts",
@@ -58,6 +59,18 @@ export default defineConfig({
   test: {
     environment: "node",
     alias: { "server-only": serverOnlyEmptyModule },
+    server: {
+      deps: {
+        // `next` ships no `exports` map, so `next/server` — which
+        // `next-intl/middleware` imports, and `proxy.ts` therefore reaches —
+        // is only resolvable by a bundler's extension search, never by Node's
+        // ESM resolver. Letting Vite transform `next-intl` rather than handing
+        // it to Node is what makes that import resolve the way it does in a
+        // real build. This changes who resolves the module, not what is
+        // executed.
+        inline: [/next-intl/],
+      },
+    },
     // Cleanup is the runner's job, not each test's. A spy, a stubbed env var or
     // a stubbed global that outlives the test that created it turns a later
     // failure into a mystery whose cause is in a different file, and makes the

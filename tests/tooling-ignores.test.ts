@@ -118,8 +118,8 @@ describe("the automation-only no-console boundary in eslint.config.mjs", () => {
   it.each([
     ["a repository automation script", "scripts/clean.mjs", 0],
     ["an automation script inside a skill", `${source}/scripts/survey-prs.mjs`, 0],
-    ["an App Router page", "src/app/page.tsx", 2],
-    ["an App Router layout", "src/app/layout.tsx", 2],
+    ["an App Router page", "src/app/[locale]/page.tsx", 2],
+    ["an App Router layout", "src/app/[locale]/layout.tsx", 2],
   ])("sets no-console to %s for %s", async (_label, relative, expected) => {
     const config = (await eslint.calculateConfigForFile(
       path.join(repoRoot, relative),

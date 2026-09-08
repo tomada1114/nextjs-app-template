@@ -155,7 +155,7 @@ describe("the template's own identity strings", () => {
     "package.json",
     "CONTRIBUTING.md",
     "AGENTS.md",
-    "src/app/page.tsx",
+    "src/app/[locale]/page.tsx",
     "src/core/result.ts",
     "scripts/check-staged.mjs",
     ".github/workflows/ci.yml",

@@ -1,6 +1,7 @@
 import * as z from "zod";
 
 import type { LlmErrorCode, LlmPort } from "../../ai/index";
+import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../i18n/locales";
 
 /**
  * What the handler needs from the outside world.
@@ -16,13 +17,33 @@ export interface AskHandlerDependencies {
   readonly llm: LlmPort;
 }
 
+/**
+ * The BCP 47 tag each UI locale asks the model to answer in.
+ *
+ * @remarks
+ * Two vocabularies meet here, and this is the only place they are allowed to:
+ * a UI locale is the closed union of the languages this application ships a
+ * message catalog for, while the port's `outputLanguage` is an open BCP 47 tag
+ * naming a language a model can write. Keeping the mapping in the handler is
+ * what lets a locale whose tag is not its own name — a `zh` catalog answered in
+ * `zh-Hans` — be added without touching `src/ai/port.ts`, which knows nothing
+ * about this application's catalogs.
+ *
+ * `satisfies` rather than an annotation: a locale added to `LOCALES` without an
+ * entry here fails to compile instead of silently answering in English.
+ */
+const OUTPUT_LANGUAGE_BY_LOCALE = {
+  en: "en",
+  ja: "ja",
+} as const satisfies Record<Locale, string>;
+
 /** The JSON body `POST /api/ask` accepts. */
 const askRequestSchema = z.object({
   /** The question put to the model. */
   prompt: z.string().min(1),
 
-  /** BCP 47 tag for the language the answer is written in. */
-  outputLanguage: z.string().min(1).default("en"),
+  /** The UI locale the answer is for; the model writes in its language. */
+  locale: z.enum(LOCALES).default(DEFAULT_LOCALE),
 });
 
 /** The JSON body `POST /api/ask` answers with, and the shape asked of the model. */
@@ -89,14 +110,14 @@ export function createAskHandler(
       return failure(
         400,
         "ERR_BAD_REQUEST",
-        "The request body must be an object with a non-empty `prompt`.",
+        "The request body must be an object with a non-empty `prompt`, and a `locale` this application ships if it names one.",
       );
     }
 
     const result = await llm.generate({
       schema: askAnswerSchema,
       prompt: parsed.data.prompt,
-      outputLanguage: parsed.data.outputLanguage,
+      outputLanguage: OUTPUT_LANGUAGE_BY_LOCALE[parsed.data.locale],
       // A client that hangs up aborts this signal, which the port forwards to
       // the provider instead of paying for an answer nobody will read.
       signal: request.signal,

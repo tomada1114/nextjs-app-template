@@ -11,12 +11,16 @@ pnpm install
 pnpm dev
 ```
 
-Then open <http://localhost:3000>. The page it renders is `src/app/page.tsx`.
+Then open <http://localhost:3000>, which redirects to the locale your browser asks for —
+`/en` or `/ja`. The page it renders is `src/app/[locale]/page.tsx`, and the text on it
+comes from `messages/en.json` and `messages/ja.json`.
 
-There is one API route, `POST /api/ask`, which takes `{ "prompt": "..." }` and answers
-`{ "answer": "..." }`. It runs against a fake language-model adapter, so it needs no
-credentials; `src/server/composition.ts` is the single place that decides which adapter
-is behind it. Copy `.env.example` to `.env` when you swap in one that needs a key.
+There is one API route, `POST /api/ask`, which takes
+`{ "prompt": "...", "locale": "en" }` and answers `{ "answer": "..." }`. The `locale` is
+a UI locale, and the handler is what maps it to the language the model writes in. The
+route runs against a fake language-model adapter, so it needs no credentials;
+`src/server/composition.ts` is the single place that decides which adapter is behind it.
+Copy `.env.example` to `.env` when you swap in one that needs a key.
 
 ## Development
 

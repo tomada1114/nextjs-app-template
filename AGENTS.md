@@ -192,7 +192,11 @@ while its declared task is something else.
 ## Conventions
 
 - All committed code, comments, configuration, and public documentation are in English.
-  `authoring-skills` applies this to a skill's `description`.
+  `authoring-skills` applies this to a skill's `description`. The one exception is
+  `messages/*.json`: those are the UI message catalogs the application renders to a
+  reader, so `messages/ja.json` is Japanese by definition. The exception covers the
+  catalogs' string values and nothing else — their keys, and every comment, test, and
+  document about them, stay English.
 
 - **A comment carries only what the code cannot** — a non-obvious why, a trap the next
   edit would spring, an external constraint. Default to none and keep the rest to a line

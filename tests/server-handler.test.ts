@@ -85,17 +85,32 @@ describe("the ask handler", () => {
     });
 
     await handler(
-      postRequest(
-        JSON.stringify({ prompt: "  Which city? ", outputLanguage: "ja-JP" }),
-      ),
+      postRequest(JSON.stringify({ prompt: "  Which city? ", locale: "ja" })),
     );
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.prompt).toBe("  Which city? ");
-    expect(seen[0]?.outputLanguage).toBe("ja-JP");
   });
 
-  it("defaults the output language to English when the body omits it", async () => {
+  // The mapping itself, not the port's field: the UI ships `en` and `ja`, and
+  // the model is asked in the BCP 47 tag each one names. A locale added to
+  // `src/i18n/locales.ts` without an entry in the handler's table fails to
+  // compile, so this only has to pin the values the table produces today.
+  it.each([
+    ["ja", "ja"],
+    ["en", "en"],
+  ])("asks the model to answer the %s locale in %s", async (locale, expected) => {
+    const seen: CapturedRequest[] = [];
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    await handler(postRequest(JSON.stringify({ prompt: "Which city?", locale })));
+
+    expect(seen[0]?.outputLanguage).toBe(expected);
+  });
+
+  it("defaults the output language to English when the body omits the locale", async () => {
     const seen: CapturedRequest[] = [];
     const handler = createAskHandler({
       llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
@@ -140,10 +155,11 @@ describe("the ask handler", () => {
   });
 
   it.each([
-    ["an object with no prompt", JSON.stringify({ outputLanguage: "en" })],
+    ["an object with no prompt", JSON.stringify({ locale: "en" })],
     ["an empty prompt", JSON.stringify({ prompt: "" })],
     ["a non-string prompt", JSON.stringify({ prompt: 42 })],
-    ["a blank output language", JSON.stringify({ prompt: "Hi", outputLanguage: "" })],
+    ["a locale this app does not ship", JSON.stringify({ prompt: "Hi", locale: "fr" })],
+    ["a blank locale", JSON.stringify({ prompt: "Hi", locale: "" })],
     ["a JSON array", JSON.stringify([{ prompt: "Hi" }])],
     ["a bare JSON string", JSON.stringify("Hi")],
   ])("rejects %s with ERR_BAD_REQUEST", async (_label, body) => {

@@ -43,6 +43,18 @@ allowBuilds:
   # lefthook ships a postinstall that downloads/links its Go binary; that is
   # the whole point of depending on it for Git hooks.
   lefthook: true
+  # `false` is a decision, not an omission: `strictDepBuilds` fails the install
+  # on a lifecycle script nobody has ruled on, and these two arrive as
+  # dependencies of `next-intl`, which reaches them only from its message
+  # extractor -- a feature this repository does not turn on. Neither script is
+  # needed for the prebuilt binary each package ships as an optional
+  # platform-specific dependency: `@swc/core`'s postinstall only probes that
+  # binary and installs `@swc/wasm` as a fallback when it cannot load, and
+  # `@parcel/watcher`'s runs node-gyp only when no prebuild matched. Both would
+  # otherwise compile or fetch native code at install time for code this
+  # application never calls.
+  "@parcel/watcher": false
+  "@swc/core": false
 
 # Transitive-version overrides. Each entry names the single graph edge it
 # replaces (`parent>child`) rather than the package globally, so a future
