@@ -34,7 +34,7 @@ export function resolveDeadlineMs(
   ) {
     throw new RangeError(
       explicit === undefined
-        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is outside 1..${String(MAX_DEADLINE_MS)}. Pass deadlineMs to bound the call directly.`
+        ? `timeoutMs and maxRetries imply a total deadline of ${String(deadlineMs)} ms, which is not an integer between 1 and ${String(MAX_DEADLINE_MS)}. Correct timeoutMs and maxRetries: passing deadlineMs bounds the call but leaves those two as they are.`
         : `deadlineMs must be an integer between 1 and ${String(MAX_DEADLINE_MS)}; received ${String(deadlineMs)}.`,
     );
   }

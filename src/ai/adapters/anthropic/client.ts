@@ -82,7 +82,13 @@ const BODY_READ_MARGIN_MS = 2_000;
  * when it is shorter than one attempt's `timeoutMs`, because shortest-wins is
  * what composing a deadline into an `AbortSignal` means: a caller asking for a
  * hard five-second total bound while leaving a sixty-second per-attempt
- * timeout is asking for exactly the right thing.
+ * timeout is asking for exactly the right thing. What it does not buy is
+ * punctuality: a deadline that fires while *any* backoff sleep is in flight —
+ * an ordinary computed one, not only a long `retry-after` — is noticed only
+ * when that sleep ends, so a short explicit `deadlineMs` overshoots by the
+ * remainder of whatever sleep it landed in. Only the derived budget above,
+ * which already allows for every sleep, narrows that to a `retry-after`
+ * beyond the ceiling.
  */
 export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number {
   return (

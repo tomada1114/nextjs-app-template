@@ -85,12 +85,16 @@ export function createAnthropicAdapter(options: AnthropicAdapterOptions): LlmPor
     maxTokens = DEFAULT_MAX_TOKENS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxRetries = DEFAULT_MAX_RETRIES,
+    // Destructured, not read off `options`, so it does not ride along in
+    // `clientOptions` into `createAnthropicClient` — a spread is exempt from
+    // TypeScript's excess-property check, so nothing else would catch it.
+    deadlineMs: explicitDeadlineMs,
     ...clientOptions
   } = options;
 
   // Resolved and range-checked at wiring time, not per request: see
   // `resolveDeadlineMs`, which owns both the derivation and the failure.
-  const deadlineMs = resolveDeadlineMs(options.deadlineMs, timeoutMs, maxRetries);
+  const deadlineMs = resolveDeadlineMs(explicitDeadlineMs, timeoutMs, maxRetries);
 
   // Built once, at construction, so a missing key costs nothing per request and
   // the credential is read from this scope rather than kept on the port; timeoutMs/

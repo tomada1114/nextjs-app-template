@@ -112,9 +112,12 @@ actually cancels the transport — and so an abort between attempts ends the ret
 rather than starting another one. `deadline.ts`'s TSDoc is the argument in full.
 
 One limit is known and tracked rather than papered over: the SDK's backoff sleep does
-not consult the signal, so a call can overshoot the derived deadline by the remainder of
-a `retry-after` longer than the SDK's own backoff ceiling (#66). Do not claim a tighter
-bound than that in a comment or a document.
+not consult the signal, so a deadline firing mid-sleep is noticed only when that sleep
+ends (#66). Under the _derived_ deadline, whose budget already allows for every sleep,
+that costs an overshoot only when a `retry-after` runs past the SDK's own backoff
+ceiling; under a short explicit `deadlineMs` any ordinary computed backoff is enough,
+and the call overshoots by the remainder of it. Do not claim a tighter bound than that
+in a comment or a document.
 
 An out-of-range `deadlineMs` throws a `RangeError` at construction — the one place this
 layer throws rather than answering with a `Result`. The signal is armed outside every
