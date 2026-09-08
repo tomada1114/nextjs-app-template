@@ -105,17 +105,21 @@ deleting anything:
 pnpm exec vitest run tests/ai-layer-removal.test.ts
 ```
 
-Green means the layer is still separable and the four lists in that file are complete —
+Green means the layer is still separable and the five lists in that file are complete —
 the property it exists to defend, checkable only while the layer is present. It cannot
-be the check you run afterwards, because it is on its own removal list. Those four lists
+be the check you run afterwards, because it is on its own removal list. Those five lists
 are the procedure:
 
 - **`REMOVED_PATHS`** — deleted outright. `src/server/composition.ts` is on it because
   wiring a port is the whole of what that file does, `src/app/api` because the one route
   there is the layer's only caller, and the `integrating-llm` skill with its
   `.claude/skills/` mirror because the subject it documents is what leaves.
-- **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two ways a file
-  can name the layer without naming a path.
+- **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two vendor names
+  a file can carry without naming a path.
+- **`REMOVED_SKILL_NAMES`** — the bare name of every skill on `REMOVED_PATHS`, derived
+  from it rather than listed again; today just `integrating-llm`. Sibling skills
+  cross-reference each other by name and never by path, so without this a
+  `**BACKGROUND:** \`integrating-llm\`` line would survive the removal unnoticed.
 - **`EDITED_CODE_FILES`** — files that survive but must stop naming it, whose subject is
   the repository's machinery. That this list is short, and holds no application module,
   _is_ the separability property.
