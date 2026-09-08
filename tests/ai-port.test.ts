@@ -1,0 +1,334 @@
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import * as z from "zod";
+
+import {
+  createFakeLlmPort,
+  LlmError,
+  type LlmErrorCode,
+  type LlmPort,
+} from "../src/ai/index";
+import type { Result } from "../src/core/result";
+
+/**
+ * The shape every contract case asks a port to fill.
+ *
+ * @remarks
+ * Exported because an adapter's harness has to produce data matching it — a
+ * recorded fixture, in the Anthropic adapter's case — and a second copy of the
+ * shape would drift from this one.
+ */
+export const CONTRACT_SCHEMA = z.object({
+  answer: z.string(),
+  confidence: z.number(),
+});
+
+/** The value {@link LlmPortContractHarness.succeeds} must resolve to. */
+export const CONTRACT_ANSWER = {
+  answer:
+    "The Answer to the Ultimate Question of Life, the Universe, and Everything is 42.",
+  confidence: 0.42,
+};
+
+/**
+ * The four ports an adapter must be able to produce to be measured against the
+ * contract.
+ *
+ * @remarks
+ * This is the whole plug point. The fake builds each one from its constructor
+ * options; a live adapter builds them from recorded fixtures, or from a stubbed
+ * client. Neither the suite below nor an adapter's harness knows how the other
+ * does it.
+ */
+export interface LlmPortContractHarness {
+  /** A port that answers with exactly {@link CONTRACT_ANSWER}. */
+  readonly succeeds: () => LlmPort;
+
+  /** A port whose raw answer does not match {@link CONTRACT_SCHEMA}. */
+  readonly returnsInvalidOutput: () => LlmPort;
+
+  /** A port that fails every request with `code`. */
+  readonly failsWith: (code: LlmErrorCode) => LlmPort;
+
+  /**
+   * A port that does not answer within a test's budget, so an abort of a
+   * request already in flight is observable.
+   */
+  readonly neverAnswers: () => LlmPort;
+}
+
+/**
+ * Every `LlmErrorCode`.
+ *
+ * @remarks
+ * Annotating this `readonly LlmErrorCode[]` would let a new member be added to
+ * the union with no case here. `as const satisfies` keeps the literal tuple
+ * type instead, which the type assertion in "covers every LlmErrorCode" below
+ * compares against the union — so a new code fails the type check until it is
+ * listed here too.
+ */
+const ALL_CODES = [
+  "ERR_LLM_AUTH",
+  "ERR_LLM_RATE_LIMIT",
+  "ERR_LLM_TIMEOUT",
+  "ERR_LLM_INVALID_OUTPUT",
+  "ERR_LLM_UNAVAILABLE",
+] as const satisfies readonly LlmErrorCode[];
+
+describe("the LlmPort contract suite", () => {
+  it("covers every LlmErrorCode", () => {
+    expectTypeOf<(typeof ALL_CODES)[number]>().toEqualTypeOf<LlmErrorCode>();
+
+    expect(new Set(ALL_CODES).size).toBe(ALL_CODES.length);
+  });
+});
+
+function valueOf<T>(result: Result<T, LlmError>): T {
+  if (!result.ok) {
+    throw new Error(`expected a value, got ${result.error.code}`);
+  }
+  return result.value;
+}
+
+function failureOf<T>(result: Result<T, LlmError>): LlmError {
+  if (result.ok) {
+    throw new Error(`expected a failure, got ${JSON.stringify(result.value)}`);
+  }
+  return result.error;
+}
+
+function ask(
+  port: LlmPort,
+  signal?: AbortSignal,
+): Promise<Result<z.infer<typeof CONTRACT_SCHEMA>, LlmError>> {
+  return port.generate({
+    schema: CONTRACT_SCHEMA,
+    prompt: "What is the answer?",
+    outputLanguage: "en",
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
+/**
+ * Every behaviour an `LlmPort` implementation must satisfy, whatever it talks
+ * to.
+ *
+ * @remarks
+ * Call it once per adapter. Issue #8's Anthropic adapter adds its own
+ * `describeLlmPortContract("AnthropicLlmPort", ...)` call at the bottom of this
+ * file, backed by recorded fixtures, so the identical assertions run against
+ * both and the suite is still collected exactly once.
+ */
+export function describeLlmPortContract(
+  name: string,
+  harness: LlmPortContractHarness,
+): void {
+  describe(`${name} satisfies the LlmPort contract`, () => {
+    it("resolves to the parsed value when the answer matches the schema", async () => {
+      const result = await ask(harness.succeeds());
+
+      expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+    });
+
+    it("infers the value type from the request schema", async () => {
+      const value = valueOf(await ask(harness.succeeds()));
+
+      expectTypeOf(value).toEqualTypeOf<{ answer: string; confidence: number }>();
+      expect(value.answer).toBe(CONTRACT_ANSWER.answer);
+    });
+
+    it("answers when the caller passes no signal at all", async () => {
+      const result = await harness.succeeds().generate({
+        schema: CONTRACT_SCHEMA,
+        prompt: "What is the answer?",
+        outputLanguage: "en",
+      });
+
+      expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+    });
+
+    it("resolves rather than throws for a schema carrying an async refinement", async () => {
+      // Zod's synchronous `safeParse` *throws* on a schema with an async
+      // refine/transform instead of returning a failed result. An adapter that
+      // reaches for it turns a caller's schema choice into a rejected promise,
+      // which the port promises never to do for an expected failure. Both
+      // directions are asserted, because only checking the accepting one would
+      // pass against an adapter that swallowed the failure branch entirely.
+      const accepts = CONTRACT_SCHEMA.refine(async (value) =>
+        Promise.resolve(value.confidence <= 1),
+      );
+      const rejects = CONTRACT_SCHEMA.refine(async (value) =>
+        Promise.resolve(value.confidence > 1),
+      );
+      const port = harness.succeeds();
+
+      await expect(
+        port.generate({
+          schema: accepts,
+          prompt: "What is the answer?",
+          outputLanguage: "en",
+        }),
+      ).resolves.toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+
+      const result = await port.generate({
+        schema: rejects,
+        prompt: "What is the answer?",
+        outputLanguage: "en",
+      });
+
+      expect(failureOf(result).code).toBe("ERR_LLM_INVALID_OUTPUT");
+    });
+
+    it("reports ERR_LLM_INVALID_OUTPUT when the answer does not match the schema", async () => {
+      const error = failureOf(await ask(harness.returnsInvalidOutput()));
+
+      expect(error).toBeInstanceOf(LlmError);
+      expect(error.code).toBe("ERR_LLM_INVALID_OUTPUT");
+    });
+
+    it.each(ALL_CODES)(
+      "reports %s as an error branch rather than throwing",
+      async (code) => {
+        const error = failureOf(await ask(harness.failsWith(code)));
+
+        expect(error).toBeInstanceOf(LlmError);
+        expect(error.code).toBe(code);
+      },
+    );
+
+    it("reports ERR_LLM_TIMEOUT for a signal that was already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const error = failureOf(await ask(harness.neverAnswers(), controller.signal));
+
+      expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    });
+
+    it("reports ERR_LLM_TIMEOUT when the signal aborts mid-request", async () => {
+      const controller = new AbortController();
+      const pending = ask(harness.neverAnswers(), controller.signal);
+      controller.abort();
+
+      const error = failureOf(await pending);
+
+      expect(error.code).toBe("ERR_LLM_TIMEOUT");
+    });
+
+    it("surfaces the caller's own abort reason on cause, by identity", async () => {
+      const reason = new Error("the caller changed its mind");
+      const controller = new AbortController();
+      const pending = ask(harness.neverAnswers(), controller.signal);
+      controller.abort(reason);
+
+      const error = failureOf(await pending);
+
+      expect(error.cause).toBe(reason);
+    });
+
+    it("normalises a non-Error abort reason into an Error keeping the reason on cause", async () => {
+      const controller = new AbortController();
+      const pending = ask(harness.neverAnswers(), controller.signal);
+      controller.abort("cancelled by the operator");
+
+      const error = failureOf(await pending);
+      const cause = error.cause;
+
+      expect(cause).toBeInstanceOf(Error);
+      expect((cause as Error).cause).toBe("cancelled by the operator");
+    });
+  });
+}
+
+describeLlmPortContract("createFakeLlmPort", {
+  succeeds: () => createFakeLlmPort({ response: CONTRACT_ANSWER }),
+  returnsInvalidOutput: () =>
+    createFakeLlmPort({ response: { answer: 42, confidence: "high" } }),
+  failsWith: (code) => createFakeLlmPort({ failWith: code }),
+  // Far longer than the unit project's 5s budget, so only an abort ends it.
+  neverAnswers: () => createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 60_000 }),
+});
+
+describe("createFakeLlmPort", () => {
+  it("fails with ERR_LLM_INVALID_OUTPUT when no response was configured", async () => {
+    const error = failureOf(await ask(createFakeLlmPort()));
+
+    expect(error.code).toBe("ERR_LLM_INVALID_OUTPUT");
+  });
+
+  it("keeps the schema's own validation error on cause", async () => {
+    const error = failureOf(
+      await ask(createFakeLlmPort({ response: { answer: 1, confidence: 2 } })),
+    );
+
+    expect(error.cause).toBeInstanceOf(z.ZodError);
+  });
+
+  describe("with a configured delay", () => {
+    it("answers once the delay has elapsed", async () => {
+      vi.useFakeTimers();
+      try {
+        const pending = ask(
+          createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 5_000 }),
+        );
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(await pending).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("removes its abort listener once the delay has elapsed", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = new AbortController();
+        const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+        const pending = ask(
+          createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 5_000 }),
+          controller.signal,
+        );
+        await vi.advanceTimersByTimeAsync(5_000);
+        await pending;
+
+        expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("clears its pending timer when the signal aborts first", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = new AbortController();
+        const pending = ask(
+          createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 5_000 }),
+          controller.signal,
+        );
+        controller.abort();
+        const error = failureOf(await pending);
+
+        expect(error.code).toBe("ERR_LLM_TIMEOUT");
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stays aborted even once the delay would have elapsed", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = new AbortController();
+        const pending = ask(
+          createFakeLlmPort({ response: CONTRACT_ANSWER, delayMs: 5_000 }),
+          controller.signal,
+        );
+        controller.abort();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(failureOf(await pending).code).toBe("ERR_LLM_TIMEOUT");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+});
