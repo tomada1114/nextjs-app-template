@@ -161,6 +161,7 @@ describe("the import scanner the zone assertions run on", () => {
       "src/i18n/navigation.ts",
       "src/i18n/request.ts",
       "src/i18n/routing.ts",
+      "src/proxy.ts",
       "src/server/composition.ts",
       "src/server/env.ts",
       "src/server/handlers/ask.ts",

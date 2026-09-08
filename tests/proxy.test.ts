@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import proxy, { config } from "../proxy";
+import proxy, { config } from "../src/proxy";
 import { DEFAULT_LOCALE, LOCALES } from "../src/i18n/locales";
 
 // The failure this file exists to catch is silent: `proxy.ts` decides which
