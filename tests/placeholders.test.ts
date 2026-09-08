@@ -15,12 +15,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // The template ships with its identity written out as placeholder strings —
-// a package name, a repository slug, an author, a one-line description — which
-// whoever starts an app from it replaces. `scripts/bootstrap.mjs` used to hold
-// both halves of that: the rewrite and the check that no placeholder survived
-// it. Issue #26 removed the rewrite (it was profile-driven machinery that
-// self-deleted), and the check went with it, leaving nothing that notices a
-// placeholder leaking into a file that has no business carrying one.
+// a package name, a repository slug, an author, a one-line description, the
+// name a visitor reads — which whoever starts an app from it replaces.
+// `scripts/bootstrap.mjs` used to hold both halves of that: the rewrite and
+// the check that no placeholder survived it. Issue #26 removed the rewrite
+// (it was profile-driven machinery that self-deleted), and the check went
+// with it, leaving nothing that notices a placeholder leaking into a file
+// that has no business carrying one.
 //
 // This is that check, rebuilt as a test over the real tree. It pins the
 // complete inventory rather than merely forbidding placeholders: a new file
@@ -51,6 +52,18 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
  * `tests/sync-labels.test.ts`'s `tomada1114/typescript-template` fixture
  * data, and a bare `nextjs-app-template` would produce a duplicate row per
  * file that carries the full slug.
+ *
+ * The last two are the app's display name — what a browser tab and the page
+ * heading read — which the package name and the slug do not cover: a project
+ * that renamed everything machine-facing still greets its visitors as this
+ * template. Coverage here is per known value, not per key: each entry is a
+ * catalog's current title string, so a `messages/*.json` added later with its
+ * own translated title contributes no row until that value is added to this
+ * list. The Japanese one is a knowing exception to AGENTS.md's English-only
+ * convention for tests: deriving it from `messages/ja.json`'s `HomePage.title`
+ * at runtime instead would make that inventory row self-fulfilling — it would
+ * still appear after a correct rename, so the list could never empty. Whether
+ * AGENTS.md should record this exception is filed separately.
  */
 const PLACEHOLDERS = [
   "my-package",
@@ -59,6 +72,8 @@ const PLACEHOLDERS = [
   "you@example.com",
   "A short description.",
   "tomada1114/nextjs-app-template",
+  "Next.js App Template",
+  "Next.js アプリテンプレート",
 ] as const;
 
 /**
@@ -66,15 +81,18 @@ const PLACEHOLDERS = [
  * `<file>: <placeholder>` rows.
  *
  * @remarks
- * These four files *are* the template's identity, so a placeholder in them is
- * intended, not a leak: they are what a new app rewrites first. Everything
- * else in the tree — `src/`, `tests/`, `scripts/`, the skills, the workflows,
- * `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort, so the
- * rename is a bounded edit to four files rather than a repository-wide search
- * that can miss one. Two of the rows are the template's real repository slug
- * rather than a blank, deliberately: the CI badge and the security-advisory
- * link have to resolve *while this repository is the template*, and a fork
- * replaces them like any other row.
+ * These seven files *are* the template's identity, so a placeholder in them is
+ * intended, not a leak: they are what a new app rewrites first. Four carry the
+ * repository's identity — the package name and description, the slug, the
+ * copyright holder — and three the name a visitor reads: the `<title>`
+ * metadata and the `HomePage.title` key of each catalog. Everything else in
+ * the tree — the rest of `src/`, `tests/`, `scripts/`, the skills, the
+ * workflows, `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort,
+ * so the rename is a bounded edit to seven files rather than a
+ * repository-wide search that can miss one. Two of the rows are the template's
+ * real repository slug rather than a blank, deliberately: the CI badge and the
+ * security-advisory link have to resolve *while this repository is the
+ * template*, and a fork replaces them like any other row.
  */
 const EXPECTED_INVENTORY = [
   ".github/ISSUE_TEMPLATE/config.yml: tomada1114/nextjs-app-template",
@@ -83,8 +101,11 @@ const EXPECTED_INVENTORY = [
   "README.md: Your Name",
   "README.md: my-package",
   "README.md: tomada1114/nextjs-app-template",
+  "messages/en.json: Next.js App Template",
+  "messages/ja.json: Next.js アプリテンプレート",
   "package.json: A short description.",
   "package.json: my-package",
+  "src/app/[locale]/layout.tsx: Next.js App Template",
 ];
 
 // Names with nothing hand-written under them: dependencies, version control
@@ -208,26 +229,30 @@ describe("the template's own identity strings", () => {
     expect(scanned).not.toContain(THIS_FILE);
   });
 
-  it("survive only in the four files that carry the template's identity", () => {
+  it("survive only in the files that carry the template's identity", () => {
     expect(inventory).toStrictEqual(EXPECTED_INVENTORY);
   });
 });
 
-describe("the template's own repository URLs", () => {
-  // The inventory above only proves the slug appears *somewhere* in each
-  // file; it would pass on a malformed badge URL. This pins the two corrected
-  // URLs by their exact shape, workflow filename included.
+describe("the badge and advisory URLs", () => {
+  // The inventory above only proves the slug appears *somewhere* in each file;
+  // it would pass on a badge URL missing its workflow filename. This pins both
+  // URLs by their shape instead — path segments and filename — with owner and
+  // repository left open on purpose: a renamed project writes its own slug in,
+  // and pinning this template's would make the rename `starting-an-app`
+  // documents impossible to finish with a green suite. The slug itself is the
+  // inventory's job, one row per file.
   it.each([
     [
       "README.md",
-      "https://github.com/tomada1114/nextjs-app-template/actions/workflows/ci.yml",
+      /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/workflows\/ci\.yml/,
     ],
     [
       ".github/ISSUE_TEMPLATE/config.yml",
-      "https://github.com/tomada1114/nextjs-app-template/security/advisories/new",
+      /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/security\/advisories\/new/,
     ],
-  ])("%s points at the real repository", (relative, url) => {
-    expect(readText(relative)).toContain(url);
+  ])("%s carries a well-formed repository URL", (relative, pattern) => {
+    expect(readText(relative)).toMatch(pattern);
   });
 });
 
