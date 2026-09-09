@@ -13,7 +13,15 @@ import { checkRead } from "../scripts/lib/guard/paths.mjs";
 // This file holds no assertion of its own. The synthetic-tree cases that pin
 // what the walk must never return live in the suites that call it.
 
-/** The repository root, which every path this module returns is relative to. */
+/**
+ * The repository root, which every path this module returns is relative to.
+ *
+ * @remarks
+ * Derived from `import.meta.url`, so it is correct only while this module
+ * sits directly under `tests/` — one directory below the root. Moving it to
+ * a nested location such as `tests/lib/` would change what `".."` resolves
+ * to and silently scan the wrong root rather than fail.
+ */
 export const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 // Names with nothing hand-written under them: dependencies, version-control

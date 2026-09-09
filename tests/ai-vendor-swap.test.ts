@@ -70,8 +70,16 @@ const SWAP_EDITS = [
   "vitest.config.ts",
 ];
 
-/** The half of {@link SWAP_EDITS} that is application code. */
-const SRC_SEAM = SWAP_EDITS.filter((relative) => relative.startsWith("src/"));
+/**
+ * The half of {@link SWAP_EDITS} that is application code, sorted.
+ *
+ * @remarks
+ * `SWAP_EDITS` happens to be alphabetical today, but that is not a property
+ * this list is entitled to lean on — it is compared below against `named`,
+ * which comes from a `.sort()`ed scan, so this side sorts too rather than
+ * relying on the source list's incidental order staying that way.
+ */
+const SRC_SEAM = SWAP_EDITS.filter((relative) => relative.startsWith("src/")).sort();
 
 /**
  * Trees whose subject is this vendor, where naming it is the point.
@@ -153,23 +161,30 @@ function leaks(files: readonly string[]): string[] {
 
 const vendorFiles = filesNamingTheVendor(everyFile, readText);
 
-/** The `create…` factories the AI layer's surface publishes, in file order. */
-const adapterFactories = [
-  ...new Set((readText(AI_LAYER_SURFACE) ?? "").match(/\bcreate[A-Z]\w*/g) ?? []),
-].sort();
-
 /**
- * The name each top-level `describeLlmPortContract` call runs the suite under.
+ * `source` with every block and line comment removed.
  *
  * @remarks
- * Anchored to the start of a line rather than comment-stripped: the only other
- * place that identifier appears in the file is its own TSDoc, where every line
- * begins with ` * `. A fourth scanner for the two spellings this needs to tell
- * apart would cost more than the anchor does.
+ * Mirrors `importSpecifiers`'s helper in `tests/ai-layer-removal.test.ts`. Both
+ * scanners below match against code, not prose: a TSDoc `{@link createAskHandler}`
+ * or a comment that quotes `describeLlmPortContract(...)` names the same tokens
+ * without being the declaration either scanner is counting.
  */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+/** The `create…` factories the AI layer's surface publishes, in file order. */
+const adapterFactories = [
+  ...new Set(
+    withoutComments(readText(AI_LAYER_SURFACE) ?? "").match(/\bcreate[A-Z]\w*/g) ?? [],
+  ),
+].sort();
+
+/** The name each `describeLlmPortContract` call runs the suite under. */
 const contractSubjects = [
-  ...(readText(CONTRACT_SUITE) ?? "").matchAll(
-    /^describeLlmPortContract\(\s*"([^"]+)"/gm,
+  ...withoutComments(readText(CONTRACT_SUITE) ?? "").matchAll(
+    /\bdescribeLlmPortContract\(\s*"([^"]+)"/g,
   ),
 ]
   .flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
@@ -234,7 +249,11 @@ describe("swapping the vendor behind LlmPort is a bounded edit", () => {
   );
 
   it("catches a vendor name in a tree that carries none today", () => {
-    const posed = "scripts/deploy.mjs";
+    // Mirrors the sibling case in `tests/ai-layer-removal.test.ts`: an
+    // unmistakable synthetic path, so a real script this repository grows
+    // later — under a name this posed one could collide with — cannot make
+    // the posed file appear twice or the negative assertion start failing.
+    const posed = "scripts/posed-by-this-test.mjs";
     const readingPosedAs = (body: string) => (relative: string) =>
       relative === posed ? body : readText(relative);
     const files = [...everyFile, posed];

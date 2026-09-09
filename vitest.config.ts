@@ -17,9 +17,9 @@ const fixtures = "tests/fixtures/**";
 // The four boundary suites — ai-layer-removal, ai-vendor-swap, boundaries,
 // placeholders — are listed for the same reason workflows.test.ts is: they
 // assert against files on disk rather than against imported code, walking
-// whole trees to do it. They are fast today, but their cost scales with the repository rather
-// than with what they import, which is exactly the case the short unit budget
-// is not meant to cover.
+// whole trees to do it. They are fast today, but their cost scales with the
+// repository rather than with what they import, which is exactly the case
+// the short unit budget is not meant to cover.
 const automationTests = [
   // The two LLM suites read committed fixtures from disk, and ai-port.test.ts
   // additionally reaches the provider under `LLM_RECORD=1` — a real network
@@ -37,6 +37,7 @@ const automationTests = [
   "tests/messages.test.ts",
   "tests/node-tools.test.ts",
   "tests/placeholders.test.ts",
+  "tests/repo-tree.test.ts",
   "tests/server-env.test.ts",
   "tests/skills-frontmatter.test.ts",
   "tests/sync-agents.test.ts",

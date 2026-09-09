@@ -1,8 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { readText, repoRoot, walk } from "./repo-tree";
 
@@ -323,64 +322,5 @@ describe("the AI layer can be removed whole", () => {
     expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
       EDITED_FILES,
     );
-  });
-});
-
-describe("the walk that feeds the reference scan", () => {
-  // Mirrors tests/placeholders.test.ts: every path the walk returns is opened
-  // by `readText`, and AGENTS.md counts the read itself as the disclosure. A
-  // synthetic tree, because a checkout rarely holds a `secrets/` directory and
-  // an assertion over this one would otherwise pass for the wrong reason.
-  const body = "fixture body, nothing sensitive\n";
-  let root = "";
-
-  beforeEach(() => {
-    root = mkdtempSync(path.join(tmpdir(), "ai-layer-removal-walk-"));
-    mkdirSync(path.join(root, "secrets"));
-    mkdirSync(path.join(root, ".claude", "skills"), { recursive: true });
-    for (const relative of [
-      "secrets/token.txt",
-      ".env",
-      ".env.local",
-      ".envrc",
-      ".env.example",
-      ".claude/settings.local.json",
-      ".claude/settings.json",
-      ".claude/skills/example.md",
-      "README.md",
-    ]) {
-      writeFileSync(path.join(root, relative), body);
-    }
-    // What `.git` is inside a linked worktree: a pointer file, not a directory.
-    writeFileSync(path.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/1\n");
-  });
-
-  afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("does not read anything under secrets/", () => {
-    expect(walk(root)).not.toContain("secrets/token.txt");
-  });
-
-  it("does not read a linked worktree's .git, which is a file and not a directory", () => {
-    expect(walk(root)).not.toContain(".git");
-  });
-
-  it("does not read the personal .claude/settings.local.json", () => {
-    expect(walk(root)).not.toContain(".claude/settings.local.json");
-  });
-
-  it("still walks .claude/skills/, which the generated skill mirror lives under", () => {
-    expect(walk(root)).toContain(".claude/skills/example.md");
-  });
-
-  it("reads the tracked env example, the shared Claude settings and no real dotenv, direnv, or personal settings file", () => {
-    expect(walk(root).sort()).toStrictEqual([
-      ".claude/settings.json",
-      ".claude/skills/example.md",
-      ".env.example",
-      "README.md",
-    ]);
   });
 });
