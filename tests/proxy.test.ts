@@ -65,8 +65,9 @@ describe("the paths locale detection runs on", () => {
   // suite guards against.
   it.each([
     ["a page path that merely starts with the excluded api prefix", "/apiary"],
-    ["a page path that merely starts with the excluded api prefix", "/api-docs"],
+    ["a page path whose first segment only begins with api", "/api-docs"],
     ["a page path that merely starts with the excluded _next prefix", "/_nextgen"],
+    ["a page path that merely starts with the excluded _vercel prefix", "/_vercelish"],
   ])("does not mistake %s for an excluded path", (_label, path) => {
     expect(matcher.test(path)).toBe(true);
   });
