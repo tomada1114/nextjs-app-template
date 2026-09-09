@@ -35,6 +35,32 @@ function respondWith(
   };
 }
 
+/**
+ * Stubs `AbortSignal.timeout` so a deadline can be ordered against another
+ * timer on the fake clock.
+ *
+ * @remarks
+ * `AbortSignal.timeout`'s timer is platform-internal — no fake-timer install
+ * can see it — so a deadline cannot be ordered against anything else on the
+ * fake clock while the real primitive is in place. The reason is a
+ * `DOMException` named `TimeoutError` because that is exactly what the real
+ * primitive aborts with: "ends the request on its own deadline with no caller
+ * signal at all" pins that identity against the *unstubbed* primitive, which
+ * is why reproducing it here is not circular. `restoreMocks: true` (already
+ * set in `vitest.config.ts`) restores the method — no manual teardown.
+ */
+function installFakeDeadlineTimer(): void {
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((delay: number) => {
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      );
+    }, delay);
+    return controller.signal;
+  });
+}
+
 /** A 200 response whose single text block carries `text` verbatim. */
 function messageWithText(text: string): unknown {
   return {
@@ -182,11 +208,12 @@ describe("createAnthropicAdapter when the abort lands after the response headers
     // this the port's `cause`-by-identity promise is untested past it.
     const reason = new Error("the caller changed its mind");
     const controller = new AbortController();
+    const { fetch, bodyRead } = headersThenStallFetch();
     const pending = createAnthropicAdapter({
       apiKey: "test-key",
       maxRetries: 0,
       timeoutMs: 60_000,
-      fetch: headersThenStallFetch(),
+      fetch,
     }).generate({
       schema: SCHEMA,
       prompt: "?",
@@ -194,8 +221,10 @@ describe("createAnthropicAdapter when the abort lands after the response headers
       signal: controller.signal,
     });
 
-    // Long enough for the headers to have been handed over.
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    // Settles on the first body *read*, which is the moment the SDK stops
+    // owning the request — the boundary this case exists for, waited on
+    // rather than estimated with a real sleep.
+    await bodyRead;
     controller.abort(reason);
 
     const error = failureOf(await pending);
@@ -213,12 +242,16 @@ describe("createAnthropicAdapter when the provider stalls after the response hea
     // far longer than the deadline to prove it is not what ends this request.
     // With no signal supplied, nothing else could: before the adapter composed
     // a deadline of its own, this promise never settled.
+    //
+    // This is the case that holds the real, unstubbed `AbortSignal.timeout`
+    // under test — the anchor `installFakeDeadlineTimer`'s stub reproduces the
+    // identity of below, so that reproduction is not circular.
     const result = await createAnthropicAdapter({
       apiKey: "test-key",
       maxRetries: 0,
       timeoutMs: 60_000,
       deadlineMs: 25,
-      fetch: headersThenStallFetch(),
+      fetch: headersThenStallFetch().fetch,
     }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
 
     const error = failureOf(result);
@@ -287,42 +320,62 @@ describe("createAnthropicAdapter under its real retry configuration", () => {
   });
 
   it("ends the retry chain rather than starting a second attempt once the deadline fires mid-backoff", async () => {
-    // The interaction #62 introduced. `AbortSignal.timeout` runs on the real
-    // clock regardless of `vi.useFakeTimers` (it is not a `setTimeout` a fake
-    // timer install can see), so unlike the test above this one cannot fake
-    // the backoff sleep away — both timers have to run for real, so
-    // `deadlineMs` has to sit inside a window rather than merely be small.
-    // The SDK's first backoff is `0.5s * (1 - random()*0.25)`, so 375 ms is
-    // its floor, and dispatching the first attempt costs roughly 10 ms here.
-    // 200 ms is the midpoint of that window: far enough above the dispatch
-    // cost that a loaded CI worker cannot fire the deadline before the first
-    // request goes out (which would leave `calls` empty), and far enough
-    // below 375 ms that the deadline still lands inside the sleep.
+    // The interaction #62 introduced. `AbortSignal.timeout`'s timer is
+    // platform-internal and invisible to `vi.useFakeTimers`, so
+    // `installFakeDeadlineTimer` puts an equivalent timer on the fake clock
+    // instead — an ordinary `setTimeout` a fake-timer install can see and
+    // order against the SDK's own backoff sleep by the numbers, deterministically
+    // rather than by a wall-clock margin. `deadlineMs` still has to sit below
+    // the backoff floor: the SDK's first backoff is `0.5s * (1 - random()*0.25)`,
+    // so 375 ms is its floor, and 200 ms leaves headroom on both sides.
     const { fetch, calls } = respondWith(429, {
       type: "error",
       error: { type: "rate_limit_error", message: "slow down" },
     });
 
-    const result = await createAnthropicAdapter({
-      apiKey: "test-key",
-      deadlineMs: 200,
-      fetch,
-    }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+    vi.useFakeTimers();
+    installFakeDeadlineTimer();
+    try {
+      const pending = createAnthropicAdapter({
+        apiKey: "test-key",
+        deadlineMs: 200,
+        fetch,
+      }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
 
-    const error = failureOf(result);
-    const cause = error.cause;
+      // t=0. The first attempt needs no timer at all, so it is already out
+      // before the clock moves — asserted rather than assumed, and on a fake
+      // clock the answer cannot vary with machine load.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toHaveLength(1);
 
-    expect(error.code).toBe("ERR_LLM_TIMEOUT");
-    // The deadline's own TimeoutError, not the 429 the first attempt got —
-    // the chain ended because the signal fired, not because the retry budget
-    // ran out.
-    expect(cause).toBeInstanceOf(Error);
-    expect((cause as Error).name).toBe("TimeoutError");
-    // The fetch call count is the evidence: the SDK's backoff sleep ignores
-    // the signal and runs to completion, but by the time it wakes up and is
-    // about to start a second attempt, the deadline has already fired — so no
-    // second request ever goes out.
-    expect(calls).toHaveLength(1);
+      // t=200. The deadline fires inside the SDK's backoff sleep, whose floor
+      // is 375 ms, so no advance can put it after.
+      await vi.advanceTimersByTimeAsync(200);
+      expect(calls).toHaveLength(1);
+
+      // t=700, past the 500 ms ceiling of that same sleep: the SDK has woken
+      // up and had its chance to start attempt two. It did not.
+      await vi.advanceTimersByTimeAsync(500);
+      const error = failureOf(await pending);
+      const cause = error.cause;
+
+      expect(error.code).toBe("ERR_LLM_TIMEOUT");
+      // The deadline's own TimeoutError (from the stub, whose identity the
+      // unstubbed case above pins), not the 429 the first attempt got — the
+      // chain ended because the signal fired, not because the retry budget
+      // ran out.
+      expect(cause).toBeInstanceOf(Error);
+      expect((cause as Error).name).toBe("TimeoutError");
+      // The fetch call count is the evidence: the SDK's backoff sleep ignores
+      // the signal and runs to completion, but by the time it wakes up and is
+      // about to start a second attempt, the deadline has already fired — so
+      // no second request ever goes out. Every timer in this path (dispatch,
+      // deadline, backoff) is now on the fake clock, so this is asserted at
+      // exact, ordered instants instead of inferred from real elapsed time.
+      expect(calls).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -494,7 +547,7 @@ describe("createAnthropicAdapter arms a near-ceiling deadline instead of firing 
         apiKey: "test-key",
         maxRetries: 0,
         deadlineMs,
-        fetch: headersThenStallFetch(),
+        fetch: headersThenStallFetch().fetch,
       }).generate({
         schema: SCHEMA,
         prompt: "?",
