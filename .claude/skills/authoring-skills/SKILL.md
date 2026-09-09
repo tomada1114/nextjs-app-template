@@ -89,6 +89,19 @@ Do not write down what a config already enforces. Name the gate in one line
 (`Enforced by: <file> "<setting>".`) and spend the skill's words on the judgment the
 config cannot express — the same principle AGENTS.md states for itself.
 
+## Write an illustration so it can be deleted
+
+Some of what a skill teaches is illustrated with code a project built from this template
+may delete. Write those so the illustration can be _deleted_ rather than rewritten:
+state the rule in its own sentence, put the example in the next one, and never make the
+removable code the subject of the sentence that carries the rule. A reader who deletes
+the example is then left with a rule that still reads, instead of a paragraph they have
+to author a replacement for out of code they have not written yet — which is exactly
+where that reader stands, because dropping a subsystem is decided before any module of
+their own exists. Nothing enforces this, and it is the reason the removal procedure asks
+for a deletion rather than a rewrite. **BACKGROUND:** `starting-an-app`, which owns that
+procedure and the lists of files it edits.
+
 ## Size and structure
 
 - Target 150 body lines per `SKILL.md`, never exceed 200.
