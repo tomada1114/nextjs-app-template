@@ -109,19 +109,19 @@ export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number
 }
 
 /**
- * The largest value {@link AnthropicAdapterOptions.deadlineMs} may take —
- * and, since a per-attempt timeout longer than the largest total bound the
- * platform can ever arm could never be reached, {@link AnthropicClientOptions.timeoutMs}'s
- * ceiling too.
+ * The largest value {@link AnthropicAdapterOptions.deadlineMs} may take — and,
+ * since a per-attempt timeout longer than the largest total bound the platform
+ * can ever arm could never be reached, {@link AnthropicClientOptions.timeoutMs}'s ceiling too.
  *
  * @remarks
- * `AbortSignal.timeout` takes an unsigned 32-bit delay and throws a
- * `RangeError` for anything else — a negative, a fraction, `Infinity`. Rejected
- * at construction rather than left to throw per request, because `LlmPort`
- * promises `generate()` resolves to a `Result` and never throws, and the signal
- * is armed outside every `try` there.
+ * Node backs a timer's delay with a **signed** 32-bit integer — `INT32_MAX`,
+ * this value — and *silently clamps* anything larger instead of rejecting it:
+ * `AbortSignal.timeout(2_147_483_648)` fires within a millisecond, not after
+ * the ~24.9 days requested. That call only starts throwing at `2 ** 32`, so
+ * deriving this ceiling from its unsigned bound accepts a whole band of delays
+ * it then clamps. Rejected at construction, because `LlmPort` never throws.
  */
-export const MAX_DEADLINE_MS = 4_294_967_295;
+export const MAX_DEADLINE_MS = 2_147_483_647;
 
 /**
  * The SDK's own hardcoded default host, a literal at `client.ts:627`/`:871` in
