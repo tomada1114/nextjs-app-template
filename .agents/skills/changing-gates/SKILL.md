@@ -74,14 +74,15 @@ own `ERR_WORKFLOW_*` code:
 - an `actions/checkout` step without `persist-credentials: false`.
 - `actions/setup-node` ordered before `pnpm/action-setup`, whose failure mode is a
   silently empty store cache rather than an error.
-- a `pull_request` workflow with no `concurrency`; and, on a workflow that also runs on
-  `push`, an unconditional `cancel-in-progress` — killing a push run destroys the only
-  CI record a merged commit gets. Both rules read every declaration GitHub Actions
-  accepts, the workflow's own and each job's, in the block spelling and in the flow
-  mapping alike. A workflow-level block covers every job and a job-level one covers only
-  its own, so declaring it per job answers the first rule only when every job does, and
-  only when the block names a `group:` — a bare `concurrency:` key queues nothing. Any
-  block cancelling unconditionally trips the second, except on a job whose own `if:`
+- a `pull_request` workflow with no `concurrency`; and, on any workflow that runs on
+  `push` at all — push-only included — an unconditional `cancel-in-progress`: killing a
+  push run destroys the only CI record a merged commit gets, and a push-only workflow
+  has no pull-request run to fall back on. Both rules read every declaration GitHub
+  Actions accepts, the workflow's own and each job's, in the block spelling and in the
+  flow mapping alike. A workflow-level block covers every job and a job-level one covers
+  only its own, so declaring it per job answers the first rule only when every job does,
+  and only when the block names a `group:` — a bare `concurrency:` key queues nothing.
+  Any block cancelling unconditionally trips the second, except on a job whose own `if:`
   pins it to a pull request: that job never runs on push, so no push record is what its
   cancellation discards.
 - a multi-line `run:` that neither opens with `set -euo pipefail` nor runs under a
