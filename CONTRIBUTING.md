@@ -11,9 +11,12 @@ corepack pnpm@11.18.0 install --frozen-lockfile
 pnpm check:quick
 ```
 
-The first command must report Node 24.x. `devEngines.runtime.onFail` is an intentional
-hard error, and nothing in this repository runs on another Node, so there is no occasion
-to reach for the `--config.runtime-on-fail=ignore` override.
+The first command must report a Node version at or above what `.node-version` states,
+which itself must satisfy `package.json`'s `devEngines.runtime.version` —
+`.node-version` is what a version manager and CI's `node-version-file` install, and
+`devEngines` is what `pnpm install` then verifies. `devEngines.runtime.onFail` is an
+intentional hard error, and nothing in this repository runs on another Node, so there is
+no occasion to reach for the `--config.runtime-on-fail=ignore` override.
 
 The install writes the Git hooks too, and nothing above has to ask for it: `lefthook`
 ships its own `postinstall`, which `pnpm-workspace.yaml` allowlists, so every non-CI
