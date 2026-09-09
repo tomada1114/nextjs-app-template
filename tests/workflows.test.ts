@@ -896,22 +896,28 @@ function lintWorkflow(source: string): Problem[] {
   // the mapping behind it — is a flow-scalar parser, and a nearly-right one
   // fails open exactly where this rule is load-bearing.
   for (const block of concurrency) {
-    // The header's own value gets the message it has always had; a keyed value
-    // gets one that names the key and drops the " #" hint, which is a trap of
-    // the one-line flow mapping and no help at all to a body line's author.
-    const subject =
-      block.job === undefined ? "this workflow" : `job "${block.job.name}"`;
-    const headerMessage =
+    if (block.unreadable.length === 0) {
+      continue;
+    }
+    // Two messages, and only their subject differs between the workflow-level
+    // block and a job's: the header's own value gets the one it has always
+    // had, a keyed value gets one that names the key. Both carry the " #"
+    // hint, because `scan` strips a trailing comment from every line — a body
+    // value is truncated exactly the way the header's is, so the hint is as
+    // much use there as here.
+    const headerSubject =
       block.job === undefined
-        ? 'concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.'
-        : `Job "${block.job.name}"'s concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.`;
+        ? "concurrency:"
+        : `Job "${block.job.name}"'s concurrency:`;
+    const keyedSubject =
+      block.job === undefined ? "this workflow" : `job "${block.job.name}"`;
     for (const { line, key } of block.unreadable) {
       report(
         "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
         line.number,
         key === undefined
-          ? headerMessage
-          : `The ${key}: of ${subject}'s concurrency: is written in a shape this lint cannot read: it leads with a YAML anchor, alias or tag (&, * or !), or it opens a flow collection ([ or {) that does not close on this line. This lint resolves no node properties and reads one physical line at a time, so it cannot tell what such a value stands for — and a value it cannot read must not pass as though the declaration had not set it. Write the value out in full on this line.`,
+          ? `${headerSubject} is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.`
+          : `The ${key}: of ${keyedSubject}'s concurrency: is written in a shape this lint cannot read: it leads with a YAML anchor, alias or tag (&, * or !), or it opens a flow collection ([ or {) that does not close on this line. This lint resolves no node properties and reads one physical line at a time, and strips anything after " #" as a trailing comment before counting braces, so a value containing " #" can look unterminated even though it is already balanced — check for that first. Otherwise write the value out in full on this line, with no anchor, alias or tag in front of it.`,
       );
     }
   }
@@ -1434,9 +1440,8 @@ describe("lintWorkflow", () => {
 
     const problems = lintWorkflow(source);
     expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
-    // The third message variant: it names the key and the block it belongs to,
-    // and says nothing about the " #" truncation, which is a trap of the
-    // one-line flow mapping and no help to a body line's author.
+    // The second message variant: it names the key and the block it belongs
+    // to, and points at the value's own line rather than at the header.
     expect(problems[0]?.message).toContain(
       "The cancel-in-progress: of this workflow's concurrency:",
     );
