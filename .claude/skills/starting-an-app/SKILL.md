@@ -130,17 +130,19 @@ deleting anything:
 pnpm exec vitest run tests/ai-layer-removal.test.ts
 ```
 
-Green means the layer is still separable and the five lists in that file are complete —
-the property it exists to defend, checkable only while the layer is present. It cannot
-be the check you run afterwards, because it is on its own removal list. Those five lists
-are the procedure:
+Green means the layer is still separable and the lists in that file are complete — the
+property it exists to defend, checkable only while the layer is present. It cannot be
+the check you run afterwards, because it is on its own removal list. Those lists are the
+procedure:
 
 - **`REMOVED_PATHS`** — deleted outright. `src/server/composition.ts` is on it because
   wiring a port is the whole of what that file does, `src/app/api` because the one route
   there is the layer's only caller, and the `integrating-llm` skill with its
   `.claude/skills/` mirror because the subject it documents is what leaves.
 - **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two vendor names
-  a file can carry without naming a path.
+  a file can carry without naming a path. **`AI_LAYER_SYMBOLS`** is the other half: the
+  names this repository gives the layer's own surface, which a document cites as often
+  as it cites a path.
 - **`REMOVED_SKILL_NAMES`** — the bare name of every skill on `REMOVED_PATHS`, derived
   from it rather than listed again; today just `integrating-llm`. Sibling skills
   cross-reference each other by name and never by path, so without this a
@@ -169,28 +171,29 @@ Delete the paths, then work through both edited lists:
 - `README.md` and AGENTS.md lose the route and the port from their prose — AGENTS.md's
   Architecture tree, its three seams, and the contract statement all name them.
 - `tests/server-env.test.ts` loses the cases for the removed key.
-- `building-app-routes` loses the paragraphs written around the one endpoint that is
-  going away: the Route Handler pattern it teaches stays, and the first endpoint of your
-  own is what it is illustrated with instead.
-- `writing-typescript` and `designing-errors` lose the worked examples drawn from the AI
-  layer — the port's error vocabulary, the handler's `satisfies` status table, the abort
-  helpers. Every rule they illustrate outlives the layer, so each example is replaced by
-  one from your own code rather than deleted with its rule.
-- `localizing-ui` loses its `outputLanguage` section — that seam is the port's, and the
-  UI locale it maps from has nowhere left to reach. Everything else in it, the catalogs
-  and the locale routing, is untouched by this removal.
-- `managing-dependencies` loses the whole paragraph describing how an
-  `@anthropic-ai/sdk` bump is verified: the `tests/fixtures/llm/` path,
-  `tests/llm-replay.ts`, the `LLM_RECORD` variable, and the cross-reference to
-  `integrating-llm` all leave with the layer. What survives is the fact that no suite
-  reaches a live service, now true of every suite rather than split between a fake
-  adapter and one replayed from fixtures.
-- `integrating-llm` is deleted rather than edited: its whole subject is the layer.
-- `writing-tests` loses the two seams that are going away — the port contract suite and
-  the handler driven with `new Request()` — and `type-testing` the port's generic
-  request and response types. Both keep everything else: the component and Route Handler
-  seams, the traps, and the typed message keys in `src/i18n/messages.ts`, which are not
-  the AI layer's.
+- The skills on `EDITED_DOCUMENT_FILES` teach rules that outlive the layer and
+  illustrate them with it. **Delete the illustration and leave the rule standing** — the
+  sentence, the bullet, or the section whose _subject_ is the layer. Do not write a
+  replacement now: you are here before your own code exists, and a rule with no example
+  is still a rule. Add one when you have code worth pointing at.
+- Grep to find the sites, then read the file: the needles
+  `tests/ai-layer-removal.test.ts` lists — `REMOVED_PATHS`, `AI_LAYER_TOKENS`,
+  `AI_LAYER_SYMBOLS` and `REMOVED_SKILL_NAMES` — are a lower bound, not a substitute for
+  reading it. The skills on `EDITED_DOCUMENT_FILES` were written before
+  `authoring-skills` required a new mention to carry a needle, so a paragraph can name
+  the layer with none: `building-app-routes`' "The zero-credential quick start is
+  untouched by all of this" paragraph names no path, token, symbol or skill, and a grep
+  alone walks past it. A skill's frontmatter `description` is a site like any other: it
+  is that skill's one trigger surface, and a trigger naming a file that is gone is dead
+  weight nothing reports once this suite is deleted. Several descriptions name a removed
+  path today, this skill's own among them.
+- Two are not sentence surgery. `integrating-llm` is deleted rather than edited, its
+  whole subject being the layer; and `localizing-ui` loses its `outputLanguage` section
+  whole, heading included — that seam is the port's, and the UI locale it maps from has
+  nowhere left to reach. The catalogs and the locale routing are untouched, but the
+  section is not the only place `outputLanguage` appears: the skill's frontmatter
+  `description` and its **Owns:** sentence both name the same seam and both need the
+  same edit.
 - This skill loses its "Removing the AI layer" section — it is on
   `EDITED_DOCUMENT_FILES` because a procedure for deleting something already gone is
   stale prose. Edit the `.agents/` copy and run `pnpm agents:sync`; never hand-edit the

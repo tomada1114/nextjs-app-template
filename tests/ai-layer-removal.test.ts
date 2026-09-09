@@ -75,6 +75,46 @@ const REMOVED_PATHS = [
 const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
 
 /**
+ * Names this repository gives the AI layer's own surface, which a document can
+ * cite without naming a file it lives in.
+ *
+ * @remarks
+ * Separate from `AI_LAYER_TOKENS`, whose subject is vendor product names: these
+ * are ours, and folding them into that list would make its TSDoc false. They
+ * exist because a skill illustrates a rule with a symbol as often as with a
+ * path — `LlmErrorCode` in a sentence about unions, `outputLanguage` in one
+ * about a seam — and a removal that greps only for paths edits the file it
+ * found for one reason and leaves the sentence it did not.
+ *
+ * Each needle is as narrow as the name it has to catch. A bare `LLM_` would
+ * also match the `LLM_API_KEY` sample line in `tests/guard-rules.test.ts` and
+ * `tests/check-staged.test.ts`, where it stands for any secret-shaped
+ * assignment and stays whether or not this application calls a model; the two
+ * prefixes here name the port's error codes and the fixture recorder instead.
+ * `ask`, `port`, `handler` and `adapter` are left out for the same reason —
+ * each appears in this repository's prose about something that is not the AI
+ * layer, and a needle matching a survivor that is not on the edited lists
+ * fails this suite for a false reason.
+ *
+ * `/api/ask` belongs here rather than on `REMOVED_PATHS` because it names the
+ * removed route by its URL, not its source path: `REMOVED_PATHS` carries
+ * `src/app/api`, and `"src/app/api".includes(text)` never matches a sentence
+ * or a test request that spells the route as `POST /api/ask` — the two
+ * strings share no substring. A document names an endpoint by the address a
+ * caller sends a request to at least as often as by the file that answers it,
+ * so the URL needs a needle of its own the same way `outputLanguage` needs one
+ * separate from `src/ai/port.ts`.
+ */
+const AI_LAYER_SYMBOLS = [
+  "Llm",
+  "ERR_LLM_",
+  "LLM_RECORD",
+  "outputLanguage",
+  "askHandler",
+  "/api/ask",
+];
+
+/**
  * The bare name of every skill the removal deletes.
  *
  * @remarks
@@ -117,7 +157,11 @@ const REMOVED_SKILL_NAMES = [
  * `tests/server-smoke.test.ts` asks the running application for every route it
  * publishes, `POST /api/ask` among them, so the removal deletes those cases
  * the same way it deletes the route; it is a test of the composed application,
- * not a module the layer is embedded in. This
+ * not a module the layer is embedded in. `tests/proxy.test.ts` picked the same
+ * route as its example of a nested API path the locale matcher leaves alone —
+ * a case named `"a nested API route"` with `/api/ask` as the literal — and a
+ * matcher test choosing a path that no longer exists needs a different
+ * example, even though the matcher's own behaviour does not change. This
  * half is where the separability property lives: it is the one that has to stay
  * near-empty, and an entry joining it means an application module now has to
  * be edited by the removal — the moment the layer has stopped coming out in
@@ -129,6 +173,7 @@ const EDITED_CODE_FILES = [
   "package.json",
   "src/server/env.ts",
   "tests/boundaries.test.ts",
+  "tests/proxy.test.ts",
   "tests/server-env.test.ts",
   "tests/server-smoke.test.ts",
   "vitest.config.ts",
@@ -209,11 +254,14 @@ function isRemoved(relative: string): boolean {
 const everyFile = walk(repoRoot);
 const survivingFiles = everyFile.filter((relative) => !isRemoved(relative));
 
-/** The removed paths, tokens and skill names `text` names, if any. */
+/** The removed paths, tokens, symbols and skill names `text` names, if any. */
 function referencesInText(text: string): string[] {
-  return [...REMOVED_PATHS, ...AI_LAYER_TOKENS, ...REMOVED_SKILL_NAMES].filter(
-    (needle) => text.includes(needle),
-  );
+  return [
+    ...REMOVED_PATHS,
+    ...AI_LAYER_TOKENS,
+    ...AI_LAYER_SYMBOLS,
+    ...REMOVED_SKILL_NAMES,
+  ].filter((needle) => text.includes(needle));
 }
 
 /** The same, for a file in the tree; `[]` for a binary one. */
@@ -329,6 +377,25 @@ describe("the AI layer can be removed whole", () => {
     );
     // Removing it: back to exactly what the suite asserts today.
     expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
+      EDITED_FILES,
+    );
+  });
+
+  it("catches a skill whose only mention of the layer is one of its symbols", () => {
+    // The falsification case for `AI_LAYER_SYMBOLS`: a sentence that names the
+    // layer through one of its own symbols and no path at all is the site a
+    // removal greping only for paths would walk past.
+    const posed = ".agents/skills/posed-by-this-test/SKILL.md";
+    const withSymbol = "Map the UI locale to the port's `outputLanguage` tag.\n";
+    const withoutSymbol = "Map the UI locale to the catalog it selects.\n";
+    const readingPosedAs = (body: string) => (relative: string) =>
+      relative === posed ? body : readText(relative);
+    const files = [...survivingFiles, posed];
+
+    expect(survivorsNaming(files, readingPosedAs(withSymbol))).toStrictEqual(
+      [...EDITED_FILES, posed].sort(),
+    );
+    expect(survivorsNaming(files, readingPosedAs(withoutSymbol))).toStrictEqual(
       EDITED_FILES,
     );
   });
