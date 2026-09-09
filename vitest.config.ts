@@ -44,6 +44,7 @@ const automationTests = [
   "tests/sync-agents.test.ts",
   "tests/sync-labels.test.ts",
   "tests/tooling-ignores.test.ts",
+  "tests/verify-hooks.test.ts",
   "tests/workflows.test.ts",
 ];
 

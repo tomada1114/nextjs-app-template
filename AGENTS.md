@@ -45,6 +45,7 @@ pnpm test:coverage # tests with the coverage thresholds enforced
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
 ```
@@ -226,6 +227,32 @@ between layers:
 | --------------------- | --------------------- | ---------------------- | -------------------------------------------------------------- |
 | `lefthook` pre-commit | `git commit`          | every author, any tool | Formatting, a related-test run, and the one content rule below |
 | This file             | read at session start | every agent            | Everything else — the reasons behind the rules above           |
+
+The first row's "every author" is not a second step anybody has to remember, and not
+something `prepare` arranges either. `lefthook` ships its own `postinstall`, which
+`pnpm-workspace.yaml`'s `allowBuilds` allowlists, so every non-CI `pnpm install` writes
+the hook by itself. What that postinstall cannot do is fail: it never reads the exit
+status of the `lefthook install -f` it spawns, so an install that could not write the
+hook — a `core.hooksPath` pointing somewhere it cannot create — leaves `pnpm install`
+green, the gate absent, and nothing on screen. `package.json`'s `prepare` script runs
+`scripts/verify-hooks.mjs` after that, and it **verifies rather than installs**: it
+fails the install with an `ERR_HOOKS_*` report unless `lefthook.yml` declares a
+`pre-commit` block and a lefthook pre-commit hook really sits at the path
+`git rev-parse --git-path hooks` names. Both halves are checked because either alone is
+satisfiable while the gate is absent — `lefthook install` writes a blank config and
+calls that success — and the path is resolved rather than assumed, because
+`core.hooksPath` and a linked worktree both move it legitimately.
+
+Verification skips, and the install succeeds, only where it is meaningless: `CI` set, a
+directory that is not a Git work tree root, and an install that left no `lefthook` in
+`node_modules`. Most of the remaining ways to end up without the gate are deliberate or
+visible: `pnpm install --ignore-scripts`, which runs neither lifecycle script;
+`ALLOW_MISSING_GIT_HOOKS=1`, the documented opt-out for a developer who genuinely cannot
+have the hook, which every failure message names; and hooks removed by hand afterwards.
+`LEFTHOOK=0` is not among them: it leaves the hook installed and `verify-hooks` green
+while disabling the gate at every commit it is set for — "Two consequences" below is
+where that invisibility, and why nothing here closes it, is explained once.
+`pnpm hooks:install` is the repair, not a setup step.
 
 This repository ships no declarative, tool-call-aware permission list (a Claude Code
 `permissions.allow`/`permissions.deny` or equivalent) — the committed

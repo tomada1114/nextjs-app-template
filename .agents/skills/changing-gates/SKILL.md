@@ -118,6 +118,32 @@ The hook is deliberately narrow, and AGENTS.md's "Enforcement layers" holds the 
 for why. The bar for a new or changed job follows from it: it must never fire on
 intended work — test it against a normal commit before trusting it to catch a bad one.
 
+A changed job only reaches an author whose clone has the hook, and what puts it there is
+lefthook's own `postinstall`, allowlisted in `pnpm-workspace.yaml`, on every non-CI
+`pnpm install`. Nothing here re-installs it: `package.json`'s `prepare` script runs
+`scripts/verify-hooks.mjs`, which **verifies and never writes**, because the defect
+issue #81 was really about is that lefthook's postinstall cannot fail — it ignores the
+exit status of the `lefthook install -f` it spawns, so a hook that could not be written
+leaves the install green and silent.
+
+The verifier checks both halves, and neither is redundant. `lefthook.yml` has to declare
+a `pre-commit` block, because `lefthook install` run without a config _creates a blank
+one_, reports success and exits 0 — an empty gate that installs cleanly. And a lefthook
+pre-commit hook has to exist at the path `git rev-parse --git-path hooks` resolves to,
+which is asked rather than assumed: `core.hooksPath` set to a writable directory is
+perfectly fine and is not a defect, and a linked worktree's hooks live in the shared
+common directory. Verification skips only where it is meaningless (`CI` set, not a Git
+work tree root, no `lefthook` in `node_modules`) and otherwise fails the install with an
+`ERR_HOOKS_*` report naming `ALLOW_MISSING_GIT_HOOKS=1`, the one deliberate opt-out.
+`tests/verify-hooks.test.ts` pins that behaviour against throwaway `git init`
+repositories and the real lefthook, the `prepare` entry included; it isolates `HOME` and
+`XDG_CONFIG_HOME` rather than relying on `isolatedGitEnv`, which strips `GIT_*` and so
+cannot keep a developer's global `core.hooksPath` out of a fixture repository.
+
+Pointing `prepare` at an installer instead is the change to reject: it repeats what
+lefthook already does, and repeats it just as silently, which leaves AGENTS.md's "every
+author, any tool" row resting on an install nobody checked.
+
 Job ordering is load-bearing rather than incidental. `format` runs alone before the
 parallel group so `eslint`, `typecheck` and `check:staged` see the formatted, re-staged
 blobs rather than the working tree as it stood before the commit began. Preserve that
@@ -168,6 +194,23 @@ Traps that have cost time here:
   `NO_ENUM` and `NO_EXPORT_STAR` are shared constants and why the `boundaries/*` blocks
   match disjoint file sets. Keep a new block disjoint from them, or restate what it
   still wants.
+- Anchor a zone pattern with a leading `../`. Unanchored, `**/server` also matches the
+  package subpath `next-intl/server`, which `src/i18n/request.ts` imports today;
+  `../**/server` cannot match any bare specifier, and every cross-zone import inside
+  `src/` starts with `../` because this repository declares no path alias. Same shape
+  for `../**/app` against `next/app`. `no-restricted-imports` matches this specifier
+  text through the `ignore` package rather than resolving it, and `ignore` treats a
+  leading `./` as a different string from a leading `../` — so `./../server` is
+  invisible to `../**/server` even though it resolves to the same module. Every `ZONE`
+  entry and `AI_LAYER_PRIVATE` therefore carries a `./../**` twin of each `../**`
+  pattern; a bare specifier still cannot start with `./..`, so the twin is exactly as
+  safe as the pattern it doubles.
+- A `group` accepts `!` negations, and the **last matching entry wins**. That is how
+  `AI_LAYER_PRIVATE` states the AI layer's surface as an allow-list —
+  `["../**/ai/**", "./../**/ai/**", "!../**/ai/index", "!./../**/ai/index"]` — rather
+  than a deny-list naming each private module, which would go stale the next time
+  something lands under `src/ai/`. Both patterns must come before both negations, since
+  the `./../` twin needs its own exemption too.
 - `eslintConfigPrettier` must stay the last element of the exported array. Anywhere else
   it stops turning off the stylistic rules that would fight Prettier, and the two gates
   then disagree about the same file.
@@ -175,12 +218,21 @@ Traps that have cost time here:
   to the `src/` tree on the way in. Spreading a new shared config in unscoped puts
   framework rules on `scripts/**` and `tests/**`.
 - The named blocks are the map: `src/shared-syntax`, `src/size-budget`,
-  `public-api/explicit-surface`, `boundaries/core-is-framework-free`,
-  `boundaries/adapters-are-reached-through-src-ai`,
-  `boundaries/port-does-not-know-its-adapters`,
+  `public-api/explicit-surface`,
+  `boundaries/core-is-framework-free-and-imports-no-zone`,
+  `boundaries/ai-imports-only-core`, `boundaries/port-does-not-know-its-adapters`,
+  `boundaries/i18n-is-a-leaf`, `boundaries/app-reaches-the-ai-layer-through-src-ai`,
+  `boundaries/server-reaches-ai-through-src-ai-and-never-app`,
   `boundaries/private-trees-are-not-importable`, `automation/node-scripts`,
-  `tests/vitest-rules`, `tests/relaxations`. Name a new block the same way — the name is
-  what a reader, and ESLint's own config inspector, has to identify it by.
+  `tests/vitest-rules`, `tests/relaxations`. The six `boundaries/*` blocks are one
+  import order written per zone, so they match disjoint file sets by construction. Name
+  a new block the same way — the name is what a reader, and ESLint's own config
+  inspector, has to identify it by.
+- `tests/boundaries.test.ts` asserts those same edges from the module graph, and it pins
+  zones rather than files. An exhaustive list of the modules under `src/` failed on
+  every legal new file, which teaches its reader to edit the meta-test until the day
+  that edit hides something real; a table of zones fails only on a change that needs a
+  boundary decision — a new zone, or a second module at the root of `src/`.
 - `vitest.config.ts` runs three projects — `unit`, `component` (jsdom), `automation` —
   and coverage is collected once for the whole run, never per project. Which project a
   file joins, and the value of any threshold, are `placing-tests`. What belongs here is
