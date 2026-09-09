@@ -73,13 +73,16 @@ pnpm exec vitest run tests/<module>.test.ts
 ```
 
 A `zod` bump surfaces first in whichever contract suite parses with it; a `react` bump
-in the component tests. No suite reaches a live service either way: the port's own tests
-run against the fake adapter, and the Anthropic adapter's run against the exchanges
-under `tests/fixtures/llm/` that `tests/llm-replay.ts` replays. So an
-`@anthropic-ai/sdk` bump is verified offline like any other, and re-recording a fixture
-is never something a bump does on its way through — recording is a deliberate local run
-under `LLM_RECORD=1` with a real credential, and it costs money. `integrating-llm` owns
-that procedure.
+in the component tests. No suite reaches a live service either way:
+`tests/ai-port.test.ts`'s contract suite runs `describeLlmPortContract` against both the
+fake adapter and, through `tests/llm-replay.ts`'s replayed fixtures under
+`tests/fixtures/llm/`, the Anthropic adapter — a bump that breaks either shows up there
+first — and `tests/ai-anthropic.test.ts` covers the adapter's remaining edge cases the
+same way, some against those same fixtures and the rest against a synthetic `fetch`. So
+an `@anthropic-ai/sdk` bump is verified offline like any other, and re-recording a
+fixture is never something a bump does on its way through — recording is a deliberate
+local run under `LLM_RECORD=1` with a real credential, and it costs money.
+`integrating-llm` owns that procedure.
 
 Two checks run only on the PR. The `Dependency review` workflow fails on a new advisory
 or a denied license, and the weekly production audit above is now a gate that can
