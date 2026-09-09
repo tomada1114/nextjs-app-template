@@ -65,13 +65,21 @@ const ANTHROPIC_SDK = ["@anthropic-ai/**"];
  * The leading `../` is load-bearing, not decoration. An unanchored
  * `**\/server` also matches the package subpath `next-intl/server`, which
  * `src/i18n/request.ts` imports — the anchored form cannot, because a bare
- * specifier never starts with `..`.
+ * specifier never starts with `..` or `.`.
+ *
+ * Each entry also carries a `./../**` twin of every `../**` pattern, because
+ * `no-restricted-imports` matches the specifier text through the `ignore`
+ * package rather than resolving it, and `ignore` treats a leading `./` as a
+ * different string from a leading `../` — so `./../ai/errors` matches
+ * neither the `../**\/ai/**` pattern nor the `!../**\/ai/index` exemption below
+ * without its own `./../**` copy. A bare specifier still cannot start with
+ * `./..`, so the twin is exactly as safe as the pattern it doubles.
  */
 const ZONE = {
-  app: ["../**/app", "../**/app/**"],
-  server: ["../**/server", "../**/server/**"],
-  ai: ["../**/ai", "../**/ai/**"],
-  i18n: ["../**/i18n", "../**/i18n/**"],
+  app: ["../**/app", "../**/app/**", "./../**/app", "./../**/app/**"],
+  server: ["../**/server", "../**/server/**", "./../**/server", "./../**/server/**"],
+  ai: ["../**/ai", "../**/ai/**", "./../**/ai", "./../**/ai/**"],
+  i18n: ["../**/i18n", "../**/i18n/**", "./../**/i18n", "./../**/i18n/**"],
 };
 
 /**
@@ -80,10 +88,18 @@ const ZONE = {
  * @remarks
  * An allow-list stated as a negation, so a module added under `src/ai/` is
  * private by default rather than private only once someone remembers to list
- * it. Order matters: the negation must follow the pattern it exempts, because
- * the last matching entry wins.
+ * it. Order matters: both negations must follow both patterns they exempt,
+ * because the last matching entry wins. The `./../**` twin exists for the
+ * same reason as {@link ZONE}'s: `./../ai/errors` and `./../ai/index` are
+ * invisible to the `../**` forms, so each needs its own pattern and its own
+ * exemption.
  */
-const AI_LAYER_PRIVATE = ["../**/ai/**", "!../**/ai/index"];
+const AI_LAYER_PRIVATE = [
+  "../**/ai/**",
+  "./../**/ai/**",
+  "!../**/ai/index",
+  "!./../**/ai/index",
+];
 
 /** Why everything under `src/ai/` but its surface is off limits to a caller. */
 const AI_LAYER_IS_PRIVATE =

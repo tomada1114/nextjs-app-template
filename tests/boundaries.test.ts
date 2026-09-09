@@ -169,10 +169,20 @@ describe("the import scanner the zone assertions run on", () => {
     expect(module?.specifiers).toStrictEqual(expected);
   });
 
-  it("walks the whole src/ tree, not a subdirectory of it", () => {
+  it("reaches every anchor, so the walk is not stuck in a subdirectory of src/", () => {
     expect(sourceModules.map((module) => module.file)).toEqual(
       expect.arrayContaining(SCAN_ANCHORS),
     );
+  });
+
+  // `arrayContaining` above only proves presence: it would still pass if
+  // `modulesUnder`'s `/\.tsx?$/` filter were dropped and every `.css` or
+  // binary file under `src/` joined `sourceModules` too. This is the
+  // assertion the old exhaustive `toStrictEqual` list stood in for — that the
+  // filter actually excludes something — asserted directly instead of by
+  // enumerating every file the walk must return.
+  it("returns nothing but .ts and .tsx files", () => {
+    expect(sourceModules.every((module) => /\.tsx?$/.test(module.file))).toBe(true);
   });
 
   it("resolves a relative specifier to the module it names", () => {
@@ -327,6 +337,23 @@ describe("src/core/ is framework-free and vendor-free", () => {
 describe("src/app/ and src/server/ reach the AI layer only through src/ai/index.ts", () => {
   it("names no module inside the layer but its surface", () => {
     expect(aiLayerBypasses(modulesIn("src/app", "src/server"))).toStrictEqual([]);
+  });
+
+  // The check above passes just as well if nothing under src/app/ or
+  // src/server/ imports the AI layer at all — "names no module but its
+  // surface" is vacuously true of an empty set. This asserts the real tree
+  // actually exercises the surface, without pinning which file does: a
+  // minimum count survives a legal refactor that moves the call between
+  // src/server/composition.ts and src/server/handlers/ask.ts, where an
+  // exhaustive file list would not.
+  it("has at least one real src/app or src/server module reaching the AI surface", () => {
+    const surfaceImporters = modulesIn("src/app", "src/server").filter((module) =>
+      module.specifiers.some((specifier) => {
+        const resolved = resolveWithin(module.file, specifier);
+        return resolved !== undefined && AI_SURFACE_MODULES.includes(resolved);
+      }),
+    );
+    expect(surfaceImporters.length).toBeGreaterThan(0);
   });
 
   it("reports a bypass when there is one, so the check above is not vacuous", () => {

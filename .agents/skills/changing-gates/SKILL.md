@@ -172,12 +172,19 @@ Traps that have cost time here:
   package subpath `next-intl/server`, which `src/i18n/request.ts` imports today;
   `../**/server` cannot match any bare specifier, and every cross-zone import inside
   `src/` starts with `../` because this repository declares no path alias. Same shape
-  for `../**/app` against `next/app`.
+  for `../**/app` against `next/app`. `no-restricted-imports` matches this specifier
+  text through the `ignore` package rather than resolving it, and `ignore` treats a
+  leading `./` as a different string from a leading `../` — so `./../server` is
+  invisible to `../**/server` even though it resolves to the same module. Every `ZONE`
+  entry and `AI_LAYER_PRIVATE` therefore carries a `./../**` twin of each `../**`
+  pattern; a bare specifier still cannot start with `./..`, so the twin is exactly as
+  safe as the pattern it doubles.
 - A `group` accepts `!` negations, and the **last matching entry wins**. That is how
   `AI_LAYER_PRIVATE` states the AI layer's surface as an allow-list —
-  `["../**/ai/**", "!../**/ai/index"]` — rather than a deny-list naming each private
-  module, which would go stale the next time something lands under `src/ai/`. Reversing
-  the two entries blocks the surface itself, so the negation comes second.
+  `["../**/ai/**", "./../**/ai/**", "!../**/ai/index", "!./../**/ai/index"]` — rather
+  than a deny-list naming each private module, which would go stale the next time
+  something lands under `src/ai/`. Both patterns must come before both negations, since
+  the `./../` twin needs its own exemption too.
 - `eslintConfigPrettier` must stay the last element of the exported array. Anywhere else
   it stops turning off the stylistic rules that would fight Prettier, and the two gates
   then disagree about the same file.
