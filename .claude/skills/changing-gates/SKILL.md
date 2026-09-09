@@ -177,6 +177,19 @@ Two properties are worth knowing before relying on it or editing it:
 - `checkStagedChange` returns `null` for `change.status === "D"`. **A staged deletion is
   never inspected** — deleting a secret-shaped file, a workflow, or a test passes this
   layer untouched, by design. Nothing else in the repository watches for it either.
+- The generic hardcoded-password rule judges the **value**, not the key. A key ending in
+  `password`, with an optional surrounding quote and a `:` or `=` separator, only makes
+  a site a candidate; `isCredentialShapedValue` then decides, and it fires only on a
+  value of at least eight characters that is an unbroken run of printable ASCII carrying
+  a digit or credential-shaped punctuation. So the rule does **not** cover: a shorter
+  secret, a purely alphabetic one, one holding a space or a non-ASCII character, one
+  assembled by interpolation, a body whose quote is escaped, or the whitespace-separated
+  schema form, which is a type declaration rather than an assignment and is excluded on
+  purpose. A real password that also reads as a bare identifier therefore walks through.
+  That is the deliberate half of the trade: ordinary code — a schema field, a type
+  member, a destructured read — is no longer blocked, and a hook that fires on intended
+  work teaches its author to reach for `--no-verify`, which switches off every rule in
+  `credentials.mjs` at once.
 
 ## Tool configs
 

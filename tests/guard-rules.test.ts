@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { checkCredentials } from "../scripts/lib/guard/credentials.mjs";
+import {
+  checkCredentials,
+  isCredentialShapedValue,
+} from "../scripts/lib/guard/credentials.mjs";
 import { checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // Pure-function coverage for the secret-detection rules under
@@ -112,6 +115,31 @@ describe("credentials: checkCredentials", () => {
       /password/,
     ],
     [
+      // The shape this rule exists to catch and used to walk past: JSON quotes
+      // the key, so the separator no longer follows the word directly.
+      "a quoted JSON password assignment",
+      secretShaped('{ "password', '": ', '"synthetic-example" }'),
+      /password/,
+    ],
+    [
+      "a single-quoted password assignment",
+      secretShaped("password", ": ", "'s3cr3t-value'"),
+      /password/,
+    ],
+    [
+      "a camelCase password assignment",
+      secretShaped("dbPassword", ": ", '"s3cr3t-value"'),
+      /password/,
+    ],
+    [
+      // Every candidate site is judged, not merely the first: an
+      // implementation that stopped at the schema field above would let the
+      // assignment below through.
+      "a real assignment below a password schema field",
+      secretShaped("password: z.string()\n", "password", "=", '"s3cr3t-value"'),
+      /password/,
+    ],
+    [
       "a GitHub fine-grained personal access token",
       secretShaped("github_pat_", "11AAAAAAA0AAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAA"),
       /fine-grained/,
@@ -178,7 +206,84 @@ describe("credentials: checkCredentials", () => {
     ["a short xoxb-shaped string", "xoxb-revoked"],
     ["a short AIza-prefixed string", "AIzaExpired"],
     ["a Stripe test key", secretShaped("sk_test_", "a".repeat(20))],
+    // Ordinary code that a sign-in form, a credential schema or a user model
+    // brings into a project. Each of the six rows below was blocked before the
+    // rule began judging the assigned value instead of the key.
+    ["a zod password schema", "password: z.string()"],
+    ["a TypeScript password field", "password: string;"],
+    ["a Prisma or GraphQL password field", "password: String"],
+    ["an optional TypeScript password property", "password?: string"],
+    ["a destructured password read", "const password = form.password;"],
+    ["a snake_case password identifier read", "password = user_password"],
+    [
+      // Eight characters, but a bare word carries neither a digit nor
+      // credential-shaped punctuation, so it is a label rather than a value.
+      // This row and the Japanese message below it pass on HEAD too: they
+      // pin shapes the rule must never start firing on.
+      "an English UI label under a password key",
+      secretShaped('"password', '": ', '"Password"'),
+    ],
+    [
+      // Why the printable-ASCII condition exists: `messages/ja.json` is a
+      // Japanese catalog by definition, and its values sit under English keys.
+      "a Japanese UI message under a password key",
+      secretShaped('"password', '": ', '"パスワードを入力してください"'),
+    ],
+    [
+      // Blocked before this change, since any non-space character after the
+      // separator was enough.
+      "a shell interpolation of a password variable",
+      secretShaped("PASSWORD", "=", "${DB_PASS}"),
+    ],
+    [
+      "a GitHub Actions expression reading a password secret",
+      secretShaped("password", ": ", "${{ secrets.DB_PASSWORD }}"),
+    ],
+    [
+      // The `.env.example` shape: every name shipped with an empty value.
+      "an empty password value in an example file",
+      secretShaped("DB_PASSWORD", "=", "\n"),
+    ],
   ])("does not flag %s", (_label, text) => {
     expect(checkCredentials(text)).toBeNull();
+  });
+
+  it("returns null for empty text", () => {
+    expect(checkCredentials("")).toBeNull();
+  });
+
+  it("does not flag a whitespace-separated schema field", () => {
+    // Deliberately out of scope, and the reason is the same one that keeps
+    // `password: String` out: a value that is a type name is never a
+    // credential, whichever separator precedes it. The rule therefore keeps
+    // requiring a `:` or `=` separator.
+    expect(checkCredentials("password  String")).toBeNull();
+  });
+});
+
+describe("credentials: isCredentialShapedValue", () => {
+  it.each([
+    ["a hyphenated twelve-character value", "s3cr3t-value"],
+    ["an eight-character value qualified by a digit", "abc12345"],
+    ["a value qualified by punctuation alone", "value@shape"],
+  ])("judges %s credential-shaped", (_label, value) => {
+    expect(isCredentialShapedValue(value)).toBe(true);
+  });
+
+  it.each([
+    ["a value one character under the length floor", "abc123-"],
+    ["a word with neither a digit nor punctuation", "plainletters"],
+    ["a value containing a space", "plain value-1"],
+    ["a value containing non-ASCII characters", "パスワード-1"],
+    ["a value opening a template interpolation", "abc1234$"],
+    ["a value carrying a backtick", "abc1234`"],
+    ["a value opening a call", "abc1234("],
+    ["a value opening an object literal", "abc1234{"],
+    ["a value opening a generic", "abc1234<"],
+    ["a member expression", "form.password"],
+    ["a snake_case identifier", "user_password"],
+    ["the empty string", ""],
+  ])("judges %s not credential-shaped", (_label, value) => {
+    expect(isCredentialShapedValue(value)).toBe(false);
   });
 });
