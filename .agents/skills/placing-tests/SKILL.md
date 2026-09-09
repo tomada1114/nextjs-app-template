@@ -2,11 +2,12 @@
 name: placing-tests
 description: >
   Decides where a new test file goes — always under tests/, never beside the module it
-  covers — which of vitest.config.ts's three projects it joins (unit, component under
-  jsdom for a .test.tsx, or the explicit automation list), and which coverage.thresholds
-  floor governs it. Use when adding a .test.ts or .test.tsx file, when a test needs a
-  DOM or spawns a subprocess, when choosing between `pnpm exec vitest run` and `pnpm
-  test:coverage`, or when a coverage run drops below a floor.
+  covers — which of vitest.config.ts's four projects it joins (unit, component under
+  jsdom for a .test.tsx, the explicit automation list, or smoke for the one suite that
+  serves a build), and which coverage.thresholds floor governs it. Use when adding a
+  .test.ts or .test.tsx file, when a test needs a DOM, spawns a subprocess or a server,
+  when choosing between `pnpm exec vitest run` and `pnpm test:coverage`, or when a
+  coverage run drops below a floor.
 ---
 
 # Placing Tests
@@ -50,7 +51,7 @@ an `automation` test as a child process.
 
 ## Choosing a project
 
-`vitest.config.ts` splits `test.projects` three ways. Placement follows from what the
+`vitest.config.ts` splits `test.projects` four ways. Placement follows from what the
 file actually touches and which environment it needs — never from its name or its
 subject:
 
@@ -66,6 +67,20 @@ subject:
   `vitest.config.ts`, with a 120-second budget. Everything that shells out, reads or
   writes a temp directory, spawns `git`/`node`, or walks whole trees on disk asserting
   against files rather than against imported code.
+- **`smoke`** — the `smokeTests` list beside it, one file today. A test joins it only
+  when it cannot run without `pnpm build`'s output on disk: it starts the built
+  application with `next start` and asserts over `fetch`. That is what makes it a
+  project of its own rather than another automation entry — the default run
+  (`pnpm test`, `pnpm test:coverage`, and ci.yml's `test` job) filters it out with
+  `--project='!smoke'`, because there is no build there to serve and a suite that built
+  one for itself would pay for a second build in every workflow. `pnpm run test:smoke`
+  is what runs it, from `check:source` and from ci.yml's `static` job, both times
+  straight after `Build`. A test here checks the build it was handed rather than making
+  one: `tests/server-smoke.test.ts` fails with an instruction when `.next/BUILD_ID` is
+  missing, and again when it is older than `src/`, `messages/` or `next.config.ts`,
+  because a run against last commit's build passes every assertion while proving nothing
+  about the change. Adding a file here is a claim that no in-process test could have
+  asserted the same thing; prefer `automation` whenever one could.
 
 The two directions fail differently, which is why `automation` is a list rather than a
 glob. Forgetting to register a test that does I/O leaves it in `unit`, where the short
@@ -142,6 +157,7 @@ call in-process.
 ```bash
 pnpm exec vitest run tests/<name>.test.ts   # one file, fast iteration
 pnpm test:coverage                          # full suite with floors enforced
+pnpm build && pnpm run test:smoke           # the smoke project, which needs the build
 ```
 
 If `pnpm test:coverage` fails on a floor, add real coverage for the uncovered branch —

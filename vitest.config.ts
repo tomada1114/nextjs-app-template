@@ -49,6 +49,20 @@ const automationTests = [
   "tests/workflows.test.ts",
 ];
 
+// The one suite that needs `pnpm build`'s output on disk before it can run at
+// all: it starts the built application with `next start` and asserts over
+// HTTP. That is why it is its own project rather than another entry in
+// `automationTests` — the default run (`pnpm test`, `pnpm test:coverage`, and
+// ci.yml's `test` job) has no build to serve, and a suite that quietly built
+// one for itself would pay for a second build in every workflow. It refuses to
+// run against a missing or stale build instead, so the build stays the
+// caller's to do exactly once. `pnpm run test:smoke` is what runs it, from
+// `check:source` and from ci.yml's `static` job immediately after `Build`; the
+// two default scripts filter it out with `--project='!smoke'`. Naming the file
+// here is still what keeps it out of `unit` below, whose glob would otherwise
+// collect it on a 5-second budget.
+const smokeTests = ["tests/server-smoke.test.ts"];
+
 // `server-only` is a build-time marker rather than a runtime module: its only
 // entry throws on import, and a React Server Components bundler never loads it
 // because the package's `react-server` export condition points at an empty
@@ -93,12 +107,13 @@ export default defineConfig({
     // everywhere — not only under CI, which is the default — means the author
     // finds it before the commit rather than the pipeline finding it after.
     allowOnly: false,
-    // Three projects, split by what a test actually touches rather than by
+    // Four projects, split by what a test actually touches rather than by
     // where it lives: a new `.test.ts` file is unit by default, a `.test.tsx`
-    // file needs a DOM and joins `component` instead, and the explicit
-    // automation list receives the long budget only after its I/O needs are
-    // known. A hung unit or component test (no I/O, so it can only be looping
-    // or awaiting forever) is a bug that should be visible in seconds.
+    // file needs a DOM and joins `component` instead, the explicit automation
+    // list receives the long budget only after its I/O needs are known, and
+    // `smoke` is the one suite that cannot run without a build to serve. A
+    // hung unit or component test (no I/O, so it can only be looping or
+    // awaiting forever) is a bug that should be visible in seconds.
     // `coverage` below is unaffected by this split — Vitest collects and
     // thresholds coverage once for the whole run, never per project.
     //
@@ -111,7 +126,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["tests/**/*.test.ts"],
-          exclude: [...automationTests, fixtures],
+          exclude: [...automationTests, ...smokeTests, fixtures],
           testTimeout: 5_000,
           hookTimeout: 5_000,
         },
@@ -147,6 +162,19 @@ export default defineConfig({
           hookTimeout: 120_000,
         },
       },
+      {
+        extends: true,
+        test: {
+          name: "smoke",
+          include: smokeTests,
+          // Spawning a production server, waiting for it to listen, and
+          // asking it for a rendered page is the same order of cost as the
+          // automation project's subprocesses, so it gets the same budget
+          // rather than one nobody measured.
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+        },
+      },
     ],
     coverage: {
       provider: "v8",
@@ -165,10 +193,14 @@ export default defineConfig({
       thresholds: {
         // The floor covers the zones whose code is this repository's own
         // logic. `src/app/**` and `src/components/**` are deliberately absent:
-        // they are Next.js entry points and rendered markup, exercised by the
-        // browser-level tooling issue #12 introduces rather than by a unit
-        // test, and a floor they cannot meet would only teach the next author
-        // to move the number. They stay inside `include` above, so they still
+        // they are Next.js entry points and rendered markup, and a floor they
+        // cannot meet would only teach the next author to move the number.
+        // What exercises them instead is `tests/server-smoke.test.ts`, which
+        // serves the built application and asks it for a page over HTTP.
+        // Nothing of that shows up here: coverage stops at the process
+        // boundary, so the v8 provider reports these files at whatever the
+        // in-process tests reach and no number below moves when the smoke
+        // suite passes. They stay inside `include` above, so they still
         // report as a percentage — they simply have no floor to trip. This is
         // a narrower threshold glob, not a `coverage.exclude` entry, which
         // AGENTS.md forbids by name.

@@ -113,7 +113,11 @@ const REMOVED_SKILL_NAMES = [
  * credential, and `.env.example` is where its name is published.
  * `package.json` declares the vendor SDK, which is the AI layer's one runtime
  * dependency and leaves with it — a manifest entry, not an application module,
- * which is why it can join this half without weakening what it claims. This
+ * which is why it can join this half without weakening what it claims.
+ * `tests/server-smoke.test.ts` asks the running application for every route it
+ * publishes, `POST /api/ask` among them, so the removal deletes those cases
+ * the same way it deletes the route; it is a test of the composed application,
+ * not a module the layer is embedded in. This
  * half is where the separability property lives: it is the one that has to stay
  * near-empty, and an entry joining it means an application module now has to
  * be edited by the removal — the moment the layer has stopped coming out in
@@ -126,6 +130,7 @@ const EDITED_CODE_FILES = [
   "src/server/env.ts",
   "tests/boundaries.test.ts",
   "tests/server-env.test.ts",
+  "tests/server-smoke.test.ts",
   "vitest.config.ts",
 ];
 
