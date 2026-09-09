@@ -169,6 +169,8 @@ Delete the paths, then work through both edited lists:
 - `localizing-ui` loses its `outputLanguage` section — that seam is the port's, and the
   UI locale it maps from has nowhere left to reach. Everything else in it, the catalogs
   and the locale routing, is untouched by this removal.
+- `managing-dependencies` loses the sentence pointing a vendor-SDK bump at the recorded
+  fixtures that verify it offline; the rest of how a bump is verified is unaffected.
 - `integrating-llm` is deleted rather than edited: its whole subject is the layer.
 - `writing-tests` loses the two seams that are going away — the port contract suite and
   the handler driven with `new Request()` — and `type-testing` the port's generic
