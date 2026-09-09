@@ -33,7 +33,6 @@ const automationTests = [
   "tests/ci-sync.test.ts",
   "tests/clean.test.ts",
   "tests/git-env.test.ts",
-  "tests/install-hooks.test.ts",
   "tests/labels.test.ts",
   "tests/messages.test.ts",
   "tests/node-tools.test.ts",
@@ -44,6 +43,7 @@ const automationTests = [
   "tests/sync-agents.test.ts",
   "tests/sync-labels.test.ts",
   "tests/tooling-ignores.test.ts",
+  "tests/verify-hooks.test.ts",
   "tests/workflows.test.ts",
 ];
 

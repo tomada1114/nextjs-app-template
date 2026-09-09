@@ -39,7 +39,7 @@
     "check:quick": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:coverage",
     "fix": "eslint . --fix && prettier --write .",
-    "prepare": "node scripts/install-hooks.mjs",
+    "prepare": "node scripts/verify-hooks.mjs",
     "hooks:install": "lefthook install"
   },
   "devDependencies": {
