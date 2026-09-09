@@ -2130,10 +2130,7 @@ describe("lintWorkflow", () => {
   });
 
   it("rejects cancelling unconditionally on a workflow that also runs on push", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    );
+    const source = alsoOnPush(CLEAN_WORKFLOW);
 
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
@@ -2141,10 +2138,7 @@ describe("lintWorkflow", () => {
   });
 
   it("accepts a cancellation conditional on the event being a pull request", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
+    const source = alsoOnPush(CLEAN_WORKFLOW).replace(
       "cancel-in-progress: true",
       "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
     );
@@ -2303,10 +2297,7 @@ describe("lintWorkflow", () => {
     // Column zero is spotless here: the workflow-level block cancels only a
     // pull request. The unconditional cancellation sits one indent down, where
     // it discards the push run's CI record just as effectively.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    )
+    const source = alsoOnPush(CLEAN_WORKFLOW)
       .replace(
         "cancel-in-progress: true",
         "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
@@ -2394,15 +2385,7 @@ describe("lintWorkflow", () => {
   });
 
   it("reports missing concurrency when the workflow-level block names no group", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
-      "concurrency:\n",
-    );
+    const source = withConcurrency(CLEAN_WORKFLOW, "concurrency:\n");
 
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_CONCURRENCY_MISSING"]);
   });
@@ -2411,16 +2394,8 @@ describe("lintWorkflow", () => {
     // `concurrency: { … }` is the same declaration written on the header line.
     // A rule reading only the block body finds an empty one and passes, which is
     // the same blind spot as reading only column zero.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: { group: '${{ github.workflow }}', cancel-in-progress: true }\n",
     );
 
@@ -2430,16 +2405,8 @@ describe("lintWorkflow", () => {
   });
 
   it("accepts a flow-mapping cancellation conditional on the event", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: { group: '${{ github.workflow }}',",
         " cancel-in-progress: \"${{ github.event_name == 'pull_request' }}\" }\n",
@@ -2453,16 +2420,8 @@ describe("lintWorkflow", () => {
     // #141, the issue's own case: a flow mapping GitHub accepts split over
     // physical lines. On HEAD this silently trips ERR_WORKFLOW_CONCURRENCY_MISSING
     // instead, because namesGroup and unconditionalCancel both read past it.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: {",
         "  group: ${{ github.workflow }}-${{ github.ref }},",
@@ -2481,16 +2440,8 @@ describe("lintWorkflow", () => {
     // The falsifier for the case above: identical mapping, one line. Together
     // these prove the rule keys on the physical-line split, not on the flow
     // spelling itself.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true }\n",
     );
 
@@ -2505,16 +2456,8 @@ describe("lintWorkflow", () => {
     // body, so unconditionalCancel catches it by accident. Skipping the cancel
     // loop on an unreadable block would delete that catch, which "no existing
     // case loosened" forbids — so both codes are reported, in this order.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: {",
         "  group: ${{ github.workflow }}-${{ github.ref }},",
@@ -2535,13 +2478,8 @@ describe("lintWorkflow", () => {
     // the missing-concurrency rule is in play here. The workflow plainly
     // declares a concurrency block; reporting it missing would say something
     // false, which is why an unreadable block now counts as accounted for.
-    const source = CLEAN_WORKFLOW.replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      CLEAN_WORKFLOW,
       [
         "concurrency: {",
         "  group: ${{ github.workflow }}-${{ github.ref }},",
@@ -2596,16 +2534,8 @@ describe("lintWorkflow", () => {
   });
 
   it("still reads a flow mapping nested and balanced on one line", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: { group: ci, cancel-in-progress: true, extra: { a: b } }\n",
     );
 
@@ -2615,16 +2545,8 @@ describe("lintWorkflow", () => {
   });
 
   it("refuses the same nested mapping once it is split across lines", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: {",
         "  group: ci,",
@@ -2641,16 +2563,8 @@ describe("lintWorkflow", () => {
   });
 
   it("a trailing comment after the closing brace does not make the mapping unreadable", () => {
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true } # keep one run per ref\n",
     );
 
@@ -2662,16 +2576,8 @@ describe("lintWorkflow", () => {
   it("a comment after the opening brace does not rescue a mapping that genuinely continues", () => {
     // scan() strips the trailing comment before inlineValue sees the line, so
     // the header still reads as a bare, unterminated "concurrency: {".
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: { # start of grouping",
         "  group: ${{ github.workflow }}-${{ github.ref }},",
@@ -2693,16 +2599,8 @@ describe("lintWorkflow", () => {
     // (depth 1) and is reported unreadable even though the braces balance.
     // Failing closed is still right; the message must name the real cause
     // instead of sending the author to rebalance braces that are already fine.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       'concurrency: { group: "a # b", cancel-in-progress: false }\n',
     );
 
@@ -2716,16 +2614,8 @@ describe("lintWorkflow", () => {
   it("refuses a one-line mapping whose quoted group value hides an unbalanced brace", () => {
     // A silent pass on HEAD: flowEntries splits `"a}b"` wrongly and the cancel rule
     // never sees the entry it needs. depth < 0 refuses it instead of half-reading.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       'concurrency: { group: "a}b", cancel-in-progress: true }\n',
     );
 
@@ -2737,16 +2627,8 @@ describe("lintWorkflow", () => {
   it("still reads a one-line mapping whose quoted group value has no brace", () => {
     // Same shape without the stray brace: proves the refusal above is about
     // the unbalanced brace, not about quoting the group value.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       'concurrency: { group: "a-b", cancel-in-progress: true }\n',
     );
 
@@ -2763,16 +2645,8 @@ describe("lintWorkflow", () => {
     // cancels-push (unconditionalCancel finds `true,` with its trailing comma).
     // On HEAD lintWorkflow returned [] for this, so a workflow cancelling its
     // push runs unconditionally passed the gate clean.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       [
         "concurrency: &c {",
         "  group: ci-${{ github.ref }},",
@@ -2793,18 +2667,7 @@ describe("lintWorkflow", () => {
     // anchor it points at declares — `cancel-in-progress: true` included — is
     // in another part of the file this reader never joins up, so taking the
     // alias for a group name is a claim it cannot support.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
-      "concurrency: *ci\n",
-    );
+    const source = withConcurrency(alsoOnPush(CLEAN_WORKFLOW), "concurrency: *ci\n");
 
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
@@ -2816,16 +2679,8 @@ describe("lintWorkflow", () => {
     // refusal is about the `!!map` in front of them, which makes the value a
     // tagged node rather than the flow mapping namesGroup and
     // unconditionalCancel both key on with startsWith("{").
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: !!map { group: ci, cancel-in-progress: true }\n",
     );
 
@@ -2839,16 +2694,8 @@ describe("lintWorkflow", () => {
     // no indicator in front. Together they prove the refusal keys on the node
     // property, not on the flow spelling — and that dropping the anchor gets
     // the author back to a real diagnosis rather than to silence.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }\n",
     );
 
@@ -2862,16 +2709,8 @@ describe("lintWorkflow", () => {
     // now runs over the whole value rather than only over one anchored at its
     // first character, so a shape nobody anticipated is refused by the same
     // arithmetic instead of needing its own clause.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: ci {\n  group: x,\n}\n",
     );
 
@@ -2884,16 +2723,8 @@ describe("lintWorkflow", () => {
     // The shape the widened count must not start refusing: `${{ … }}` is
     // balanced and leads with `$`, so every concurrency in .github/workflows/
     // stays exactly as readable as it was.
-    const source = CLEAN_WORKFLOW.replace(
-      "  pull_request:",
-      "  push:\n    branches: [main]\n  pull_request:",
-    ).replace(
-      [
-        "concurrency:",
-        "  group: ${{ github.workflow }}-${{ github.ref }}",
-        "  cancel-in-progress: true",
-        "",
-      ].join("\n"),
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
       "concurrency: ci-${{ github.ref }}\n",
     );
 
@@ -2926,16 +2757,7 @@ describe("lintWorkflow", () => {
   });
 
   it("refuses a flow mapping left unterminated to the end of the file", () => {
-    const source =
-      CLEAN_WORKFLOW.replace(
-        [
-          "concurrency:",
-          "  group: ${{ github.workflow }}-${{ github.ref }}",
-          "  cancel-in-progress: true",
-          "",
-        ].join("\n"),
-        "",
-      ) + "\nconcurrency: {\n";
+    const source = withConcurrency(CLEAN_WORKFLOW, "") + "\nconcurrency: {\n";
 
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
