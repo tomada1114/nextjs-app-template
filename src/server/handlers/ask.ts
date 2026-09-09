@@ -4,6 +4,7 @@ import * as z from "zod";
 
 import type { LlmErrorCode, LlmPort } from "../../ai/index";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../i18n/locales";
+import { failure, readJsonBody } from "../http";
 
 /**
  * What the handler needs from the outside world.
@@ -51,10 +52,23 @@ const OUTPUT_LANGUAGE_BY_LOCALE = {
   ja: "ja",
 } as const satisfies Record<Locale, string>;
 
+/**
+ * The longest `prompt` this endpoint accepts, in characters once trimmed.
+ *
+ * @remarks
+ * The port's `maxOutputTokens` bounds what comes back from a model; nothing
+ * bounded what went out. A prompt here is a question, not a document, and 8000
+ * characters leaves room to paste an error message or a paragraph of context
+ * while staying a few thousand input tokens — far below any model's context
+ * window. The number is a ceiling on what one caller can spend per request, so
+ * raising it is a cost decision rather than a formality.
+ */
+const MAX_PROMPT_LENGTH = 8_000;
+
 /** The JSON body `POST /api/ask` accepts. */
 const askRequestSchema = z.object({
-  /** The question put to the model. */
-  prompt: z.string().min(1),
+  /** The question put to the model, trimmed and bounded at both ends. */
+  prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
 
   /** The UI locale the answer is for; the model writes in its language. */
   locale: z.enum(LOCALES).default(DEFAULT_LOCALE),
@@ -82,23 +96,6 @@ const STATUS_BY_LLM_CODE = {
   ERR_LLM_INVALID_OUTPUT: 502,
   ERR_LLM_UNAVAILABLE: 503,
 } as const satisfies Record<LlmErrorCode, number>;
-
-/**
- * The failure body every non-2xx answer carries.
- *
- * @remarks
- * `code` is the contract a client branches on; `message` is prose and may be
- * reworded. Nothing from the provider's own error text reaches the response —
- * it can carry request content back to whoever asked.
- */
-function failure(
-  status: number,
-  code: string,
-  message: string,
-  headers: HeadersInit = {},
-): Response {
-  return Response.json({ error: { code, message } }, { status, headers });
-}
 
 /**
  * Whether `request` presents `accessKey` as its bearer credential.
@@ -162,19 +159,17 @@ export function createAskHandler(
       );
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return failure(400, "ERR_BAD_REQUEST", "The request body is not valid JSON.");
+    const body = await readJsonBody(request);
+    if (!body.ok) {
+      return body.error;
     }
 
-    const parsed = askRequestSchema.safeParse(body);
+    const parsed = askRequestSchema.safeParse(body.value);
     if (!parsed.success) {
       return failure(
         400,
         "ERR_BAD_REQUEST",
-        "The request body must be an object with a non-empty `prompt`, and a `locale` this application ships if it names one.",
+        `The request body must be an object with a \`prompt\` of 1 to ${String(MAX_PROMPT_LENGTH)} characters once trimmed, and a \`locale\` this application ships if it names one.`,
       );
     }
 
