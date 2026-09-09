@@ -89,6 +89,10 @@ const AI_LAYER_PRIVATE = ["../**/ai/**", "!../**/ai/index"];
 const AI_LAYER_IS_PRIVATE =
   "src/ai/index.ts is the AI layer's whole surface. Everything else under src/ai/ — the port, the error vocabulary, every adapter — is private to the layer, and naming one from here is what makes the vendor choice leak out of src/server/composition.ts, which is the one file allowed to make it.";
 
+/** Why the AI layer names no zone above it, stated by two blocks. */
+const AI_LAYER_LOOKS_ONLY_DOWNWARD =
+  "src/ai/ sits below src/server/ and src/app/ in the import order, and src/i18n/ is read by those two rather than by the port. A locale, a request, or a handler concern reaching in here is what stops the layer coming out in one piece — take it as an argument on the LlmPort call instead.";
+
 /** Why a vendor SDK stops at the adapter that wraps it. */
 const VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS =
   "Only an adapter under src/ai/adapters/ talks to a vendor SDK. A request or a response crossing this zone is an LlmPort call, so the layer can be swapped — or removed whole — without touching src/app/ or src/server/.";
@@ -300,8 +304,7 @@ export default defineConfig([
           patterns: [
             {
               group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n],
-              message:
-                "src/ai/ sits below src/server/ and src/app/ in the import order, and src/i18n/ is read by those two rather than by the port. A locale, a request, or a handler concern reaching in here is what stops the layer coming out in one piece — take it as an argument on the LlmPort call instead.",
+              message: AI_LAYER_LOOKS_ONLY_DOWNWARD,
             },
           ],
         },
@@ -325,8 +328,7 @@ export default defineConfig([
             },
             {
               group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n],
-              message:
-                "src/ai/ sits below src/server/ and src/app/ in the import order, and src/i18n/ is read by those two rather than by the port. A locale, a request, or a handler concern reaching in here is what stops the layer coming out in one piece — take it as an argument on the LlmPort call instead.",
+              message: AI_LAYER_LOOKS_ONLY_DOWNWARD,
             },
           ],
         },
