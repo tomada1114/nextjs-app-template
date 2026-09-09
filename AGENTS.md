@@ -225,10 +225,10 @@ The rules above are enforced by two layers, from mechanical to procedural. Each 
 holds only what belongs there — the rule itself lives in exactly one place, never copied
 between layers:
 
-| Layer                 | Fires on              | Applies to             | Holds                                                          |
-| --------------------- | --------------------- | ---------------------- | -------------------------------------------------------------- |
-| `lefthook` pre-commit | `git commit`          | every author, any tool | Formatting, a related-test run, and the one content rule below |
-| This file             | read at session start | every agent            | Everything else — the reasons behind the rules above           |
+| Layer                 | Fires on              | Applies to             | Holds                                                                                                 |
+| --------------------- | --------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `lefthook` pre-commit | `git commit`          | every author, any tool | Formatting, `eslint`, `typecheck`, `agents:check`, a related-test run, and the one content rule below |
+| This file             | read at session start | every agent            | Everything else — the reasons behind the rules above                                                  |
 
 The first row's "every author" is not a second step anybody has to remember, and not
 something `prepare` arranges either. `lefthook` ships its own `postinstall`, which
@@ -256,11 +256,10 @@ while disabling the gate at every commit it is set for — "Two consequences" be
 where that invisibility, and why nothing here closes it, is explained once.
 `pnpm hooks:install` is the repair, not a setup step.
 
-This repository ships no declarative, tool-call-aware permission list (a Claude Code
-`permissions.allow`/`permissions.deny` or equivalent) — the committed
-`.claude/settings.json` declares only plugins and `.mcp.json` only MCP servers, so every
-generated project starts with those and nothing more, and an agent has permission
-protection only if it, or the human running it, has configured a list personally,
+No third layer sits under those two: this repository ships no declarative,
+tool-call-aware permission list (a Claude Code `permissions.allow`/`permissions.deny` or
+equivalent) — "Security and human approval" above is the one place that records what the
+committed configuration does declare, and what an agent has to arrange for itself
 outside this repository. The one rule that must hold regardless of which tool or human
 is committing — a secret about to land in history — is instead the single mechanical
 layer this repository does ship: `lefthook`'s pre-commit hook, which every author goes
