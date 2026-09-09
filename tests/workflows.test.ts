@@ -362,13 +362,22 @@ interface ConcurrencyBlock {
   /** Whether the declaration names a group, which is what a run is queued against. */
   groups: boolean;
   /**
-   * Whether the inline value is a shape this lint can read — false when its flow
-   * collection is continued onto later physical lines or is otherwise unbalanced,
-   * and false when a YAML anchor, alias or tag leads the value. A false here means
-   * the two rules below would be reading a fragment, or a node property nothing
-   * resolved, rather than a declaration.
+   * Every value the two rules below read here that this lint cannot take at face
+   * value. Empty is the readable case; a non-empty one means those rules would be
+   * reading a fragment, or a node property nothing resolved, rather than a value.
    */
-  readable: boolean;
+  unreadable: UnreadableValue[];
+}
+
+/** The two keys a `concurrency:` declaration is read for, wherever they are written. */
+const CONCURRENCY_KEYS = ["group", "cancel-in-progress"] as const;
+
+/** One value the concurrency rules read that {@link unreadableInline} refuses. */
+interface UnreadableValue {
+  /** The line to report: the body line itself, or the header for an inline value. */
+  line: Line;
+  /** Which key's value it is, or `undefined` for the header's whole inline value. */
+  key: (typeof CONCURRENCY_KEYS)[number] | undefined;
 }
 
 /** The key and value of one entry of a flow mapping, when it is written as a pair. */
@@ -381,6 +390,51 @@ function flowValue(entry: string, key: string): string | undefined {
 }
 
 /**
+ * Every value in a `concurrency:` declaration that {@link namesGroup} or {@link
+ * unconditionalCancel} reads and {@link unreadableInline} refuses.
+ *
+ * @remarks
+ * #152 made "readable" a property of the header's inline value; #155 makes it a
+ * property of the declaration, because those two rules read three places and the
+ * header is only one of them. `cancel-in-progress: *yes` on its own body line —
+ * the block spelling every workflow here is written in — was read by a bare
+ * string comparison and taken for "not true", which is the silent pass #152's
+ * own refusal was meant to rule out.
+ *
+ * An unreadable header stops the walk: the lines under a value this lint has
+ * already refused are fragments of it, not values of a declaration it has read,
+ * so reporting one of them would point at a line that is not independently
+ * wrong. Only the two keys the rules actually read are checked — refusing a line
+ * no rule reads would report a defect that changes no verdict.
+ */
+function unreadableConcurrencyValues(header: Line, body: Line[]): UnreadableValue[] {
+  const inline = inlineValue(header);
+  if (inline !== "") {
+    if (unreadableInline(inline)) {
+      return [{ line: header, key: undefined }];
+    }
+    if (!inline.startsWith("{")) {
+      return [];
+    }
+    const entries = flowEntries(inline);
+    return CONCURRENCY_KEYS.filter((key) =>
+      entries.some((entry) => {
+        const value = flowValue(entry, key);
+        return value !== undefined && unreadableInline(value);
+      }),
+    ).map((key) => ({ line: header, key }));
+  }
+  return body.flatMap((line) => {
+    const key = CONCURRENCY_KEYS.find((candidate) =>
+      line.text.startsWith(`${candidate}:`),
+    );
+    return key !== undefined && unreadableInline(inlineValue(line))
+      ? [{ line, key }]
+      : [];
+  });
+}
+
+/**
  * Whether a `concurrency:` declaration groups anything at all.
  *
  * @remarks
@@ -390,20 +444,33 @@ function flowValue(entry: string, key: string): string | undefined {
  * grouping — a gate silenced by the shape of a line rather than by its meaning.
  * The scalar shorthand (`concurrency: staging`) *is* the group, and the flow
  * mapping has to name one the same way the block form does.
+ *
+ * A value {@link unreadableInline} refuses names nothing here, at any of the
+ * three places this reads one. This is the function that turns an unread value
+ * into a *positive* claim — "a group is named" — and that claim suppresses
+ * `ERR_WORKFLOW_CONCURRENCY_MISSING`, so it is the one that needs the guard.
+ * {@link unconditionalCancel} needs none for the mirror-image reason recorded
+ * there.
  */
 function namesGroup(header: Line, body: Line[]): boolean {
   const inline = inlineValue(header);
+  if (unreadableInline(inline)) {
+    return false;
+  }
   if (inline.startsWith("{")) {
     return flowEntries(inline).some((entry) => {
       const group = flowValue(entry, "group");
-      return group !== undefined && group !== "";
+      return group !== undefined && group !== "" && !unreadableInline(group);
     });
   }
   if (inline !== "") {
     return true;
   }
   return body.some(
-    (line) => line.text.startsWith("group:") && inlineValue(line) !== "",
+    (line) =>
+      line.text.startsWith("group:") &&
+      inlineValue(line) !== "" &&
+      !unreadableInline(inlineValue(line)),
   );
 }
 
@@ -429,7 +496,7 @@ function concurrencyBlocks(lines: Line[], jobs: Job[]): ConcurrencyBlock[] {
         header,
         body,
         groups: namesGroup(header, body),
-        readable: !unreadableInline(inlineValue(header)),
+        unreadable: unreadableConcurrencyValues(header, body),
       },
     ];
   };
@@ -449,6 +516,16 @@ function concurrencyBlocks(lines: Line[], jobs: Job[]): ConcurrencyBlock[] {
  * is the same declaration written on the header line, and a rule that read only
  * the body would find an empty one and pass — the same blind spot as reading
  * only column zero, in a different disguise.
+ *
+ * Handed a value {@link unreadableInline} refuses, this reports nothing — and it
+ * is left that way on purpose. Its unread reading can only *withhold* a report,
+ * and the withheld one is now made by `ERR_WORKFLOW_CONCURRENCY_UNREADABLE` on
+ * that very line; {@link namesGroup}'s would instead assert a group exists and
+ * silence a second rule, which is why the guard lives there and not here. Both
+ * obey one invariant — no rule of this lint asserts anything about a value
+ * {@link unreadableInline} refuses — and {@link unreadableConcurrencyValues}
+ * walks the same three reading sites the two of them use, so they cannot drift
+ * apart again the way the header and the body did.
  */
 function unconditionalCancel(block: ConcurrencyBlock): Line | undefined {
   const cancel = block.body.find((line) => line.text.startsWith("cancel-in-progress:"));
@@ -819,16 +896,24 @@ function lintWorkflow(source: string): Problem[] {
   // the mapping behind it — is a flow-scalar parser, and a nearly-right one
   // fails open exactly where this rule is load-bearing.
   for (const block of concurrency) {
-    if (block.readable) {
-      continue;
-    }
-    report(
-      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
-      block.header.number,
+    // The header's own value gets the message it has always had; a keyed value
+    // gets one that names the key and drops the " #" hint, which is a trap of
+    // the one-line flow mapping and no help at all to a body line's author.
+    const subject =
+      block.job === undefined ? "this workflow" : `job "${block.job.name}"`;
+    const headerMessage =
       block.job === undefined
         ? 'concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.'
-        : `Job "${block.job.name}"'s concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.`,
-    );
+        : `Job "${block.job.name}"'s concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.`;
+    for (const { line, key } of block.unreadable) {
+      report(
+        "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+        line.number,
+        key === undefined
+          ? headerMessage
+          : `The ${key}: of ${subject}'s concurrency: is written in a shape this lint cannot read: it leads with a YAML anchor, alias or tag (&, * or !), or it opens a flow collection ([ or {) that does not close on this line. This lint resolves no node properties and reads one physical line at a time, so it cannot tell what such a value stands for — and a value it cannot read must not pass as though the declaration had not set it. Write the value out in full on this line.`,
+      );
+    }
   }
 
   // A workflow-level block covers every job; a job-level one covers its own job
@@ -839,9 +924,14 @@ function lintWorkflow(source: string): Problem[] {
   // cannot cancel the superseded run this rule exists to ask for.
   // A declaration already reported unreadable is not also reported missing: the
   // workflow plainly declares one, and the reader has been handed the real
-  // defect. The file still fails — under the unreadable code.
+  // defect. The file still fails — under the unreadable code. That suppression
+  // is keyed to the value this rule reads, not to any unreadability in the
+  // block: an unreadable `cancel-in-progress` says nothing about whether a group
+  // is named, so a declaration carrying one and no `group:` at all is still
+  // reported missing.
   const accountedFor = (block: ConcurrencyBlock): boolean =>
-    !block.readable || block.groups;
+    block.groups ||
+    block.unreadable.some(({ key }) => key === undefined || key === "group");
   const covered =
     concurrency.some((block) => block.job === undefined && accountedFor(block)) ||
     (jobs.length > 0 &&
@@ -1095,6 +1185,30 @@ const JOB_LEVEL_CONCURRENCY_WORKFLOW = CLEAN_WORKFLOW.replace(
   ].join("\n"),
 );
 
+/**
+ * `source` with `push` added to its triggers, which is what turns the
+ * cancel-on-push rule on.
+ */
+function alsoOnPush(source: string): string {
+  return source.replace(
+    "  pull_request:",
+    "  push:\n    branches: [main]\n  pull_request:",
+  );
+}
+
+/** `source` with its whole workflow-level `concurrency:` block swapped out. */
+function withConcurrency(source: string, replacement: string): string {
+  return source.replace(
+    [
+      "concurrency:",
+      "  group: ${{ github.workflow }}-${{ github.ref }}",
+      "  cancel-in-progress: true",
+      "",
+    ].join("\n"),
+    replacement,
+  );
+}
+
 function codesOf(problems: Problem[]): string[] {
   return problems.map((problem) => problem.code);
 }
@@ -1306,6 +1420,254 @@ describe("lintWorkflow", () => {
     );
 
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
+  });
+
+  it("refuses a YAML alias written as a block-form cancel-in-progress", () => {
+    // #155, the issue's own case, and the spelling every workflow here is
+    // written in: `readable` was a property of the header alone, so the body
+    // branch tested the flag with a bare string comparison and took an alias
+    // for "not true". lintWorkflow returned [] for this on HEAD.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency:\n  group: ci\n  cancel-in-progress: *yes\n\n",
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+    // The third message variant: it names the key and the block it belongs to,
+    // and says nothing about the " #" truncation, which is a trap of the
+    // one-line flow mapping and no help to a body line's author.
+    expect(problems[0]?.message).toContain(
+      "The cancel-in-progress: of this workflow's concurrency:",
+    );
+  });
+
+  it("accepts the same block once cancel-in-progress is a value it can read", () => {
+    // The falsifier for the case above: identical block, a plain `false` in
+    // place of the alias. It pins the refusal to the unread value rather than
+    // to the body spelling.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency:\n  group: ci\n  cancel-in-progress: false\n\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("refuses a YAML alias written as a block-form group", () => {
+    // The weaker half of the same reading: `group: *g` passed as a named group
+    // on a non-empty value alone, which is a positive claim about a value
+    // nothing resolved — and it is the claim that suppresses the missing rule.
+    // [] on HEAD. Reported unreadable, and deliberately not also missing: the
+    // workflow plainly declares a concurrency block.
+    const source = withConcurrency(
+      CLEAN_WORKFLOW,
+      "concurrency:\n  group: *g\n  cancel-in-progress: false\n\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("accepts the same block once group is a value it can read", () => {
+    // The falsifier: a plain scalar in the same place, and the workflow is
+    // clean — so the refusal is not about naming a short group.
+    const source = withConcurrency(
+      CLEAN_WORKFLOW,
+      "concurrency:\n  group: g\n  cancel-in-progress: false\n\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("still reports the cancel it can read beside the group it cannot", () => {
+    // The cancel loop keeps running on a block carrying an unreadable value,
+    // for the reason #154 recorded: skipping it would delete a catch this file
+    // already pins. Both codes, in this order.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency:\n  group: *g\n  cancel-in-progress: true\n\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("reports each unreadable body value on the line it is written on", () => {
+    // Two independent values, two reports, each pointing at its own line: a
+    // reader fixing one is not left to rediscover the other.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency:\n  group: *g\n  cancel-in-progress: *yes\n\n",
+    );
+
+    expect(lintWorkflow(source).map(({ code, line }) => [code, line])).toEqual([
+      ["ERR_WORKFLOW_CONCURRENCY_UNREADABLE", 11],
+      ["ERR_WORKFLOW_CONCURRENCY_UNREADABLE", 12],
+    ]);
+  });
+
+  it.each([
+    ["an anchor", "concurrency:\n  group: &g ci\n  cancel-in-progress: false\n\n"],
+    ["a tag", "concurrency:\n  group: ci\n  cancel-in-progress: !!bool true\n\n"],
+  ])("refuses %s in a body value, not only an alias", (_indicator, block) => {
+    // The class, not the spelling: a body value is refused for exactly the
+    // three indicators #152 named on the header. The tag row was [] on HEAD;
+    // the anchor row already tripped the cancel rule, but on a value nothing
+    // had read.
+    expect(
+      codesOf(lintWorkflow(withConcurrency(alsoOnPush(CLEAN_WORKFLOW), block))),
+    ).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+  });
+
+  it("still reads the same body values with no indicator in front of them", () => {
+    // The falsifier for both rows above: the same keys, the same `true`, no
+    // indicator — so the cancel rule fires on its own and nothing is refused.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency:\n  group: ci\n  cancel-in-progress: true\n\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it.each([
+    ["bare", "${{ github.event_name == 'pull_request' }}"],
+    ["quoted", "\"${{ github.event_name == 'pull_request' }}\""],
+  ])("keeps reading a %s expression cancel-in-progress", (_shape, value) => {
+    // The shape the widened reading must not start refusing, and the one the
+    // conditional-cancellation advice tells authors to write: `${{ … }}` leads
+    // with `$` and its braces balance.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      `concurrency:\n  group: ci\n  cancel-in-progress: ${value}\n\n`,
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("refuses an unreadable value inside a one-line flow mapping's entry", () => {
+    // The same defect in the other spelling of the same declaration: the header
+    // itself is balanced and leads with `{`, so #152's check passed it, and
+    // flowValue then compared `*yes` with "true" and found no cancellation.
+    // [] on HEAD.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency: { group: ci, cancel-in-progress: *yes }\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("accepts the same flow mapping with a value it can read in that entry", () => {
+    // The falsifier: identical mapping, `false` in place of the alias.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency: { group: ci, cancel-in-progress: false }\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("reports only the header when the header itself is the unreadable part", () => {
+    // An unreadable header stops the walk. The lines under it are fragments of
+    // a value already refused, not values of a declaration this lint has read,
+    // so the aliased `cancel-in-progress` among them earns no second report.
+    const source = withConcurrency(
+      alsoOnPush(CLEAN_WORKFLOW),
+      "concurrency: {\n  group: ci,\n  cancel-in-progress: *yes\n}\n\n",
+    );
+
+    expect(lintWorkflow(source).map(({ code, line }) => [code, line])).toEqual([
+      ["ERR_WORKFLOW_CONCURRENCY_UNREADABLE", 10],
+    ]);
+  });
+
+  it("refuses an aliased cancel-in-progress on a job's own concurrency", () => {
+    // A job-level block is read exactly as the workflow-level one is; only the
+    // message's subject differs. [] on HEAD.
+    const source = alsoOnPush(JOB_LEVEL_CONCURRENCY_WORKFLOW).replace(
+      "      cancel-in-progress: true",
+      "      cancel-in-progress: *yes",
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+    expect(problems[0]?.message).toContain(
+      'The cancel-in-progress: of job "build"\'s concurrency:',
+    );
+  });
+
+  it("accepts the same job-level block with a value it can read", () => {
+    // The falsifier for the job-level row.
+    const source = alsoOnPush(JOB_LEVEL_CONCURRENCY_WORKFLOW).replace(
+      "      cancel-in-progress: true",
+      "      cancel-in-progress: false",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("refuses an unreadable value on a job the cancel rule skips", () => {
+    // `pinnedToPullRequest` answers "does cancelling here destroy a push
+    // record", not "can this lint read the value". The `if:` switches the
+    // cancel loop off for this job; it must not switch the refusal off too.
+    const source = alsoOnPush(JOB_LEVEL_CONCURRENCY_WORKFLOW)
+      .replace(
+        "    timeout-minutes: 10",
+        "    if: ${{ github.event_name == 'pull_request' }}\n    timeout-minutes: 10",
+      )
+      .replace("      cancel-in-progress: true", "      cancel-in-progress: *yes");
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("still lets the cancel rule skip that job when the value is readable", () => {
+    // The falsifier for the case above: the same pinned job, an unconditional
+    // `true` this lint reads, and nothing reported — so the `if:` really does
+    // switch the cancel rule off, and the refusal above is the other rule.
+    const source = alsoOnPush(JOB_LEVEL_CONCURRENCY_WORKFLOW).replace(
+      "    timeout-minutes: 10",
+      "    if: ${{ github.event_name == 'pull_request' }}\n    timeout-minutes: 10",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("still reports concurrency missing when only the cancel flag is unreadable", () => {
+    // The missing rule is suppressed by an unreadable *group* question, never
+    // by an unreadable cancel flag: this block names no group at all, and an
+    // alias on the other key says nothing about that. Both codes.
+    const source = withConcurrency(
+      CLEAN_WORKFLOW,
+      "concurrency:\n  cancel-in-progress: *yes\n\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+      "ERR_WORKFLOW_CONCURRENCY_MISSING",
+    ]);
+  });
+
+  it("reports only the missing group when the cancel flag is readable", () => {
+    // The falsifier for the row above: the same group-less block with a value
+    // this lint reads, so the missing report stands alone. Together they pin
+    // the report to the absent group rather than to the block's shape.
+    const source = withConcurrency(
+      CLEAN_WORKFLOW,
+      "concurrency:\n  cancel-in-progress: false\n\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_CONCURRENCY_MISSING"]);
   });
 
   it("rejects pull_request_target in a flow sequence", () => {
