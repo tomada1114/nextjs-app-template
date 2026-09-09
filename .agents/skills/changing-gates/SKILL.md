@@ -194,6 +194,23 @@ Traps that have cost time here:
   `NO_ENUM` and `NO_EXPORT_STAR` are shared constants and why the `boundaries/*` blocks
   match disjoint file sets. Keep a new block disjoint from them, or restate what it
   still wants.
+- Anchor a zone pattern with a leading `../`. Unanchored, `**/server` also matches the
+  package subpath `next-intl/server`, which `src/i18n/request.ts` imports today;
+  `../**/server` cannot match any bare specifier, and every cross-zone import inside
+  `src/` starts with `../` because this repository declares no path alias. Same shape
+  for `../**/app` against `next/app`. `no-restricted-imports` matches this specifier
+  text through the `ignore` package rather than resolving it, and `ignore` treats a
+  leading `./` as a different string from a leading `../` — so `./../server` is
+  invisible to `../**/server` even though it resolves to the same module. Every `ZONE`
+  entry and `AI_LAYER_PRIVATE` therefore carries a `./../**` twin of each `../**`
+  pattern; a bare specifier still cannot start with `./..`, so the twin is exactly as
+  safe as the pattern it doubles.
+- A `group` accepts `!` negations, and the **last matching entry wins**. That is how
+  `AI_LAYER_PRIVATE` states the AI layer's surface as an allow-list —
+  `["../**/ai/**", "./../**/ai/**", "!../**/ai/index", "!./../**/ai/index"]` — rather
+  than a deny-list naming each private module, which would go stale the next time
+  something lands under `src/ai/`. Both patterns must come before both negations, since
+  the `./../` twin needs its own exemption too.
 - `eslintConfigPrettier` must stay the last element of the exported array. Anywhere else
   it stops turning off the stylistic rules that would fight Prettier, and the two gates
   then disagree about the same file.
@@ -201,12 +218,21 @@ Traps that have cost time here:
   to the `src/` tree on the way in. Spreading a new shared config in unscoped puts
   framework rules on `scripts/**` and `tests/**`.
 - The named blocks are the map: `src/shared-syntax`, `src/size-budget`,
-  `public-api/explicit-surface`, `boundaries/core-is-framework-free`,
-  `boundaries/adapters-are-reached-through-src-ai`,
-  `boundaries/port-does-not-know-its-adapters`,
+  `public-api/explicit-surface`,
+  `boundaries/core-is-framework-free-and-imports-no-zone`,
+  `boundaries/ai-imports-only-core`, `boundaries/port-does-not-know-its-adapters`,
+  `boundaries/i18n-is-a-leaf`, `boundaries/app-reaches-the-ai-layer-through-src-ai`,
+  `boundaries/server-reaches-ai-through-src-ai-and-never-app`,
   `boundaries/private-trees-are-not-importable`, `automation/node-scripts`,
-  `tests/vitest-rules`, `tests/relaxations`. Name a new block the same way — the name is
-  what a reader, and ESLint's own config inspector, has to identify it by.
+  `tests/vitest-rules`, `tests/relaxations`. The six `boundaries/*` blocks are one
+  import order written per zone, so they match disjoint file sets by construction. Name
+  a new block the same way — the name is what a reader, and ESLint's own config
+  inspector, has to identify it by.
+- `tests/boundaries.test.ts` asserts those same edges from the module graph, and it pins
+  zones rather than files. An exhaustive list of the modules under `src/` failed on
+  every legal new file, which teaches its reader to edit the meta-test until the day
+  that edit hides something real; a table of zones fails only on a change that needs a
+  boundary decision — a new zone, or a second module at the root of `src/`.
 - `vitest.config.ts` runs three projects — `unit`, `component` (jsdom), `automation` —
   and coverage is collected once for the whole run, never per project. Which project a
   file joins, and the value of any threshold, are `placing-tests`. What belongs here is
