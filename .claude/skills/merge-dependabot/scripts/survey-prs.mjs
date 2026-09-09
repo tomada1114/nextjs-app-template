@@ -7,12 +7,24 @@
 // Requires the `gh` CLI, authenticated against the current repository.
 // Read-only: this script never mutates PR or branch state, and it is the only
 // step of the skill that runs without human approval.
+//
+// This file is the dispatcher: it calls `gh`, shapes the rows, and prints
+// them. The classifiers it applies to each row are pure functions in
+// `scripts/lib/pr-checks.mjs`, where the `scripts/**` coverage floor reaches
+// them — a `.mjs` bundled inside a skill is measured by no floor at all.
 import { spawnSync } from "node:child_process";
 import console from "node:console";
 import process from "node:process";
 
 import { isMain } from "../../../../scripts/lib/is-main.mjs";
 import { parseJson, readKey, readString } from "../../../../scripts/lib/json.mjs";
+import {
+  checkSummary,
+  contestedFiles,
+  ecosystemOf,
+  parseVersions,
+  semverLevel,
+} from "../../../../scripts/lib/pr-checks.mjs";
 
 /**
  * One triage row.
@@ -45,29 +57,6 @@ const FIELDS = [
   "files",
   "url",
 ].join(",");
-
-// Matches Dependabot titles such as "bump vitest from 4.1.9 to 4.1.10" and
-// "update eslint requirement from ^10.6.0 to ^10.7.0".
-const BUMP =
-  /(?:bump|update)\s+(?<pkg>\S+?)(?:\s+requirement)?\s+from\s+(?<old>\S+)\s+to\s+(?<next>\S+)/i;
-
-// A range like `^10.7` has no patch component, so that group stays optional.
-const VERSION = /(\d+)\.(\d+)(?:\.(\d+))?/;
-
-const FAILED_STATES = new Set([
-  "FAILURE",
-  "TIMED_OUT",
-  "CANCELLED",
-  "ACTION_REQUIRED",
-  "ERROR",
-]);
-const PENDING_STATES = new Set([
-  "PENDING",
-  "IN_PROGRESS",
-  "QUEUED",
-  "WAITING",
-  "EXPECTED",
-]);
 
 /**
  * Read a property that must be an array.
@@ -110,92 +99,6 @@ function ghJson(args) {
   }
   const parsed = parseJson(result.stdout === "" ? "[]" : result.stdout);
   return Array.isArray(parsed) ? parsed : [];
-}
-
-/**
- * Pull the package and the two versions out of a bot pull request title.
- *
- * @param {string} title - Pull request title.
- * @returns {{ pkg: string | undefined, from: string | undefined, to: string | undefined }}
- * The parsed parts, each undefined when the title does not match.
- */
-export function parseVersions(title) {
-  const groups = BUMP.exec(title)?.groups;
-  return { pkg: groups?.["pkg"], from: groups?.["old"], to: groups?.["next"] };
-}
-
-/**
- * Classify a bump as major, minor or patch.
- *
- * @param {string | undefined} from - Version before the bump.
- * @param {string | undefined} to - Version after the bump.
- * @returns {string} `major`, `minor`, `patch`, or `unknown` when unparsable.
- */
-export function semverLevel(from, to) {
-  if (from === undefined || to === undefined) {
-    return "unknown";
-  }
-  const before = VERSION.exec(from);
-  const after = VERSION.exec(to);
-  if (before === null || after === null) {
-    return "unknown";
-  }
-  const part = (/** @type {RegExpExecArray} */ match, /** @type {number} */ index) =>
-    Number(match[index] ?? "0");
-  if (part(before, 1) !== part(after, 1)) {
-    return "major";
-  }
-  return part(before, 2) === part(after, 2) ? "patch" : "minor";
-}
-
-/**
- * Reduce a status check rollup to one overall state plus the failing checks.
- *
- * @param {readonly unknown[]} rollup - GitHub's `statusCheckRollup` array.
- * @returns {{ state: string, failing: string[] }} The summary.
- */
-export function checkSummary(rollup) {
-  if (rollup.length === 0) {
-    return { state: "NONE", failing: [] };
-  }
-  /** @type {string[]} */
-  const failing = [];
-  let pending = false;
-  for (const check of rollup) {
-    // Check runs report conclusion/status; commit statuses report state.
-    const state = (
-      readString(check, "conclusion") ??
-      readString(check, "state") ??
-      ""
-    ).toUpperCase();
-    const status = (readString(check, "status") ?? "").toUpperCase();
-    const name = readString(check, "name") ?? readString(check, "context") ?? "?";
-    if (state === "" && status !== "" && status !== "COMPLETED") {
-      pending = true;
-    } else if (FAILED_STATES.has(state)) {
-      failing.push(`${name}=${state}`);
-    } else if (PENDING_STATES.has(state)) {
-      pending = true;
-    }
-  }
-  if (failing.length > 0) {
-    return { state: "FAILING", failing };
-  }
-  return { state: pending ? "PENDING" : "PASSING", failing: [] };
-}
-
-/**
- * Classify a Dependabot branch name into an ecosystem.
- *
- * @param {string} branch - Head branch name.
- * @returns {string} `github_actions`, `npm`, or `other`.
- */
-export function ecosystemOf(branch) {
-  if (branch.includes("github_actions")) {
-    return "github_actions";
-  }
-  // Dependabot still names the npm updater `npm_and_yarn`, pnpm included.
-  return branch.includes("npm_and_yarn") ? "npm" : "other";
 }
 
 /**
@@ -245,23 +148,6 @@ function collect() {
   }
   rows.sort((left, right) => left.number - right.number);
   return rows;
-}
-
-/**
- * Map each file touched by more than one pull request to those pull requests.
- *
- * @param {readonly Row[]} rows - Triage rows.
- * @returns {Map<string, number[]>} Contested paths, in insertion order.
- */
-export function contestedFiles(rows) {
-  /** @type {Map<string, number[]>} */
-  const seen = new Map();
-  for (const row of rows) {
-    for (const path of row.files) {
-      seen.set(path, [...(seen.get(path) ?? []), row.number]);
-    }
-  }
-  return new Map([...seen].filter(([, numbers]) => numbers.length > 1));
 }
 
 /**

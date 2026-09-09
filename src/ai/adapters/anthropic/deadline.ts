@@ -43,12 +43,18 @@ function validateAttemptOptions(timeoutMs: number, maxRetries: number): void {
  *
  * @remarks
  * Resolved once, at construction, and validated there rather than left for
- * {@link requestSignal} to throw per request. `AbortSignal.timeout` rejects a
- * delay outside an unsigned 32-bit range with a `RangeError`, and the signal is
- * armed outside every `try` in `generate` — so an unchecked value would surface
- * as a *rejected* `generate()`, the one thing `LlmPort` promises never happens.
- * A deadline out of range is a composition-root mistake, and a start-up failure
- * is where that points.
+ * {@link requestSignal} to discover per request. Checking against
+ * {@link MAX_DEADLINE_MS} — Node's *signed* 32-bit timer ceiling — catches two
+ * different platform failures at once: a delay genuinely outside
+ * `AbortSignal.timeout`'s own unsigned 32-bit range (a negative, a fraction,
+ * `Infinity`) throws a `RangeError` there and then, while a delay merely above
+ * the signed ceiling does not throw at all — Node silently clamps it and the
+ * signal fires within a millisecond instead of after the duration requested.
+ * The first would surface as a *rejected* `generate()`, the one thing
+ * `LlmPort` promises never happens; the second would surface as no error at
+ * all, just an answer that arrives at completely the wrong time. A deadline
+ * out of range is a composition-root mistake, and a start-up failure is where
+ * that points.
  *
  * `timeoutMs` and `maxRetries` are checked on their own terms first, via
  * {@link validateAttemptOptions} — see its remarks for why that cannot simply be

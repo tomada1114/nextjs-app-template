@@ -1,14 +1,17 @@
 import consoleModule from "node:console";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +25,11 @@ import { clean } from "../scripts/clean.mjs";
 
 const workspaces: string[] = [];
 
-/** A throwaway "repository root" so a removal test never touches the real project directory. */
+/**
+ * A throwaway directory, registered for cleanup: a stand-in "repository root", or —
+ * for the symlink cases — a place outside one that a link can point at. No test here
+ * touches the real project directory.
+ */
 function makeRoot(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "clean-test-"));
   workspaces.push(dir);
@@ -97,7 +104,7 @@ describe("clean", () => {
 
     expect(clean([target], root)).toBe(2);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/refusing to remove a path outside the repository/),
+      expect.stringMatching(/^ERR_CLEAN_OUTSIDE_ROOT: /),
     );
   });
 
@@ -109,7 +116,7 @@ describe("clean", () => {
 
     expect(clean(["."], root)).toBe(2);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/refusing to remove a path outside the repository/),
+      expect.stringMatching(/^ERR_CLEAN_OUTSIDE_ROOT: /),
     );
   });
 
@@ -126,6 +133,130 @@ describe("clean", () => {
     expect(existsSync(unreached)).toBe(true);
   });
 
+  it("accepts an ordinary nested path inside the root", () => {
+    const root = makeRoot();
+    const nested = path.join(root, "a", "b", "c");
+    mkdirSync(nested, { recursive: true });
+
+    expect(clean(["a/b/c"], root)).toBe(0);
+    expect(existsSync(nested)).toBe(false);
+    expect(existsSync(path.join(root, "a", "b"))).toBe(true);
+  });
+
+  it("tolerates a target several levels below a directory that does not exist", () => {
+    // Nothing on this path exists, so there is no real path to canonicalize;
+    // `force: true` still makes the removal a no-op rather than an error.
+    const root = makeRoot();
+
+    expect(clean(["never/created/at/all"], root)).toBe(0);
+  });
+
+  it("refuses a target reached through a directory symlink pointing outside the root", () => {
+    // The lexical check alone accepts "escape/keep-me": it resolves to a
+    // string under the root. Following the link is what shows it does not.
+    const root = makeRoot();
+    const outside = makeRoot();
+    const victim = path.join(outside, "keep-me");
+    mkdirSync(victim);
+    symlinkSync(outside, path.join(root, "escape"), "dir");
+    const errorSpy = vi
+      .spyOn(consoleModule, "error")
+      .mockImplementation(() => undefined);
+
+    expect(clean(["escape/keep-me"], root)).toBe(2);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^ERR_CLEAN_SYMLINK_ESCAPE: /),
+    );
+    expect(existsSync(victim)).toBe(true);
+  });
+
+  it("refuses a target through a directory symlink even when its leaf is absent", () => {
+    // The escaping component is the link, not the leaf, so an absent leaf
+    // must not be mistaken for "nothing to check here".
+    const root = makeRoot();
+    const outside = makeRoot();
+    symlinkSync(outside, path.join(root, "escape"), "dir");
+    const errorSpy = vi
+      .spyOn(consoleModule, "error")
+      .mockImplementation(() => undefined);
+
+    expect(clean(["escape/never-created"], root)).toBe(2);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^ERR_CLEAN_SYMLINK_ESCAPE: /),
+    );
+    expect(existsSync(outside)).toBe(true);
+  });
+
+  it("removes nothing when a later target escapes through a directory symlink", () => {
+    // Every target is judged before the first removal, so the legitimate one
+    // listed ahead of the bad one survives.
+    const root = makeRoot();
+    const outside = makeRoot();
+    const legitimate = path.join(root, "dist");
+    mkdirSync(legitimate);
+    symlinkSync(outside, path.join(root, "escape"), "dir");
+    vi.spyOn(consoleModule, "error").mockImplementation(() => undefined);
+
+    expect(clean(["dist", "escape/anything"], root)).toBe(2);
+    expect(existsSync(legitimate)).toBe(true);
+    expect(existsSync(outside)).toBe(true);
+  });
+
+  it("unlinks a symlinked final component instead of following it", () => {
+    // The known, deliberate half of the containment story: a link named as
+    // the target itself is removed as a link, so what it points at is
+    // untouched and the containment check has no reason to refuse it.
+    const root = makeRoot();
+    const outside = makeRoot();
+    const kept = path.join(outside, "keep-me");
+    mkdirSync(kept);
+    const link = path.join(root, "cache");
+    symlinkSync(outside, link, "dir");
+
+    expect(clean(["cache"], root)).toBe(0);
+    expect(existsSync(link)).toBe(false);
+    expect(existsSync(kept)).toBe(true);
+  });
+
+  // `chmod 000` only blocks a filesystem operation when the process is not
+  // root (root bypasses permission bits entirely) and on a POSIX filesystem
+  // (Windows' `chmod` only toggles the read-only attribute, not traversal).
+  // CI runs this suite on `ubuntu-latest` as an unprivileged user, so the
+  // guard is for a local run under `sudo` or on Windows, where the test would
+  // otherwise silently assert nothing rather than fail.
+  const canDenyOwnAccess = process.platform !== "win32" && process.getuid?.() !== 0;
+
+  it.skipIf(!canDenyOwnAccess)(
+    "refuses a target behind an ancestor directory it cannot search, instead of an uncaught throw",
+    () => {
+      // Before this fix, `canonicalize` treated every `realpathSync` failure
+      // (including EACCES) as "does not exist" and rejoined the unresolved
+      // suffix lexically. That let a target behind an unreadable ancestor
+      // reach `rmSync`, which then either threw an uncaught EACCES (this
+      // case) or, had the ancestor hidden an escaping symlink, removed
+      // something outside the root without ever being caught by the escape
+      // check.
+      const root = makeRoot();
+      const blocked = path.join(root, "blocked");
+      mkdirSync(blocked);
+      chmodSync(blocked, 0o000);
+      const errorSpy = vi
+        .spyOn(consoleModule, "error")
+        .mockImplementation(() => undefined);
+
+      try {
+        expect(clean(["blocked/inner/escape"], root)).toBe(2);
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/^ERR_CLEAN_UNRESOLVABLE: /),
+        );
+      } finally {
+        // Restore access before `afterEach`'s recursive `rmSync` has to walk
+        // back through `blocked`, and before the workspace is left behind.
+        chmodSync(blocked, 0o700);
+      }
+    },
+  );
+
   it("defaults to this repository's own root when none is given", () => {
     const errorSpy = vi
       .spyOn(consoleModule, "error")
@@ -136,7 +267,7 @@ describe("clean", () => {
     // every caller — including the CLI entry point — to pass one explicitly.
     expect(clean(["../../../etc"])).toBe(2);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/refusing to remove a path outside the repository/),
+      expect.stringMatching(/^ERR_CLEAN_OUTSIDE_ROOT: /),
     );
   });
 });

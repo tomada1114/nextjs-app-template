@@ -56,13 +56,15 @@ file actually touches and which environment it needs — never from its name or 
 subject:
 
 - **`unit`** — `tests/**/*.test.ts`, the default. The test imports only `src/**` (plus,
-  as a deliberate exception, `scripts/lib/guard/**`'s own pure-function tests) and
-  touches no filesystem, subprocess, or git. Node environment, 5-second budget.
+  as a deliberate exception, the pure-function modules under `scripts/lib/`) and touches
+  no filesystem, subprocess, or git. Node environment, 5-second budget.
 - **`component`** — `tests/**/*.test.tsx`, selected by the extension alone. This is the
   only project running under jsdom, and the only one loading `tests/dom-setup.ts`, which
   registers the DOM matchers and Testing Library's `cleanup`. A test that renders a
-  Client Component goes here by being written as `.tsx`; there is no list to join. It
-  has no I/O either, so it keeps the same short budget as `unit`.
+  component under jsdom goes here by being written as `.tsx`; there is no list to join.
+  `tests/home-page.test.tsx`, the only one today, renders a synchronous Server Component
+  — this template ships no Client Component. It has no I/O either, so it keeps the same
+  short budget as `unit`.
 - **`automation`** — the explicit `automationTests` list at the top of
   `vitest.config.ts`, with a 120-second budget. Everything that shells out, reads or
   writes a temp directory, spawns `git`/`node`, or walks whole trees on disk asserting

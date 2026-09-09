@@ -129,9 +129,16 @@ the same TSDoc: a reader who takes the header for something the provider sent wi
 misread every log line downstream of it.
 
 An out-of-range `deadlineMs` throws a `RangeError` at construction — the one place this
-layer throws rather than answering with a `Result`. The signal is armed outside every
-`try`, so leaving it unchecked would turn a composition-root mistake into the rejected
-promise `LlmPort` says never happens.
+layer throws rather than answering with a `Result`. It catches two different platform
+failures at once, and the second is the one a new adapter author will not reproduce on
+their own. A delay outside `AbortSignal.timeout`'s unsigned 32-bit range throws there
+instead, and the signal is armed outside every `try`, so leaving it unchecked would turn
+a composition-root mistake into the rejected promise `LlmPort` says never happens. A
+delay merely above Node's _signed_ 32-bit timer ceiling throws nothing at all: Node
+clamps it and the deadline fires within a millisecond rather than after the duration
+asked for, so the failure arrives as an answer at completely the wrong time and no error
+anywhere. `MAX_DEADLINE_MS` is that signed ceiling — `INT32_MAX`, not the unsigned bound
+— for exactly that reason.
 
 ## Which `ERR_LLM_*` code, and when
 
