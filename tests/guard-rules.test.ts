@@ -116,9 +116,11 @@ describe("credentials: checkCredentials", () => {
     ],
     [
       // The shape this rule exists to catch and used to walk past: JSON quotes
-      // the key, so the separator no longer follows the word directly.
+      // the key, so the separator no longer follows the word directly. The
+      // value mixes upper case, lower case, digits and punctuation, which is
+      // what the rule now reads rather than the key above it.
       "a quoted JSON password assignment",
-      secretShaped('{ "password', '": ', '"synthetic-example" }'),
+      secretShaped('{ "password', '": ', '"S3cr3t-Example" }'),
       /password/,
     ],
     [
@@ -137,6 +139,60 @@ describe("credentials: checkCredentials", () => {
       // assignment below through.
       "a real assignment below a password schema field",
       secretShaped("password: z.string()\n", "password", "=", '"s3cr3t-value"'),
+      /password/,
+    ],
+    [
+      // A generated password carries `$`, `(`, `{` or `<` as freely as any
+      // other punctuation. Inside quotes none of them can open an expression,
+      // so the marker test that keeps `z.string()` out is applied to a bare
+      // value only — these five rows were exempted while it was applied to
+      // both.
+      "a quoted generated password carrying a dollar sign",
+      secretShaped("password", ": ", '"aB3$xQ9!zP"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying parentheses",
+      secretShaped("password", ": ", '"P@ssw0rd(2024)"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying braces",
+      secretShaped("const password", " = ", '"x9{Kq2}Lm4"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying an angle bracket",
+      secretShaped("password", " = ", '"a<b1234xyz"'),
+      /password/,
+    ],
+    [
+      // A bcrypt hash begins with a cost-prefixed run of dollar signs and no
+      // brace or parenthesis after them, so it is a literal rather than an
+      // interpolation.
+      "a quoted bcrypt hash",
+      secretShaped("password", ": ", '"$2b$10$N9qo8uLOickgx2ZMRZoMy"'),
+      /password/,
+    ],
+    [
+      // The bare capture runs to the next whitespace rather than stopping at
+      // the comma, so the value is judged whole. Truncated at the comma it
+      // was six characters and fell under the length floor.
+      "a bare password value carrying a comma",
+      secretShaped("password", "=", "Str0ng,Pass"),
+      /password/,
+    ],
+    [
+      // The service-credential shape, which the character-class test cannot
+      // reach on its own: one lower-case word is one class. An upper snake
+      // case key and a value that ends the line are what stand in for it.
+      "an upper snake case service credential in a compose file",
+      secretShaped("POSTGRES_", "PASSWORD", ": ", "postgres"),
+      /password/,
+    ],
+    [
+      "an upper snake case service credential in an env-style assignment",
+      secretShaped("MYSQL_ROOT_", "PASSWORD", "=", "rootpassword"),
       /password/,
     ],
     [
@@ -244,6 +300,21 @@ describe("credentials: checkCredentials", () => {
       "an empty password value in an example file",
       secretShaped("DB_PASSWORD", "=", "\n"),
     ],
+    // Written out rather than assembled, because none of the six is
+    // secret-shaped — that is the whole claim each row makes. Every one of
+    // them blocked the commit while the rule counted a hyphen or a slash as
+    // enough on its own.
+    [
+      // The React `autoComplete` value, written by every sign-in form there
+      // is, and the single likeliest string to sit under a password key.
+      "the standard new-password autocomplete value",
+      'password: "new-password"',
+    ],
+    ["a kebab-case identifier under a password key", 'password: "sign-in-form"'],
+    ["a documented placeholder value", 'password: "your-password-here"'],
+    ["a placeholder carrying a trailing digit", 'password: "changeme123"'],
+    ["a masked display value", 'password: "********"'],
+    ["a reset URL under a password key", 'password: "https://example.com/reset"'],
   ])("does not flag %s", (_label, text) => {
     expect(checkCredentials(text)).toBeNull();
   });
@@ -262,28 +333,45 @@ describe("credentials: checkCredentials", () => {
 });
 
 describe("credentials: isCredentialShapedValue", () => {
-  it.each([
-    ["a hyphenated twelve-character value", "s3cr3t-value"],
-    ["an eight-character value qualified by a digit", "abc12345"],
-    ["a value qualified by punctuation alone", "value@shape"],
-  ])("judges %s credential-shaped", (_label, value) => {
-    expect(isCredentialShapedValue(value)).toBe(true);
+  // The second argument is whether the value was written inside quotes. It
+  // decides one thing only: a bare value is rejected on any expression marker,
+  // a quoted one only on a real interpolation opener.
+  it.each<[string, string, boolean]>([
+    ["a hyphenated value mixing letters and digits", "s3cr3t-value", false],
+    ["a quoted generated password carrying punctuation", "aB3$xQ9!zP", true],
+    [
+      "a quoted hash-shaped literal that opens no interpolation",
+      "$2b$10$N9qo8uLO",
+      true,
+    ],
+    ["a bare value mixing upper case, lower case and a digit", "Str0ngPass", false],
+  ])("judges %s credential-shaped", (_label, value, quoted) => {
+    expect(isCredentialShapedValue(value, quoted)).toBe(true);
   });
 
-  it.each([
-    ["a value one character under the length floor", "abc123-"],
-    ["a word with neither a digit nor punctuation", "plainletters"],
-    ["a value containing a space", "plain value-1"],
-    ["a value containing non-ASCII characters", "パスワード-1"],
-    ["a value opening a template interpolation", "abc1234$"],
-    ["a value carrying a backtick", "abc1234`"],
-    ["a value opening a call", "abc1234("],
-    ["a value opening an object literal", "abc1234{"],
-    ["a value opening a generic", "abc1234<"],
-    ["a member expression", "form.password"],
-    ["a snake_case identifier", "user_password"],
-    ["the empty string", ""],
-  ])("judges %s not credential-shaped", (_label, value) => {
-    expect(isCredentialShapedValue(value)).toBe(false);
+  it.each<[string, string, boolean]>([
+    ["a value one character under the length floor", "aB3-xY9", false],
+    ["a word with neither a digit nor punctuation", "plainletters", false],
+    ["a kebab-case identifier mixing only two classes", "new-password", true],
+    ["a lower-case word with a digit stuck on the end", "changeme123", true],
+    ["a value containing a space", "Str0ng value", true],
+    [
+      "a value containing non-ASCII characters",
+      "\u30d1\u30b9\u30ef\u30fc\u30c9-1",
+      true,
+    ],
+    ["a bare value opening a template interpolation", "aB3${xY9z}", false],
+    ["a bare value carrying a backtick", "aB3`xY9z`", false],
+    ["a bare value opening a call", "aB3(xY9z)", false],
+    ["a bare value opening an object literal", "aB3{xY9z}", false],
+    ["a bare value opening a generic", "aB3<xY9z>", false],
+    ["a quoted value interpolating a variable", "aB3${xY9z}", true],
+    ["a quoted value carrying a backtick", "aB3`xY9z`", true],
+    ["a quoted value substituting a command", "aB3$(xY9z)", true],
+    ["a member expression", "form.password", false],
+    ["a snake_case identifier", "user_password", false],
+    ["the empty string", "", false],
+  ])("judges %s not credential-shaped", (_label, value, quoted) => {
+    expect(isCredentialShapedValue(value, quoted)).toBe(false);
   });
 });

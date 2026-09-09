@@ -179,17 +179,42 @@ Two properties are worth knowing before relying on it or editing it:
   layer untouched, by design. Nothing else in the repository watches for it either.
 - The generic hardcoded-password rule judges the **value**, not the key. A key ending in
   `password`, with an optional surrounding quote and a `:` or `=` separator, only makes
-  a site a candidate; `isCredentialShapedValue` then decides, and it fires only on a
-  value of at least eight characters that is an unbroken run of printable ASCII carrying
-  a digit or credential-shaped punctuation. So the rule does **not** cover: a shorter
-  secret, a purely alphabetic one, one holding a space or a non-ASCII character, one
-  assembled by interpolation, a body whose quote is escaped, or the whitespace-separated
-  schema form, which is a type declaration rather than an assignment and is excluded on
-  purpose. A real password that also reads as a bare identifier therefore walks through.
-  That is the deliberate half of the trade: ordinary code — a schema field, a type
-  member, a destructured read — is no longer blocked, and a hook that fires on intended
-  work teaches its author to reach for `--no-verify`, which switches off every rule in
-  `credentials.mjs` at once.
+  a site a candidate; `isCredentialShapedValue` then decides. A value qualifies when it
+  is at least eight characters, is an unbroken run of printable ASCII, opens no
+  interpolation, and mixes at least three of four character classes — lower case, upper
+  case, digits, punctuation — with `.` and `_` counted as neither, since they are what
+  an identifier is made of. Three classes is what separates a generator's output from
+  the strings people deliberately write next to a password key: a kebab-case identifier
+  (the `new-password` autocomplete value a sign-in form carries), a README placeholder,
+  a masked display value and a URL each mix two and pass.
+- The expression markers — a dollar sign, a backtick, brackets, braces, angle brackets —
+  reject a **bare** value outright, because there they mean the right-hand side is code.
+  They do not reject a quoted one: inside quotes a generated password carries them as
+  content, so a quoted body is rejected only on a real interpolation opener (`${`, `$(`,
+  a backtick). A bare value is captured to the next whitespace and then stripped of a
+  trailing `,` or `;`, so a value holding one is judged whole rather than truncated
+  below the length floor.
+- One shape the class test cannot reach is bought back by context instead: an upper
+  snake case key ending in the env-style password name, assigned a bare alphanumeric
+  word of eight characters or more that runs to the end of its line, is blocked. That is
+  the compose-file, CI-service and env-file service credential, where a single
+  lower-case word is the whole secret and no shape test could tell it from a
+  placeholder; the context does the work an eight-character word cannot. A `,` or `;`
+  continuing a JavaScript object or type takes the site back out. It is the one place
+  the key's shape decides anything, and the cost comes with it: a bare eight-character
+  placeholder under such a key is blocked too, and the way past that is an empty value,
+  the convention `.env.example` already follows.
+- What the rule therefore does **not** cover: a secret under eight characters; one
+  mixing only two character classes, which includes a lower-case word with digits stuck
+  on the end unless it sits under an upper snake case key; one holding a space or a
+  non-ASCII character; one assembled by interpolation; a body whose quote is escaped;
+  and the whitespace-separated schema form, which is a type declaration rather than an
+  assignment and is excluded on purpose. A real password that also reads as an
+  identifier or as a placeholder therefore walks through. That is the deliberate half of
+  the trade: ordinary code — a schema field, a type member, a destructured read — and
+  the placeholder strings documentation is written with are no longer blocked, and a
+  hook that fires on intended work teaches its author to reach for `--no-verify`, which
+  switches off every rule in `credentials.mjs` at once.
 
 ## Tool configs
 

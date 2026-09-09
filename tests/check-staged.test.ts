@@ -174,7 +174,7 @@ describe("checkStagedChange", () => {
     // tests/guard-rules.test.ts states: a literal secret-shaped string in a
     // test file is a real finding for any scanner pointed at the repository.
     const dir = makeRepo();
-    const assignment = ['{ "password', '": ', '"synthetic-example" }'].join("");
+    const assignment = ['{ "password', '": ', '"S3cr3t-Example" }'].join("");
     const change = {
       status: "A",
       path: stage(dir, "config/app.json", `${assignment}\n`),

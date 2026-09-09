@@ -64,6 +64,19 @@ export const CREDENTIAL_PATTERNS = [
 const MIN_PASSWORD_VALUE_LENGTH = 8;
 
 /**
+ * How many of {@link CREDENTIAL_CHARACTER_CLASSES} a value has to mix before it
+ * reads as generated rather than chosen by a person.
+ *
+ * @remarks
+ * Three is what separates a generator's output from the strings people write
+ * next to a password key on purpose: a kebab-case identifier, a placeholder, a
+ * masked display value and a URL each mix two, while a value carrying upper
+ * case, lower case and a digit — or any of those plus punctuation — is a shape
+ * nobody types as a label.
+ */
+const MIN_CREDENTIAL_CHARACTER_CLASSES = 3;
+
+/**
  * Every assignment site whose key ends in `password`, with the assigned value
  * captured as a double-quoted body, a single-quoted body, or a bare token.
  *
@@ -72,26 +85,77 @@ const MIN_PASSWORD_VALUE_LENGTH = 8;
  * forms are candidates as well as the env-style and source-code ones. It is
  * only a candidate: nothing about the key decides the outcome.
  *
+ * The bare alternative runs to the next whitespace or quote rather than
+ * stopping at a comma or a semicolon, so a value that carries one is judged
+ * whole instead of being truncated below the length floor. What a statement
+ * terminator left behind is trimmed by {@link TRAILING_STATEMENT_PUNCTUATION}.
+ *
  * The `g` flag is here because `String.prototype.matchAll` requires it. Never
  * call `.test()` or `.exec()` on this instance — both advance `lastIndex` on a
  * module-level regex, so the following call would start mid-string. `matchAll`
  * clones the regex, which leaves the shared instance at `lastIndex === 0`.
  */
 const PASSWORD_ASSIGNMENT =
-  /password["']?\s*[:=]\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s"'\r\n,;]+))/gi;
+  /password["']?\s*[:=]\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s"'\r\n]+))/gi;
 
 /**
- * Whitespace, anything outside printable ASCII, or a character that opens an
- * expression, a template interpolation, a generic or an object literal.
+ * A statement terminator a bare capture swept up from the code around it. It
+ * belongs to the statement, not to the value, and counting it as punctuation
+ * would make an ordinary trailing-comma object property look credential-shaped.
  */
-const NON_LITERAL_VALUE = /[^\x21-\x7e]|[$`(){}<>]/;
+const TRAILING_STATEMENT_PUNCTUATION = /[,;]+$/;
+
+/** Whitespace, or anything outside printable ASCII. */
+const NON_ASCII_OR_WHITESPACE = /[^\x21-\x7e]/;
 
 /**
- * A digit or a punctuation character that a natural-language word, an
- * identifier, a member expression or a type name does not carry. `.` and `_`
- * are deliberately absent: they are what an identifier is made of.
+ * A character that opens an expression, a template interpolation, a generic or
+ * an object literal.
+ *
+ * @remarks
+ * Applied to a bare, unquoted value only: there it is the strongest available
+ * signal that the right-hand side is code rather than a literal. Inside quotes
+ * the same characters are ordinary content — a generator emits them freely —
+ * so a quoted body is held to {@link INTERPOLATION_MARKER} instead.
  */
-const CREDENTIAL_VALUE_QUALIFIER = /[0-9!#%&*+\-/=?@^~]/;
+const EXPRESSION_MARKER = /[$`(){}<>]/;
+
+/**
+ * The interpolation openers, which mean the same thing inside quotes as
+ * outside: a shell or template expansion, or a command substitution. A lone
+ * `$` is not one of them, which is what keeps a hash-shaped literal in scope.
+ */
+const INTERPOLATION_MARKER = /\$[{(]|`/;
+
+/**
+ * The four classes a credential-shaped value mixes: lower case, upper case,
+ * digits, and punctuation.
+ *
+ * @remarks
+ * `.` and `_` count as neither punctuation nor a letter: they are what an
+ * identifier, a member expression and a file name are made of, so counting
+ * them would make `form.password` and `user_password` look mixed.
+ */
+const CREDENTIAL_CHARACTER_CLASSES = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9._]/];
+
+/**
+ * The service-credential form: an upper snake case key ending in the env-style
+ * password name, assigned a bare alphanumeric word that runs to the end of its
+ * line.
+ *
+ * @remarks
+ * This is the one shape the character-class test cannot reach — a single
+ * lower-case word is one class, and no shape test tells a database's default
+ * from a placeholder. What stands in for it is context: an upper snake case
+ * key, and a value ending the line rather than a `,` or `;` continuing a
+ * JavaScript object or type. Both are true of a compose file, a CI service
+ * block and an env file, and false of ordinary source.
+ *
+ * No `g` flag, deliberately: this instance is used with `.test()`, which
+ * advances `lastIndex` only on a global or sticky regex.
+ */
+const ENV_STYLE_PASSWORD_ASSIGNMENT =
+  /\b[A-Z0-9_]*PASSWORD["']?[ \t]*[:=][ \t]*["']?[A-Za-z0-9]{8,}["']?[ \t]*(?:\r?\n|$)/;
 
 /**
  * Whether an assigned value looks like a credential literal.
@@ -101,28 +165,37 @@ const CREDENTIAL_VALUE_QUALIFIER = /[0-9!#%&*+\-/=?@^~]/;
  * `password` sits above a schema, a type, a member expression or a translated
  * UI message at least as often as above a secret. A value qualifies when it is
  * at least {@link MIN_PASSWORD_VALUE_LENGTH} characters, is an unbroken run of
- * printable ASCII, carries no expression or interpolation marker, and holds at
- * least one digit or credential-shaped punctuation character.
+ * printable ASCII, carries no interpolation (and, unquoted, no expression
+ * marker at all), and mixes at least
+ * {@link MIN_CREDENTIAL_CHARACTER_CLASSES} of
+ * {@link CREDENTIAL_CHARACTER_CLASSES}.
  *
- * What that deliberately misses is stated where a reader meets it, in the
- * `changing-gates` skill: a short secret, a purely alphabetic one, one holding
- * a space or a non-ASCII character, and one assembled at runtime all walk
- * through, as does the whitespace-separated schema form, which is a type
- * declaration rather than an assignment. The alternative — firing on any
- * non-space run after the key — rejected ordinary schema, type and variable
- * declarations, and AGENTS.md's "Enforcement layers" is explicit that a hook
- * firing on intended work teaches its author to reach for `--no-verify`, which
- * switches off every rule in this file at once.
+ * The class count is what keeps the rule off intended work. A hyphenated
+ * identifier, a masked display value, a documented placeholder and a URL each
+ * mix two classes and pass; so, deliberately, does a lower-case word with a
+ * digit stuck on the end, because no shape test separates that from the
+ * placeholder people write in a README. What that costs, and the one context
+ * where it is bought back, is stated where a reader meets it, in the
+ * `changing-gates` skill.
  *
  * @param {string} value - The assigned value, with any surrounding quotes removed.
+ * @param {boolean} quoted - Whether the value was written inside quotes.
  * @returns {boolean} True when the value is credential-shaped.
  */
-export function isCredentialShapedValue(value) {
-  return (
-    value.length >= MIN_PASSWORD_VALUE_LENGTH &&
-    !NON_LITERAL_VALUE.test(value) &&
-    CREDENTIAL_VALUE_QUALIFIER.test(value)
-  );
+export function isCredentialShapedValue(value, quoted) {
+  if (value.length < MIN_PASSWORD_VALUE_LENGTH || NON_ASCII_OR_WHITESPACE.test(value)) {
+    return false;
+  }
+  if ((quoted ? INTERPOLATION_MARKER : EXPRESSION_MARKER).test(value)) {
+    return false;
+  }
+  let mixed = 0;
+  for (const characterClass of CREDENTIAL_CHARACTER_CLASSES) {
+    if (characterClass.test(value)) {
+      mixed += 1;
+    }
+  }
+  return mixed >= MIN_CREDENTIAL_CHARACTER_CLASSES;
 }
 
 /**
@@ -135,11 +208,21 @@ function hasHardcodedPassword(text) {
   // Every site, not merely the first: a file routinely declares a password
   // field on one line and assigns a real value on another.
   for (const match of text.matchAll(PASSWORD_ASSIGNMENT)) {
-    if (isCredentialShapedValue(match[1] ?? match[2] ?? match[3] ?? "")) {
+    const quotedBody = match[1] ?? match[2];
+    if (quotedBody !== undefined) {
+      if (isCredentialShapedValue(quotedBody, true)) {
+        return true;
+      }
+    } else if (
+      isCredentialShapedValue(
+        (match[3] ?? "").replace(TRAILING_STATEMENT_PUNCTUATION, ""),
+        false,
+      )
+    ) {
       return true;
     }
   }
-  return false;
+  return ENV_STYLE_PASSWORD_ASSIGNMENT.test(text);
 }
 
 /**
