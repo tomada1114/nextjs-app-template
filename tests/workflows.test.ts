@@ -785,9 +785,12 @@ function lintWorkflow(source: string): Problem[] {
 
   // Cancelling is right for a superseded pull request and wrong for a push: the
   // run being killed is the only CI or analysis record a merged commit gets.
-  // That is as true of a job-level block as of the workflow-level one, so both
-  // are read here rather than only the one at column zero.
-  if (onPullRequest && onPush) {
+  // That holds whether or not the workflow also runs on pull_request — a
+  // push-only workflow that cancels unconditionally is, if anything, the more
+  // destructive case, since there is no pull-request run to fall back on. It
+  // is as true of a job-level block as of the workflow-level one, so both are
+  // read here rather than only the one at column zero.
+  if (onPush) {
     for (const block of concurrency) {
       // A job pinned to a pull request by its own `if:` does not run on push,
       // so cancelling its runs destroys no push record.
@@ -1565,6 +1568,33 @@ describe("lintWorkflow", () => {
     const source = CLEAN_WORKFLOW.replace(
       "  pull_request:",
       "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      "cancel-in-progress: true",
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("rejects cancelling unconditionally on a workflow that runs on push alone", () => {
+    // #137: a push-only workflow has no pull-request run to fall back on, so
+    // an unconditional cancellation here is the most destructive shape of
+    // this defect — and the one the old `onPullRequest && onPush` guard let
+    // through entirely, since such a workflow never sets `onPullRequest`.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("accepts a push-only workflow whose cancellation is conditional on a pull request", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
     ).replace(
       "cancel-in-progress: true",
       "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
