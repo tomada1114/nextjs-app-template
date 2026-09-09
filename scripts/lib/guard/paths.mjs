@@ -167,6 +167,13 @@ export function checkRead(filePath) {
  * not it is the tracked one, and a needless refusal there costs an agent only
  * a file it did not have to open.
  *
+ * This template still gitignores `.envrc`, so the carve-out changes nothing
+ * here — the two layers are a default and a gate, and only the default is a
+ * downstream project's to drop. A generated project that follows direnv's
+ * convention deletes that `.gitignore` line and then needs this gate to let
+ * the file through; leaving the gate refusing it would make that project
+ * choose between an untracked shared script and `--no-verify`.
+ *
  * @param {string} filePath - Path staged for commit.
  * @returns {string | null} Why the path is secret-shaped, or null when the path
  * alone does not refuse the commit. The reason text is the read layer's
