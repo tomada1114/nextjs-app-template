@@ -14,7 +14,11 @@
 # keeping the tree formatted and typechecked belongs here instead, where it
 # also catches a human or a differently-tooled agent.
 #
-# Install with `pnpm hooks:install`.
+# "Every author" holds because installation is not a step anyone has to
+# remember: `package.json`'s `prepare` script runs `scripts/install-hooks.mjs`
+# on every `pnpm install`. `pnpm hooks:install` is the repair for the two ways
+# to end up without the hook anyway — `pnpm install --ignore-scripts`, which
+# runs no `prepare`, and hooks removed after the install.
 
 pre-commit:
   # A merge or rebase replays commits that already passed these checks.

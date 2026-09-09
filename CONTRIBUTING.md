@@ -8,13 +8,19 @@ Use Node.js 24 and pnpm 11 through Corepack:
 node --version
 corepack enable
 corepack pnpm@11.18.0 install --frozen-lockfile
-pnpm hooks:install
 pnpm check:quick
 ```
 
 The first command must report Node 24.x. `devEngines.runtime.onFail` is an intentional
 hard error, and nothing in this repository runs on another Node, so there is no occasion
 to reach for the `--config.runtime-on-fail=ignore` override.
+
+The install writes the Git hooks too: `package.json`'s `prepare` script runs
+`scripts/install-hooks.mjs`, which installs what `lefthook.yml` declares and fails the
+install rather than leaving the hook silently absent. Installing them is therefore not a
+setup step of its own. `pnpm hooks:install` is the repair, and there are two occasions
+for it: an install run with `--ignore-scripts`, which skips `prepare` entirely, and
+hooks removed by hand afterwards.
 
 Useful focused commands are `pnpm check:source`, `pnpm test`, and `pnpm test:coverage`.
 

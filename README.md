@@ -63,9 +63,12 @@ documentation.
 
 ```sh
 corepack pnpm@11.18.0 install --frozen-lockfile
-pnpm hooks:install
 pnpm check:quick
 ```
+
+The install also puts the Git hooks in place — `package.json`'s `prepare` script — so
+there is no separate setup step for them. `pnpm hooks:install` is the repair, for a
+clone installed with `--ignore-scripts` or one whose hooks were removed afterwards.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete workflow, and
 [AGENTS.md](AGENTS.md) for the architecture, the command index, and the rules every

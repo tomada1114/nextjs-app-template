@@ -45,6 +45,7 @@ pnpm test:coverage # tests with the coverage thresholds enforced
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm hooks:install # reinstall the Git hooks; `pnpm install` already does this
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
 ```
@@ -222,10 +223,21 @@ The rules above are enforced by two layers, from mechanical to procedural. Each 
 holds only what belongs there — the rule itself lives in exactly one place, never copied
 between layers:
 
-| Layer                 | Fires on              | Applies to             | Holds                                                          |
-| --------------------- | --------------------- | ---------------------- | -------------------------------------------------------------- |
-| `lefthook` pre-commit | `git commit`          | every author, any tool | Formatting, a related-test run, and the one content rule below |
-| This file             | read at session start | every agent            | Everything else — the reasons behind the rules above           |
+| Layer                 | Fires on              | Applies to                                          | Holds                                                          |
+| --------------------- | --------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| `lefthook` pre-commit | `git commit`          | every author, any tool, once `pnpm install` has run | Formatting, a related-test run, and the one content rule below |
+| This file             | read at session start | every agent                                         | Everything else — the reasons behind the rules above           |
+
+That qualifier is the whole of the first row's installation story, and it is not a
+second step anybody has to remember: `package.json`'s `prepare` script runs
+`scripts/install-hooks.mjs` on every `pnpm install`, so the clone that ran the quick
+start has the hook. The installer skips itself, and lets the install succeed, only where
+a hook is meaningless — a directory that is not a Git work tree root, an install that
+left no `lefthook` in `node_modules`, or `CI` set — and fails the install with an
+`ERR_HOOKS_*` report on anything else, so the layer is either in place or its absence is
+on screen. The two ways to end up without it are `pnpm install --ignore-scripts`, which
+runs no `prepare` at all, and hooks removed afterwards; `pnpm hooks:install` is the
+repair for both.
 
 This repository ships no declarative, tool-call-aware permission list (a Claude Code
 `permissions.allow`/`permissions.deny` or equivalent) — the committed

@@ -118,6 +118,16 @@ The hook is deliberately narrow, and AGENTS.md's "Enforcement layers" holds the 
 for why. The bar for a new or changed job follows from it: it must never fire on
 intended work — test it against a normal commit before trusting it to catch a bad one.
 
+A changed job only reaches an author whose clone has the hook, and what puts it there is
+`package.json`'s `prepare` script running `scripts/install-hooks.mjs` on every
+`pnpm install` — not the `hooks:install` script, which is the manual repair. That
+installer skips itself where a hook is meaningless (no Git work tree root, no `lefthook`
+in `node_modules`, `CI` set) and fails the install with an `ERR_HOOKS_*` report
+otherwise, and `tests/install-hooks.test.ts` pins both halves plus the `prepare` entry
+itself. Removing or renaming `prepare` makes the hook opt-in again and makes AGENTS.md's
+"every author, any tool" row false; that was issue #81, and the test is what keeps it
+from coming back quietly.
+
 Job ordering is load-bearing rather than incidental. `format` runs alone before the
 parallel group so `eslint`, `typecheck` and `check:staged` see the formatted, re-staged
 blobs rather than the working tree as it stood before the commit began. Preserve that
