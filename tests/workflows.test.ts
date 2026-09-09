@@ -139,6 +139,14 @@ interface Trigger {
   line: Line;
 }
 
+/** One outermost declaration that {@link triggerNames} reads as an event. */
+interface TriggerEntry {
+  /** The declaration text, including a sequence marker or mapping value when present. */
+  text: string;
+  /** The physical line containing the declaration. */
+  line: Line;
+}
+
 /** The outermost entries of a flow collection, split on the commas at depth zero. */
 function flowEntries(value: string): string[] {
   const body = value.slice(1, -1);
@@ -216,19 +224,16 @@ function eventName(entry: string): string | undefined {
  * outermost entries count, so a nested `branches:` list that happens to hold an
  * event name is not one of them.
  */
-function triggerNames(lines: Line[]): Trigger[] {
+function triggerEntries(lines: Line[]): TriggerEntry[] {
   const on = triggerLine(lines);
   if (on === undefined) {
     return [];
   }
 
-  const named = (name: string | undefined, line: Line): Trigger[] =>
-    name === undefined ? [] : [{ name, line }];
-
   const inline = inlineValue(on);
   if (inline !== "") {
     const entries = /^[[{]/.test(inline) ? flowEntries(inline) : [inline];
-    return entries.flatMap((entry) => named(eventName(entry), on));
+    return entries.map((text) => ({ text, line: on }));
   }
 
   const events = blockOf(lines, lines.indexOf(on));
@@ -251,8 +256,20 @@ function triggerNames(lines: Line[]): Trigger[] {
     if (!isSequence && line.text.startsWith("- ")) {
       return [];
     }
-    return named(eventName(line.text), line);
+    return [{ text: line.text, line }];
   });
+}
+
+function triggerNames(lines: Line[]): Trigger[] {
+  return triggerEntries(lines).flatMap(({ text, line }) => {
+    const name = eventName(text);
+    return name === undefined ? [] : [{ name, line }];
+  });
+}
+
+/** The event-name part of a trigger declaration, before its mapping value if any. */
+function triggerEntryName(entry: string): string {
+  return entry.trim().replace(/^-\s+/, "").split(":", 1)[0]?.trim() ?? "";
 }
 
 /** The line on which `on:` names `pull_request_target`, if any. */
@@ -261,8 +278,8 @@ function pullRequestTargetLine(lines: Line[]): Line | undefined {
 }
 
 /**
- * The top-level `on:` line, when its inline value is a shape {@link
- * unreadableInline} refuses.
+ * The line where `on:` or one trigger entry is a shape {@link unreadableInline}
+ * refuses.
  *
  * @remarks
  * A flow collection is legal YAML spread across several physical lines
@@ -274,19 +291,27 @@ function pullRequestTargetLine(lines: Line[]): Line | undefined {
  * the same place by a different route: {@link eventName}'s pattern does not
  * match a leading indicator, so the whole value names no event either.
  *
- * Either way that would let a workflow declare `pull_request_target`
- * past `ERR_WORKFLOW_PULL_REQUEST_TARGET` and skip
+ * The same blind spot exists below a readable header: a block-sequence entry,
+ * mapping key or flow entry that begins with an indicator names no event. Either
+ * way that would let a workflow declare `pull_request_target` past
+ * `ERR_WORKFLOW_PULL_REQUEST_TARGET` and skip
  * `ERR_WORKFLOW_CONCURRENCY_MISSING` too, so this is read for and reported on
- * directly rather than parsed: failing closed on an `on:` this lint cannot
- * finish reading is cheaper, and strictly safer, than teaching the scanner to
- * rejoin physical lines into one flow value or to resolve a YAML node property.
+ * directly rather than parsed: failing closed on a trigger declaration this lint
+ * cannot finish reading is cheaper, and strictly safer, than teaching the
+ * scanner to rejoin physical lines into one flow value or to resolve a YAML
+ * node property.
  */
 function unreadableOnLine(lines: Line[]): Line | undefined {
   const on = triggerLine(lines);
   if (on === undefined) {
     return undefined;
   }
-  return unreadableInline(inlineValue(on)) ? on : undefined;
+  if (unreadableInline(inlineValue(on))) {
+    return on;
+  }
+  return triggerEntries(lines).find(({ text }) =>
+    unreadableInline(triggerEntryName(text)),
+  )?.line;
 }
 
 interface Job {
@@ -1730,6 +1755,111 @@ describe("lintWorkflow", () => {
     );
 
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+  });
+
+  it.each([
+    [
+      "a block-sequence entry",
+      "on:\n  - pull_request\n  - *e\n",
+      "on:\n  - pull_request\n  - workflow_dispatch\n",
+    ],
+    [
+      "a block-mapping key",
+      "on:\n  pull_request:\n  *e:\n",
+      "on:\n  pull_request:\n  workflow_dispatch:\n",
+    ],
+    [
+      "a flow-sequence entry",
+      "on: [pull_request, *e]\n",
+      "on: [pull_request, workflow_dispatch]\n",
+    ],
+    [
+      "a flow-mapping key",
+      "on: { pull_request: {}, *e: {} }\n",
+      "on: { pull_request: {}, workflow_dispatch: {} }\n",
+    ],
+  ])("refuses %s that leads with an alias", (_site, unreadable, readable) => {
+    const rejected = CLEAN_WORKFLOW.replace("on:\n  pull_request:\n", unreadable);
+    const falsifier = CLEAN_WORKFLOW.replace("on:\n  pull_request:\n", readable);
+
+    expect(codesOf(lintWorkflow(rejected))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+    expect(lintWorkflow(falsifier)).toEqual([]);
+  });
+
+  it.each(["&e push", "*e", "!!str push"])(
+    "refuses a block-sequence entry led by %s",
+    (entry) => {
+      const rejected = CLEAN_WORKFLOW.replace(
+        "on:\n  pull_request:\n",
+        `on:\n  - pull_request\n  - ${entry}\n`,
+      );
+      const falsifier = CLEAN_WORKFLOW.replace(
+        "on:\n  pull_request:\n",
+        "on:\n  - pull_request\n  - workflow_dispatch\n",
+      );
+
+      expect(codesOf(lintWorkflow(rejected))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+      expect(lintWorkflow(falsifier)).toEqual([]);
+    },
+  );
+
+  it("reports a tagged block-sequence pull_request_target", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  - !!str pull_request_target\n",
+    );
+    const falsifier = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  - workflow_dispatch\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+    expect(lintWorkflow(falsifier)).toEqual([]);
+  });
+
+  it("does not reject an unreadable value in an event body", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:\n",
+      "  pull_request:\n    branches: *b\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("refuses a block-sequence entry at the key's own column that leads with an alias", () => {
+    // A sequence may start in the same column as the key it belongs to (see
+    // blockOf's ownsSameColumnSequence), which is where a body read by
+    // indentation alone looks like no body at all.
+    const rejected = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n- pull_request\n- *e\n",
+    );
+    const falsifier = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n- pull_request\n- workflow_dispatch\n",
+    );
+
+    expect(codesOf(lintWorkflow(rejected))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+    expect(lintWorkflow(falsifier)).toEqual([]);
+  });
+
+  it("reports a block-sequence entry on its own line, not on the on: header", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  - pull_request\n  - *e\n",
+    );
+
+    expect(lintWorkflow(source).map(({ code, line }) => [code, line])).toEqual([
+      ["ERR_WORKFLOW_ON_UNREADABLE", 5],
+    ]);
+  });
+
+  it("reports an unreadable header once and does not also walk its unreadable body", () => {
+    const source = CLEAN_WORKFLOW.replace("on:\n  pull_request:\n", "on: &t\n  - *e\n");
+
+    expect(lintWorkflow(source).map(({ code, line }) => [code, line])).toEqual([
+      ["ERR_WORKFLOW_ON_UNREADABLE", 3],
+    ]);
   });
 
   it("does not read a branch named after the trigger as the trigger itself", () => {
