@@ -48,12 +48,27 @@ describe("the paths locale detection runs on", () => {
   );
 
   it.each([
-    ["an API route", "/api/ask"],
+    ["an API route", "/api"],
+    ["a nested API route", "/api/ask"],
     ["a framework asset", "/_next/static/chunk.js"],
     ["a deployment-platform path", "/_vercel/insights"],
     ["anything with a file extension", "/favicon.ico"],
   ])("leaves %s alone", (_label, path) => {
     expect(matcher.test(path)).toBe(false);
+  });
+
+  // The matcher excludes by path segment, not by string prefix: `api`, `_next`
+  // and `_vercel` are excluded only when they are the whole first segment
+  // (followed by `/` or the end of the path). A page merely spelled with one
+  // of those prefixes is an ordinary page and must still get a locale prefix.
+  // Each of these fails on a prefix-based matcher, which is the bug this
+  // suite guards against.
+  it.each([
+    ["a page path that merely starts with the excluded api prefix", "/apiary"],
+    ["a page path that merely starts with the excluded api prefix", "/api-docs"],
+    ["a page path that merely starts with the excluded _next prefix", "/_nextgen"],
+  ])("does not mistake %s for an excluded path", (_label, path) => {
+    expect(matcher.test(path)).toBe(true);
   });
 });
 
