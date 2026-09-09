@@ -233,20 +233,32 @@ Traps that have cost time here:
   every legal new file, which teaches its reader to edit the meta-test until the day
   that edit hides something real; a table of zones fails only on a change that needs a
   boundary decision — a new zone, or a second module at the root of `src/`.
-- `vitest.config.ts` runs three projects — `unit`, `component` (jsdom), `automation` —
-  and coverage is collected once for the whole run, never per project. Which project a
-  file joins, and the value of any threshold, are `placing-tests`. What belongs here is
-  that `extends: true` is what carries the shared `allowOnly`/restore/unstub settings
-  into a project: a hand-written project object without it drops them silently.
+- `vitest.config.ts` runs four projects — `unit`, `component` (jsdom), `automation`,
+  `smoke` — and coverage is collected once for the whole run, never per project. `smoke`
+  is the one the default run filters out (`--project='!smoke'` in `test`,
+  `test:coverage`, `test:watch` and `test:related`), because it serves `pnpm build`'s
+  output and there is none in ci.yml's `test` job. Which project a file joins, and the
+  value of any threshold, are `placing-tests`. What belongs here is that `extends: true`
+  is what carries the shared `allowOnly`/restore/unstub settings into a project: a
+  hand-written project object without it drops them silently.
 - `next.config.ts` is a gate as well as a build config: `agentRules: false` is what
   stops `next dev` appending to AGENTS.md behind the author. Removing it makes a
   hand-written source of truth a tool rewrites.
 
 ## What no gate here sees
 
-No check in this repository boots a server or a browser. `pnpm build` type-checks the
-App Router entry points and compiles them; nothing loads a request path. The consequence
-worth planning around before adding a gate: a change can be wrong in a way every gate
-passes — the `src/proxy.ts` location trap is the worked example, and
-`building-app-routes` owns it. A gate proposed to close that class of gap is a real
-gate, not a lint rule, and belongs in the PR as such.
+No check here boots a browser, and only one boots a server: `pnpm run test:smoke` serves
+the last `pnpm build` with `next start` and asserts over `fetch` that `/` redirects to a
+locale-prefixed path, that `/en` and `/ja` render with the right `<html lang>`, that an
+unknown route 404s, and that `POST /api/ask` answers its documented statuses. That is
+the whole of what a running server is checked for — the seams between the layers, not
+their behaviour, which each layer's own suite owns.
+
+It runs from `check:source` and from ci.yml's `static` job, both times immediately after
+`Build`, and from neither `pnpm test` nor `pnpm check:quick`: the build is what it
+serves, so a run without one would either fail or pay for a second build. A green
+`check:quick` therefore still says nothing about anything only a running server shows.
+
+Everything outside those five assertions is still a place a change can be wrong while
+every gate passes. A gate proposed to close such a gap is a real gate, not a lint rule,
+and belongs in the PR as such.
