@@ -3,7 +3,7 @@ name: writing-tests
 description: >
   Use when writing or reviewing a test under tests/ — a .test.ts or a .test.tsx — or
   adding the regression test a src/ bug fix needs: naming an it() after behavior,
-  driving a handler factory with new Request(), rendering a Client Component under
+  driving a handler factory with new Request(), rendering a page under jsdom with
   NextIntlClientProvider, running the LlmPort contract suite against an adapter,
   asserting an error's class and `code`, not its message, sweeping edge cases with
   it.each, choosing a fake over a mock, replacing a real sleep with vi.useFakeTimers,
@@ -42,12 +42,14 @@ surface, and that surface is the seam. The four this repository ships:
 - **A Route Handler module.** `src/app/api/<name>/route.ts` re-exports a handler
   composed elsewhere, so the only thing left to assert about the file itself is that
   identity — `expect(POST).toBe(askHandler)`. Everything else is a test of the handler.
-- **A Client Component**, rendered under jsdom through Testing Library, with the context
-  a Server Component tree would have supplied passed explicitly:
+- **A synchronous Server Component**, rendered under jsdom through Testing Library, with
+  the context a Server Component tree would have supplied passed explicitly:
   `NextIntlClientProvider` with a `locale` and the real `messages/en.json`.
   `tests/home-page.test.tsx` is the model, and it queries by role and accessible name
-  rather than by class or test id. An asynchronous Server Component is deliberately out
-  of scope — no gate here renders one.
+  rather than by class or test id. The page under test carries no `"use client"` —
+  `building-app-routes` explains why hooks alone would not make it one — so what makes
+  it renderable here is that it is synchronous, not that it runs on the client. An
+  asynchronous Server Component is deliberately out of scope — no gate here renders one.
 - **The `LlmPort` contract suite.** `describeLlmPortContract` in `tests/ai-port.test.ts`
   is the behavior every adapter owes, written once and called once per adapter with a
   harness that builds the ports each case needs. A new adapter adds a call, never a
