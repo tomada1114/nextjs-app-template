@@ -54,20 +54,23 @@ have not made yet, so make all four first.
 
 Then `pnpm exec vitest run tests/messages.test.ts && pnpm typecheck`.
 
-Three checks hold the catalog, the hand-written list and the typed union together, and
-no two of them fail on the same mistake:
+Three checks hold the catalog, the hand-written list and the typed union together. The
+last two overlap on purpose: both fail when `en.json` gains a key nobody listed, but
+only the runtime case names it.
 
 - `MESSAGE_KEYS` is `as const satisfies readonly MessageKey[]`, so an entry the catalog
   does not hold — a typo, a key renamed or deleted in `en.json` — fails
   `pnpm typecheck`.
 - `expectTypeOf<(typeof MESSAGE_KEYS)[number]>().toEqualTypeOf<MessageKey>()` fails
-  `pnpm typecheck` when `en.json` gained a key nobody listed. `as const satisfies`
-  rather than an annotation of `readonly MessageKey[]` is what makes this possible: the
-  annotation would discard the literal tuple type and let a new key land silently.
-- The runtime case compares the list against the keys read from `messages/en.json` on
-  disk. It catches the same omission as the previous check, but _names_ the key, and it
-  is the only one that would notice `DottedKeys` and the test's own `dottedKeys` walk
-  disagreeing — a divergence that would make both type checks agree wrongly.
+  `pnpm typecheck` when `en.json` gained a key nobody listed, but the error names a type
+  mismatch, not the key. `as const satisfies` rather than an annotation of
+  `readonly MessageKey[]` is what makes this possible: the annotation would discard the
+  literal tuple type and let a new key land silently.
+- The runtime case fires on that same omission, comparing the list against the keys read
+  from `messages/en.json` on disk rather than from what the bundler resolved — keep it
+  for that: it is the one check that names the offending key, and the only one that
+  would notice `DottedKeys` and the test's own `dottedKeys` walk disagreeing, a
+  divergence that would make both type checks agree wrongly.
 
 `MESSAGE_KEYS` is the one thing here that is not derived from `en.json`, and that is
 deliberate. `MessageKey` agrees with the catalog by construction, so it can never report

@@ -283,7 +283,8 @@ const referenceKeys = dottedKeys(catalogs.get("en")).sort();
  * This is the one thing here that is *not* derived from `messages/en.json`.
  * `MessageKey` is (`DottedKeys<typeof en>`), so it agrees with the catalog by
  * construction and can never report a key that was never added; only a list a
- * human maintains as the fourth edit of `localizing-ui`'s "adding a string" can.
+ * human maintains, one of the edits `localizing-ui`'s "adding a string" walks
+ * through, can.
  * `as const satisfies` rather than an annotation of `readonly MessageKey[]`,
  * which would discard the literal tuple type and let a new key land with no
  * entry here — the same reasoning `type-testing` names for a literal list
@@ -491,17 +492,18 @@ describe("the message catalogs", () => {
 
 describe("the typed message keys", () => {
   // Three checks hold the catalog, the hand-written list above and MessageKey
-  // together, and no two of them fail on the same mistake:
+  // together. The last two overlap on purpose: both fail when en.json gains
+  // a key nobody listed, but only the runtime case names it.
   //  - `MESSAGE_KEYS` is `as const satisfies readonly MessageKey[]` (above),
   //    so an entry the catalog does not hold — a typo, a key renamed or
   //    deleted in en.json — fails `pnpm typecheck`.
   //  - the `expectTypeOf` below fails `pnpm typecheck` when en.json gained a
-  //    key nobody listed.
+  //    key nobody listed, but the error names a type mismatch, not the key.
   //  - `names every key the catalog on disk holds, and no others` (below)
-  //    catches the same omission but reads from the file on disk rather than
-  //    from what the bundler resolved, so it *names* the offending key, and
-  //    it is the only one that would notice DottedKeys and this file's own
-  //    dottedKeys walk disagreeing.
+  //    fires on that same omission, reading from the file on disk rather
+  //    than from what the bundler resolved — keep it for that: it is the
+  //    one check that names the offending key, and the only one that would
+  //    notice DottedKeys and this file's own dottedKeys walk disagreeing.
   it("covers every MessageKey", () => {
     expectTypeOf<(typeof MESSAGE_KEYS)[number]>().toEqualTypeOf<MessageKey>();
   });
