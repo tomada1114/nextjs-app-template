@@ -10,9 +10,10 @@ const fixtures = "tests/fixtures/**";
 // Tests that import repository automation, touch the filesystem, spawn a
 // subprocess, or use git. They are listed explicitly so a new test defaults to
 // the short-timeout unit project until its I/O needs are deliberately reviewed.
-// The files not listed here are pure unit tests; guard-rules.test.ts is the
-// intentional exception to the usual `src/**` rule because it calls the guard
-// engine's pure functions directly.
+// The files not listed here are pure unit tests; guard-rules.test.ts and
+// pr-checks.test.ts are the intentional exceptions to the usual `src/**` rule,
+// because each drives a pure-function module under scripts/lib/ directly and
+// touches nothing else.
 //
 // The four boundary suites — ai-layer-removal, ai-vendor-swap, boundaries,
 // placeholders — are listed for the same reason workflows.test.ts is: they

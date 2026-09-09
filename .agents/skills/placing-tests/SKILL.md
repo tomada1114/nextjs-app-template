@@ -55,8 +55,8 @@ file actually touches and which environment it needs — never from its name or 
 subject:
 
 - **`unit`** — `tests/**/*.test.ts`, the default. The test imports only `src/**` (plus,
-  as a deliberate exception, `scripts/lib/guard/**`'s own pure-function tests) and
-  touches no filesystem, subprocess, or git. Node environment, 5-second budget.
+  as a deliberate exception, the pure-function modules under `scripts/lib/`) and touches
+  no filesystem, subprocess, or git. Node environment, 5-second budget.
 - **`component`** — `tests/**/*.test.tsx`, selected by the extension alone. This is the
   only project running under jsdom, and the only one loading `tests/dom-setup.ts`, which
   registers the DOM matchers and Testing Library's `cleanup`. A test that renders a
