@@ -76,7 +76,11 @@ own `ERR_WORKFLOW_*` code:
   silently empty store cache rather than an error.
 - a `pull_request` workflow with no `concurrency`; and, on a workflow that also runs on
   `push`, an unconditional `cancel-in-progress` — killing a push run destroys the only
-  CI record a merged commit gets.
+  CI record a merged commit gets. Both read the declaration at either level GitHub
+  Actions accepts it, the workflow's and each job's: a workflow-level block covers every
+  job, a job-level one covers only its own, so declaring it per job answers the first
+  rule only when every job does, and any block cancelling unconditionally trips the
+  second.
 - a multi-line `run:` that neither opens with `set -euo pipefail` nor runs under a
   fail-closed `defaults.run.shell`. `shell: bash` is not enough: it leaves `-u` off.
 - a `pnpm … install` without `--frozen-lockfile`, which would make every other gate

@@ -264,6 +264,48 @@ function jobKey(job: Job, key: string): Line | undefined {
   );
 }
 
+/** One `concurrency:` declaration, wherever GitHub Actions accepts it. */
+interface ConcurrencyBlock {
+  /** The job it is declared on, or `undefined` for the workflow-level block. */
+  job: Job | undefined;
+  /** The lines nested under `concurrency:`, where `cancel-in-progress` lives. */
+  body: Line[];
+}
+
+/**
+ * Every `concurrency:` block the workflow declares, at either level.
+ *
+ * @remarks
+ * GitHub Actions accepts `concurrency:` on the workflow **and** on a job, and
+ * both rules below read the declaration through here so neither is anchored at
+ * column zero. A rule that only looked at the top level reported a workflow
+ * cancelling its own push runs as safe — the group is real either way, and so
+ * is the CI record it destroys.
+ */
+function concurrencyBlocks(lines: Line[], jobs: Job[]): ConcurrencyBlock[] {
+  const blocks: ConcurrencyBlock[] = [];
+  const workflowLevel = topLevel(lines, "concurrency");
+  if (workflowLevel !== undefined) {
+    blocks.push({
+      job: undefined,
+      body: blockOf(lines, lines.indexOf(workflowLevel)),
+    });
+  }
+  for (const job of jobs) {
+    const jobLevel = jobKey(job, "concurrency");
+    if (jobLevel !== undefined) {
+      blocks.push({ job, body: blockOf(job.body, job.body.indexOf(jobLevel)) });
+    }
+  }
+  return blocks;
+}
+
+/** The `cancel-in-progress: true` line of a block, when it cancels unconditionally. */
+function unconditionalCancel(block: ConcurrencyBlock): Line | undefined {
+  const cancel = block.body.find((line) => line.text.startsWith("cancel-in-progress:"));
+  return cancel !== undefined && inlineValue(cancel) === "true" ? cancel : undefined;
+}
+
 interface UsesRef {
   line: Line;
   ref: string;
@@ -574,8 +616,16 @@ function lintWorkflow(source: string): Problem[] {
   const triggers = triggerNames(lines);
   const onPullRequest = triggers.some(({ name }) => name.startsWith("pull_request"));
   const onPush = triggers.some(({ name }) => name === "push");
-  const concurrency = topLevel(lines, "concurrency");
-  if (onPullRequest && concurrency === undefined) {
+  const concurrency = concurrencyBlocks(lines, jobs);
+  // A workflow-level block covers every job; a job-level one covers its own job
+  // and nothing else. So declaring it per job satisfies this rule only when
+  // every job does — otherwise one block on a trivial job would switch the rule
+  // off for the jobs that still leave a superseded run alive.
+  const covered =
+    concurrency.some(({ job }) => job === undefined) ||
+    (jobs.length > 0 &&
+      jobs.every((job) => concurrency.some((block) => block.job === job)));
+  if (onPullRequest && !covered) {
     report(
       "ERR_WORKFLOW_CONCURRENCY_MISSING",
       on?.number ?? 1,
@@ -585,15 +635,20 @@ function lintWorkflow(source: string): Problem[] {
 
   // Cancelling is right for a superseded pull request and wrong for a push: the
   // run being killed is the only CI or analysis record a merged commit gets.
-  if (onPullRequest && onPush && concurrency !== undefined) {
-    const cancel = blockOf(lines, lines.indexOf(concurrency)).find((line) =>
-      line.text.startsWith("cancel-in-progress:"),
-    );
-    if (cancel !== undefined && inlineValue(cancel) === "true") {
+  // That is as true of a job-level block as of the workflow-level one, so both
+  // are read here rather than only the one at column zero.
+  if (onPullRequest && onPush) {
+    for (const block of concurrency) {
+      const cancel = unconditionalCancel(block);
+      if (cancel === undefined) {
+        continue;
+      }
       report(
         "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
         cancel.number,
-        "This workflow also runs on push. Make cancel-in-progress conditional on the event being a pull request.",
+        block.job === undefined
+          ? "This workflow also runs on push. Make cancel-in-progress conditional on the event being a pull request."
+          : `Job "${block.job.name}" also runs on push. Make cancel-in-progress conditional on the event being a pull request.`,
       );
     }
   }
@@ -775,6 +830,30 @@ const BLOCK_KEY_FIRST_STEP_WORKFLOW = CLEAN_WORKFLOW.replace(
     "      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0",
     "",
     "      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0",
+    "",
+  ].join("\n"),
+);
+
+/**
+ * The same workflow with its `concurrency:` declared on the job, not at the top.
+ *
+ * @remarks
+ * GitHub Actions accepts `concurrency:` at either level, so the runs of this
+ * workflow are grouped exactly as the clean one's are. It is the spelling a
+ * rule anchored at column zero cannot see at all: the cancel-on-push rule then
+ * reports a safety it never checked, and the missing-concurrency rule reports
+ * absent a declaration that is one indent away.
+ */
+const JOB_LEVEL_CONCURRENCY_WORKFLOW = CLEAN_WORKFLOW.replace(
+  "concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\n",
+  "",
+).replace(
+  "    timeout-minutes: 10\n",
+  [
+    "    timeout-minutes: 10",
+    "    concurrency:",
+    "      group: ${{ github.workflow }}-${{ github.ref }}",
+    "      cancel-in-progress: true",
     "",
   ].join("\n"),
 );
@@ -1347,6 +1426,85 @@ describe("lintWorkflow", () => {
 
   it("still allows a pull-request-only workflow to cancel unconditionally", () => {
     expect(lintWorkflow(CLEAN_WORKFLOW)).toEqual([]);
+  });
+
+  it("accepts a pull-request workflow whose concurrency is declared per job", () => {
+    // `concurrency:` on a job is a real declaration — GitHub groups that job's
+    // runs and cancels the superseded ones. Reporting it missing was the rule
+    // failing to look one indent down, not the workflow being wrong.
+    expect(lintWorkflow(JOB_LEVEL_CONCURRENCY_WORKFLOW)).toEqual([]);
+  });
+
+  it("still reports missing concurrency when only one of two jobs declares its own", () => {
+    // A job-level block governs its own job and nothing else, so one job's
+    // block is not the whole-workflow guarantee this rule asks for. Letting it
+    // stand in for one would hand a workflow a way to switch the rule off for
+    // every other job by decorating a trivial one.
+    const source =
+      JOB_LEVEL_CONCURRENCY_WORKFLOW +
+      [
+        "  publish:",
+        "    runs-on: ubuntu-latest",
+        "    timeout-minutes: 10",
+        "    permissions:",
+        "      contents: read",
+        "    steps:",
+        "      - run: echo done",
+        "",
+      ].join("\n");
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_CONCURRENCY_MISSING"]);
+  });
+
+  it("rejects a job-level cancellation on a workflow that also runs on push", () => {
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("rejects a job-level cancellation the top-level block is careful to avoid", () => {
+    // Column zero is spotless here: the workflow-level block cancels only a
+    // pull request. The unconditional cancellation sits one indent down, where
+    // it discards the push run's CI record just as effectively.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    )
+      .replace(
+        "cancel-in-progress: true",
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+      )
+      .replace(
+        "    timeout-minutes: 10\n",
+        [
+          "    timeout-minutes: 10",
+          "    concurrency:",
+          "      group: ${{ github.workflow }}-${{ github.ref }}-build",
+          "      cancel-in-progress: true",
+          "",
+        ].join("\n"),
+      );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("accepts a job-level cancellation conditional on the event being a pull request", () => {
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      "cancel-in-progress: true",
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
   });
 });
 
