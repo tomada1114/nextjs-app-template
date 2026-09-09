@@ -257,22 +257,12 @@ export function describeLlmPortContract(
       expect(error.code).toBe("ERR_LLM_TIMEOUT");
     });
 
-    it("surfaces the caller's own abort reason on cause, by identity", async () => {
-      const reason = new Error("the caller changed its mind");
-      const controller = new AbortController();
-      const pending = ask(harness.neverAnswers(), controller.signal);
-      controller.abort(reason);
-
-      const error = failureOf(await pending);
-
-      expect(error.cause).toBe(reason);
-    });
-
-    it("keeps the abort reason's own text off message while keeping it on cause (#89)", async () => {
-      // A synthetic marker standing in for whatever text the caller's abort
-      // reason carries. `abortedLlmError` must never fold `cause.message` into
-      // its own `message` — see designing-errors — so the marker must show up
-      // on `cause` and nowhere in `message`.
+    it("surfaces the caller's own abort reason on cause, by identity, keeping its text off message (#89)", async () => {
+      // The reason's own message is a synthetic marker standing in for
+      // whatever text a caller's abort reason carries. `abortedLlmError` must
+      // never fold `cause.message` into its own `message` — see
+      // designing-errors — so the marker must show up on `cause` and nowhere
+      // in `message`, while `cause` itself still keeps the reason's identity.
       const marker = "marker-2f6c9d-do-not-quote-this-reason";
       const reason = new Error(marker);
       const controller = new AbortController();
@@ -281,8 +271,8 @@ export function describeLlmPortContract(
 
       const error = failureOf(await pending);
 
-      expect(error.message).not.toContain(marker);
       expect(error.cause).toBe(reason);
+      expect(error.message).not.toContain(marker);
     });
 
     it("normalises a non-Error abort reason into an Error keeping the reason on cause", async () => {

@@ -154,15 +154,39 @@ describe("createAnthropicAdapter maps a provider failure onto the port vocabular
     expect((error.cause as Error).message).toContain(marker);
   });
 
-  it("reports a refused connection as ERR_LLM_UNAVAILABLE", async () => {
+  it("reports a refused connection as ERR_LLM_UNAVAILABLE, naming no status", async () => {
     // The SDK wraps a rejected fetch in APIConnectionError, which *is* an
     // APIError carrying no status — so this exercises the status mapping's
-    // `undefined` case, not the unrecognised-rejection fallback below.
+    // `undefined` case, not the unrecognised-rejection fallback below. The
+    // request never reached the provider, so the message must say so rather
+    // than the generic "rejected the request" wording that used to cover
+    // this path too (#89).
     const error = failureOf(
       await ask(() => Promise.reject(new Error("socket hang up"))),
     );
 
     expect(error.code).toBe("ERR_LLM_UNAVAILABLE");
+    expect(error.message).not.toContain("socket hang up");
+    expect(error.message).not.toContain("rejected");
+    expect(error.message).toContain("could not reach the provider");
+  });
+
+  it("names the numeric status a 500 came back with, not the SDK's own text", async () => {
+    // The counterpart to the connection-refused case above: here the request
+    // did reach the provider, so the message must name the status it
+    // returned rather than the "could not reach" wording that case gets, and
+    // must still keep the SDK's own error text off `message`.
+    const { fetch } = respondWith(500, {
+      type: "error",
+      error: { type: "api_error", message: "internal server error" },
+    });
+
+    const error = failureOf(await ask(fetch));
+
+    expect(error.code).toBe("ERR_LLM_UNAVAILABLE");
+    expect(error.message).toContain("500");
+    expect(error.message).not.toContain("internal server error");
+    expect(error.message).not.toContain("could not reach the provider");
   });
 
   it("reports a rejection that is no SDK error at all as ERR_LLM_UNAVAILABLE", async () => {

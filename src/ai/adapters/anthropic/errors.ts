@@ -99,16 +99,23 @@ export function toLlmError(reason: unknown, signal: AbortSignal): LlmError {
     // it no further than `any`. Re-narrowing here keeps the mapping honest
     // rather than trusting a type the check did not actually establish.
     const status: unknown = reason.status;
+    const numericStatus = typeof status === "number" ? status : undefined;
     // Never `reason.message`: the provider's own text can quote the prompt or
-    // the model's output straight back. The original stays on `cause`.
-    return new LlmError(
-      codeForStatus(typeof status === "number" ? status : undefined),
-      "The LLM provider rejected the request.",
-      { cause: reason },
-    );
+    // the model's output straight back. The original stays on `cause`. The
+    // status, unlike the message, is a number the provider assigned rather
+    // than caller text or model output, so naming it here does not reopen the
+    // leak this issue closes — and it is the only thing that tells a 500 from
+    // a request that never reached the network at all (`APIConnectionError`
+    // is an `APIError` with `status === undefined`; see
+    // tests/ai-anthropic.test.ts's "refused connection" case).
+    const message =
+      numericStatus === undefined
+        ? "The LLM request could not reach the provider."
+        : `The LLM provider returned status ${String(numericStatus)}.`;
+    return new LlmError(codeForStatus(numericStatus), message, { cause: reason });
   }
 
-  const cause = asError(reason, "The LLM request failed for an unknown reason.");
+  const cause = asError(reason, "The LLM request failed with no error object at all.");
   return new LlmError(
     "ERR_LLM_UNAVAILABLE",
     "The LLM request failed for an unknown reason.",
