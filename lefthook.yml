@@ -29,8 +29,12 @@ pre-commit:
     # content: lefthook stashes the unstaged half around the job and restores
     # it afterward, the same way lint-staged does, so a partially-staged file
     # (`git add -p`) that Prettier rewrites keeps its unstaged hunk out of the
-    # commit. tests/lefthook-partial-stage.test.ts pins this against a future
-    # lefthook major that might change it.
+    # commit. That restore is not unconditional: an unstaged hunk overlapping
+    # a line Prettier itself rewrites fails to reapply and aborts the whole
+    # commit (worktree recovered, nothing lost, index left unformatted) —
+    # stage the whole file or `git stash` the rest first.
+    # tests/lefthook-partial-stage.test.ts pins both cases against a future
+    # lefthook major that might change them.
     - name: format
       run: pnpm exec prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
