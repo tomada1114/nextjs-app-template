@@ -80,10 +80,17 @@ own `ERR_WORKFLOW_*` code:
   has no pull-request run to fall back on. Both rules read every declaration GitHub
   Actions accepts, the workflow's own and each job's, in the block spelling and in the
   flow mapping alike. The flow mapping has to be one physical line with balanced braces.
-  A `concurrency:` whose flow collection does not close on its own line — continued onto
-  the next, or unbalanced because a quoted value carries a brace — is refused as
+  Only two inline shapes are read at all — a flow collection whose braces balance on its
+  own line, and a plain scalar taken at face value — and anything else is refused as
   `ERR_WORKFLOW_CONCURRENCY_UNREADABLE`, the same way an `on:` in that shape is refused
-  as `ERR_WORKFLOW_ON_UNREADABLE`. That refusal does not silence the cancel rule: the
+  as `ERR_WORKFLOW_ON_UNREADABLE`. That covers a flow collection continued onto the next
+  line or unbalanced because a quoted value carries a brace, one that opens part-way
+  along the value rather than at its first character, and a value led by a YAML anchor,
+  alias or tag (`&`, `*`, `!`) — none of which is the scalar the rules behind the check
+  would otherwise take it for. Refusing the class rather than widening the detector is
+  deliberate: an alias carries no brace at all, so a detector hunting for one would
+  still pass it, and teaching the group and cancel readers to look past an indicator is
+  the flow-scalar parser below. That refusal does not silence the cancel rule: the
   cancel-on-push loop still reads an unreadable block's body, so a spelling it happens
   to catch — an unconditional `cancel-in-progress: true` sitting on its own line — is
   reported alongside it as `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the
