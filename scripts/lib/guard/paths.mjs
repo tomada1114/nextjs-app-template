@@ -1,8 +1,10 @@
-// Path-shaped rules: which files must never be read.
+// Path-shaped rules: which files must never be read, and which must never be
+// committed.
 //
 // These are the checks that "which path is this" alone decides, independent
-// of what a tool call is or what it carries. Used by the pre-commit
-// staged-content check (scripts/check-staged.mjs, which sees a git diff).
+// of what a tool call is or what it carries. Both entry points share one body
+// and differ on a single basename; the pre-commit staged-content check
+// (scripts/check-staged.mjs, which sees a git diff) calls `checkCommit`.
 // Lockfile hand-editing is not a path-shaped rule here: a re-generated
 // lockfile (`pnpm install`) is normal to commit, and a git diff cannot tell
 // that apart from a hand edit. Only a layer that sees the tool call that
@@ -36,6 +38,17 @@ export function isEnvExample(name) {
 }
 
 /**
+ * Report whether a basename is direnv's shared `.envrc` itself, as opposed to
+ * one of the `.envrc.*` overrides beside it.
+ *
+ * @param {string} name - Basename of the file.
+ * @returns {boolean} True for exactly `.envrc`.
+ */
+export function isBareDirenvRc(name) {
+  return name === ".envrc";
+}
+
+/**
  * Report whether a basename is an environment file that can hold real values.
  *
  * @remarks
@@ -46,10 +59,9 @@ export function isEnvExample(name) {
  * keeps boilerplate in `.envrc` and the real values in `.envrc.local` or
  * `.envrc.private`.
  *
- * `checkRead` is not only the agent-read rule — scripts/check-staged.mjs
- * reuses it as a hard pre-commit block, with no per-path exemption. A bare
- * `.envrc` is therefore uncommittable here, and a direnv project built from
- * this template is expected to keep its `.envrc` untracked.
+ * {@link checkRead} and {@link checkCommit} share this predicate but not
+ * their verdict on a bare `.envrc`: the read layer refuses it, the commit
+ * layer does not. See {@link checkCommit} for why.
  *
  * @param {string} name - Basename of the file.
  * @returns {boolean} True when the file is an environment file, example or not.
@@ -58,7 +70,7 @@ export function isDotenvName(name) {
   return (
     name === ".env" ||
     name.startsWith(".env.") ||
-    name === ".envrc" ||
+    isBareDirenvRc(name) ||
     name.startsWith(".envrc.")
   );
 }
@@ -99,17 +111,25 @@ function isClaudeLocalSettingsPath(parts) {
 }
 
 /**
- * Return a block reason when a file must not be read.
+ * The path-shaped secret rules both layers share.
  *
- * @param {string} filePath - Path the call targets.
- * @returns {string | null} The reason, or null when the read is fine.
+ * @remarks
+ * The exemption is scoped to the dotenv branch rather than short-circuiting
+ * the whole function, which is what keeps `secrets/.envrc` refused by the
+ * `secrets/` rule on both layers.
+ *
+ * @param {string} filePath - Path to classify.
+ * @param {boolean} allowDirenvRc - Whether a bare `.envrc` is permitted. This
+ * is the one axis on which the two layers differ; see {@link checkCommit}.
+ * @returns {string | null} The reason, or null when the path is not refused.
  */
-export function checkRead(filePath) {
+function checkPath(filePath, allowDirenvRc) {
   if (filePath === "") {
     return null;
   }
   const { name, parts } = describePath(filePath);
-  if (isDotenvName(name) && !isEnvExample(name)) {
+  const exempt = isEnvExample(name) || (allowDirenvRc && isBareDirenvRc(name));
+  if (isDotenvName(name) && !exempt) {
     return "Files named .env* may hold secrets and must not be read by the agent — read the matching .env.example instead.";
   }
   if (parts.slice(0, -1).includes("secrets")) {
@@ -119,4 +139,47 @@ export function checkRead(filePath) {
     return "`.claude/settings.local.json` is a developer's personal, gitignored settings file, which can hold real tokens, and must not be read by the agent.";
   }
   return null;
+}
+
+/**
+ * Return a block reason when a file must not be read.
+ *
+ * @param {string} filePath - Path the call targets.
+ * @returns {string | null} The reason, or null when the read is fine.
+ */
+export function checkRead(filePath) {
+  return checkPath(filePath, false);
+}
+
+/**
+ * Return a block reason when a file must not be committed, on its path alone.
+ *
+ * @remarks
+ * Deliberately narrower than {@link checkRead}, on exactly one path. direnv's
+ * bare `.envrc` is the shared half of its convention — `use flake`,
+ * `source_env_if_exists .envrc.local` — and is routinely tracked, while the
+ * values live in `.envrc.local` / `.envrc.private`, which this still refuses.
+ * Refusing the shared script would fire on work someone meant to do, and the
+ * flag that teaches — `--no-verify` — turns off the credential scan with it;
+ * see AGENTS.md's "Enforcement layers". A bare `.envrc` is therefore judged on
+ * its content, like any other tracked file, rather than on its name. The read
+ * layer keeps refusing it: a `.envrc` in a checkout may hold values whether or
+ * not it is the tracked one, and a needless refusal there costs an agent only
+ * a file it did not have to open.
+ *
+ * This template still gitignores `.envrc`, so the carve-out changes nothing
+ * here — the two layers are a default and a gate, and only the default is a
+ * downstream project's to drop. A generated project that follows direnv's
+ * convention deletes that `.gitignore` line and then needs this gate to let
+ * the file through; leaving the gate refusing it would make that project
+ * choose between an untracked shared script and `--no-verify`.
+ *
+ * @param {string} filePath - Path staged for commit.
+ * @returns {string | null} Why the path is secret-shaped, or null when the path
+ * alone does not refuse the commit. The reason text is the read layer's
+ * phrasing; `scripts/check-staged.mjs` uses only its null-ness and composes its
+ * own refusal sentence.
+ */
+export function checkCommit(filePath) {
+  return checkPath(filePath, true);
 }
