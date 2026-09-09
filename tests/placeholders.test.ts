@@ -41,10 +41,11 @@ import { readText, repoRoot, walk } from "./repo-tree";
  *
  * The last three are what a reader sees, which the package name and the slug
  * do not cover: a project that renamed everything machine-facing still greets
- * its visitors as this template. Two are the app's display name — the browser
- * tab and the page heading — and the third is the one-line `description`
- * metadata, which renders into `<meta name="description">` and so into a
- * search result and a link preview. Coverage for the display name is per known
+ * its visitors as this template. Two are the app's display name, one per
+ * catalog language, together covering both the browser tab and the page
+ * heading; the third is the one-line `description` metadata, which renders
+ * into `<meta name="description">` and so into a search result and a link
+ * preview. Coverage for the display name is per known
  * value, not per key: each entry is a catalog's current title string, so a
  * `messages/*.json` added later with its own translated title contributes no
  * row until that value is added to this list. The description is a single

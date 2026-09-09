@@ -73,8 +73,9 @@ What goes into each site:
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
 - **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
   `metadata`, which is the browser tab, and the `HomePage.title` key in
-  `messages/en.json` and `messages/ja.json`, which is the page heading. This one is
-  per-locale: each catalog gets the name written in its own language.
+  `messages/en.json` and `messages/ja.json`, which is the page heading. Only the catalog
+  half is per-locale — each catalog gets the name written in its own language; the
+  layout's `title`, like `description` below, is one hard-coded string.
 - **The one-line `description`** in that same `metadata` block, which renders into
   `<meta name="description">` and so into search results and link previews. It is not
   per-locale — the layout hard-codes one string for every locale — so there is one site,
