@@ -62,6 +62,41 @@ function postRequest(body: string, init: RequestInit = {}): Request {
   });
 }
 
+/**
+ * `RequestInit` with the field Node requires alongside a streaming body.
+ *
+ * @remarks
+ * `undici` refuses a `ReadableStream` body without `duplex: "half"`, and
+ * TypeScript's DOM `RequestInit` does not declare the field, so an inline
+ * object literal would not compile. Named here rather than cast at the call
+ * site.
+ */
+type StreamingRequestInit = RequestInit & { readonly duplex: "half" };
+
+/**
+ * A `POST` whose body stream fails partway through, as a dropped upload does.
+ *
+ * @remarks
+ * The one shape `new Request(url, { body: "..." })` cannot express: a body that
+ * begins to arrive and then stops because the connection died. Everything below
+ * the handler sees exactly what a client hanging up mid-upload produces.
+ */
+function postRequestThatFailsMidBody(): Request {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"prompt":"Which cit'));
+      controller.error(new Error("connection reset"));
+    },
+  });
+  const init: StreamingRequestInit = {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: stream,
+    duplex: "half",
+  };
+  return new Request(ENDPOINT, init);
+}
+
 /** The answer the fake port is configured to give unless a test says otherwise. */
 const ANSWER = { answer: "Kyoto is the old capital." };
 
@@ -211,6 +246,25 @@ describe("the ask handler", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "ERR_BAD_REQUEST" },
     });
+  });
+
+  // A connection that dies mid-upload is an ordinary event, not a defect in
+  // this process: the handler owes the caller a `Response`, the same 400 a body
+  // read with `request.json()` produced, rather than a rejection that reaches
+  // the route boundary as a 500 carrying no `error.code` at all.
+  it("rejects a body whose stream fails mid-read without reaching the port", async () => {
+    const seen: CapturedRequest[] = [];
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    const response = await handler(postRequestThatFailsMidBody());
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "ERR_BAD_REQUEST" },
+    });
+    expect(seen).toStrictEqual([]);
   });
 
   it("rejects a request that carries no body at all", async () => {

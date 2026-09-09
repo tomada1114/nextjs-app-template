@@ -45,24 +45,27 @@ export function failure(
  * `request.json()` would otherwise hide.
  *
  * @returns The parsed body, or the failure to answer with: `413` for a body
- * over the ceiling, `400` for one that is not JSON.
+ * over the ceiling, `400` for one that is not JSON and for one whose stream
+ * failed before it was whole.
  */
 export async function readJsonBody(
   request: Request,
 ): Promise<Result<unknown, Response>> {
-  const text = await readBodyWithin(request, MAX_REQUEST_BODY_BYTES);
-  if (text === undefined) {
+  const body = await readBodyWithin(request, MAX_REQUEST_BODY_BYTES);
+  if (!body.ok) {
     return err(
-      failure(
-        413,
-        "ERR_PAYLOAD_TOO_LARGE",
-        `The request body must be at most ${String(MAX_REQUEST_BODY_BYTES)} bytes.`,
-      ),
+      body.error === "too-large"
+        ? failure(
+            413,
+            "ERR_PAYLOAD_TOO_LARGE",
+            `The request body must be at most ${String(MAX_REQUEST_BODY_BYTES)} bytes.`,
+          )
+        : failure(400, "ERR_BAD_REQUEST", "The request body could not be read."),
     );
   }
 
   try {
-    const value: unknown = JSON.parse(text);
+    const value: unknown = JSON.parse(body.value);
     return ok(value);
   } catch {
     return err(failure(400, "ERR_BAD_REQUEST", "The request body is not valid JSON."));
@@ -70,7 +73,19 @@ export async function readJsonBody(
 }
 
 /**
- * `request`'s body as text, or `undefined` once it crosses `maxBytes`.
+ * Why a body was not read whole: it crossed the ceiling, or its stream failed.
+ *
+ * @remarks
+ * Two refusals with different statuses, so they cannot be one sentinel value.
+ * `unreadable` is a transport failure — a client that hung up mid-upload — and
+ * is deliberately not distinguished from a malformed body to the caller: both
+ * are `400`, which is what a body read with `request.json()` answered before
+ * this module existed.
+ */
+type BodyReadFailure = "too-large" | "unreadable";
+
+/**
+ * `request`'s body as text, or why it could not be read whole.
  *
  * @remarks
  * Decoding each chunk as it arrives rather than concatenating them first keeps
@@ -79,13 +94,18 @@ export async function readJsonBody(
  * chunk that crossed it — the transport's read size, not the sender's claim.
  * A request with no body at all reads as the empty string, which the caller
  * reports as invalid JSON like any other body it cannot parse.
+ *
+ * A read that rejects is a failure of the connection, not of this process, so
+ * it becomes a refusal to answer with rather than an exception escaping the
+ * handler: an unhandled rejection at the route boundary is a 500 with no
+ * `error.code` in it, for the ordinary case of a client that disconnected.
  */
 async function readBodyWithin(
   request: Request,
   maxBytes: number,
-): Promise<string | undefined> {
+): Promise<Result<string, BodyReadFailure>> {
   if (request.body === null) {
-    return "";
+    return ok("");
   }
 
   const reader = request.body.getReader();
@@ -93,19 +113,34 @@ async function readBodyWithin(
   let text = "";
   let bytes = 0;
 
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) {
-      return text + decoder.decode();
-    }
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        return ok(text + decoder.decode());
+      }
 
-    bytes += chunk.value.byteLength;
-    if (bytes > maxBytes) {
-      // Tell the sender to stop rather than draining the rest of the body.
-      await reader.cancel();
-      return undefined;
-    }
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) {
+        return err("too-large");
+      }
 
-    text += decoder.decode(chunk.value, { stream: true });
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } catch {
+    return err("unreadable");
+  } finally {
+    // Tell the sender to stop rather than draining the rest of the body. The
+    // rejection is swallowed on purpose: cancelling a stream that has already
+    // errored rejects with that same error, and letting it out here would turn
+    // a decided 413 into an exception at the route boundary.
+    //
+    // Abandoning an undrained body does not cost the client the answer, which
+    // is the thing worth checking before trusting this: measured against
+    // `next start` on Node 24, a client still uploading when the ceiling is
+    // crossed reads the whole 413 — it only sees its own *next* write fail.
+    // A client that treats that write error as fatal without reading the
+    // response never sees the code, and nothing on this side can change that.
+    await reader.cancel().catch(() => undefined);
   }
 }
