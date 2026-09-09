@@ -21,9 +21,13 @@ export type LlmErrorCode =
  *
  * @remarks
  * `code` is the contract a caller branches on; `message` is prose for a log and
- * may be reworded at any time. The provider's own error, when there was one, is
- * kept on `cause` so a log can still show it without any caller having to know
- * the provider's error classes.
+ * may be reworded at any time. `message` names the *shape* of the failure only
+ * — it must never quote the provider's own error text, an abort reason, a
+ * prompt, or a model's output, because any of those can carry request content
+ * back out through a log line. The original failure, when there was one, is
+ * kept on `cause` instead (by identity when it was already an `Error` — see
+ * {@link asError}), so a log can still show it without any caller having to
+ * know the provider's error classes.
  */
 export class LlmError extends Error {
   /** Stable discriminator; a caller switches on this, never on `message`. */
@@ -67,7 +71,11 @@ export function asError(reason: unknown, fallback: string): Error {
  */
 export function abortedLlmError(reason: unknown): LlmError {
   const cause = asError(reason, "The LLM request was aborted.");
-  return new LlmError("ERR_LLM_TIMEOUT", `LLM request aborted: ${cause.message}`, {
-    cause,
-  });
+  return new LlmError(
+    "ERR_LLM_TIMEOUT",
+    "The LLM request was aborted before it completed.",
+    {
+      cause,
+    },
+  );
 }
