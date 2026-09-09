@@ -26,8 +26,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { isMain } from "./lib/is-main.mjs";
-
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** Authoring copy: what a human or an agent edits. */
@@ -292,6 +290,6 @@ export function main(argv, root = ROOT) {
   }
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = main(process.argv.slice(2));
 }

@@ -18,8 +18,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { isMain } from "./lib/is-main.mjs";
-
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
@@ -241,6 +239,6 @@ export function clean(targets, root = repoRoot) {
   return 0;
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = clean(process.argv.slice(2));
 }

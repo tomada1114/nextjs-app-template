@@ -18,7 +18,6 @@ import { spawnSync } from "node:child_process";
 import console from "node:console";
 import process from "node:process";
 
-import { isMain } from "./lib/is-main.mjs";
 import { parseJson, readKey, readString } from "./lib/json.mjs";
 
 /**
@@ -261,6 +260,6 @@ export function main({ env = process.env, run = spawnGh } = {}) {
   return 0;
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = main();
 }

@@ -17,7 +17,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { isMain } from "./lib/is-main.mjs";
 import { parseJson, readString } from "./lib/json.mjs";
 import { parseLabelManifest } from "./lib/labels-manifest.mjs";
 
@@ -316,6 +315,6 @@ export function main(argv, { root = ROOT, run = spawnGh } = {}) {
   }
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = main(process.argv.slice(2));
 }

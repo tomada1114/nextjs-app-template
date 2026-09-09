@@ -2183,25 +2183,79 @@ describe("workflow regression checks for repository automation", () => {
   });
 });
 
+/**
+ * Parse a `major.minor.patch` string into its three numbers.
+ *
+ * @remarks
+ * Anchored on all three parts on purpose: a bare major such as `"24"` returns
+ * `undefined` rather than a triple padded with zeros, because that bare form
+ * is exactly the shape that let `.node-version` under-state `devEngines`'
+ * minimum while the two still compared equal.
+ */
+function parseVersionTriple(value: string): [number, number, number] | undefined {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (match === null) {
+    return undefined;
+  }
+  const [, majorText, minorText, patchText] = match;
+  if (majorText === undefined || minorText === undefined || patchText === undefined) {
+    return undefined;
+  }
+  return [Number(majorText), Number(minorText), Number(patchText)];
+}
+
+/** Negative when `a` is older than `b`, positive when newer, zero when equal. */
+function compareVersionTriples(
+  a: [number, number, number],
+  b: [number, number, number],
+): number {
+  const [aMajor, aMinor, aPatch] = a;
+  const [bMajor, bMinor, bPatch] = b;
+  if (aMajor !== bMajor) {
+    return aMajor - bMajor;
+  }
+  if (aMinor !== bMinor) {
+    return aMinor - bMinor;
+  }
+  return aPatch - bPatch;
+}
+
 describe("the development runtime contract fails closed", () => {
   it("treats the Node 24 requirement as an error", () => {
     expect(manifest.devEngines?.runtime?.onFail).toBe("error");
   });
 
-  it("keeps devEngines and .node-version on the development Node major", () => {
-    // `devEngines.runtime.version` is what pnpm enforces locally, and
-    // `.node-version` is what the source-check jobs install. These two are now
-    // the only Node versions this repository states: there is no published
-    // `engines.node` floor to be independent of.
-    const major = (value: string) => /(\d+)/.exec(value)?.[1];
+  it("keeps .node-version at or above the devEngines runtime minimum", () => {
+    // `devEngines.runtime.version` (e.g. `^24.2.0`) is what `pnpm install`
+    // enforces locally, and `.node-version` is what a version manager
+    // materializes and what `node-version-file` resolves in ci.yml,
+    // pr-label.yml and security-audit.yml. Comparing only the major version
+    // let `.node-version` state a bare "24" — which a version manager can
+    // resolve to an already-installed 24.0.x or 24.1.x below the stated
+    // minimum — while this check still passed. That gap is exactly what
+    // leaves `import.meta.main` `undefined` and `check:staged`'s secret gate
+    // failing open: comparing every component of the minimum closes it.
     const nodeVersionFile = readFileSync(
       path.join(repoRoot, ".node-version"),
       "utf8",
     ).trim();
+    const minimumRange = manifest.devEngines?.runtime?.version ?? "";
 
-    expect(major(manifest.devEngines?.runtime?.version ?? "")).toBe(
-      major(nodeVersionFile),
-    );
+    const installed = parseVersionTriple(nodeVersionFile);
+    if (installed === undefined) {
+      throw new Error(
+        `.node-version must be a full major.minor.patch, got: "${nodeVersionFile}"`,
+      );
+    }
+
+    const minimum = parseVersionTriple(minimumRange.replace(/^\D+/, ""));
+    if (minimum === undefined) {
+      throw new Error(
+        `devEngines.runtime.version must state a major.minor.patch minimum, got: "${minimumRange}"`,
+      );
+    }
+
+    expect(compareVersionTriples(installed, minimum)).toBeGreaterThanOrEqual(0);
   });
 });
 

@@ -6,8 +6,8 @@ description: >
   GIT_INDEX_FILE making a spawned git write to the wrong repository despite a cwd or -C
   (isolatedGitEnv), a lefthook pre-commit failure, importing anything outside node:*
   builtins, JSDoc boundary types under allowJs/checkJs, narrowing JSON.parse through
-  scripts/lib/json.mjs, the isMain(import.meta.url) CLI guard, or how a script must
-  report failure on stderr with an ERR_<STAGE>_* code.
+  scripts/lib/json.mjs, the import.meta.main CLI guard, or how a script must report
+  failure on stderr with an ERR_<STAGE>_* code.
 ---
 
 # Writing Repository Scripts
@@ -56,21 +56,24 @@ const name = readString(manifest, "name");
 ## The CLI guard
 
 A file that is both importable (from a test) and runnable as a command guards its CLI
-half with `isMain(import.meta.url)` from `scripts/lib/is-main.mjs`, so importing it for
-a test never triggers a run.
+half with Node's own `import.meta.main`, so importing it for a test never triggers a
+run.
 
 ```js
-import { isMain } from "./lib/is-main.mjs";
-
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   await main(process.argv.slice(2));
 }
 ```
 
-Note that the helper predates the current Node floor (`.node-version`);
-`import.meta.main` now covers the same ground, so `isMain` is a candidate for removal
-rather than a pattern to defend indefinitely — do not build new indirection on top of
-it.
+The property is true only for the module Node was started with, and Node resolves that
+entry through symlinks — a script reached through a `node_modules/.bin` shim still
+reports true, while a module the entry merely imports reports false, and so does every
+script a test imports. `import.meta.url.endsWith("foo.mjs")` is true in both cases and
+cannot make that distinction, so do not reach for it. Neither wrap the property in a
+shared helper: a helper can only ever see the `import.meta.url` its caller hands it,
+never its caller's `import.meta.main`, so it buys indirection and no reach.
+`@types/node` declares `main` on `ImportMeta`, so `checkJs` accepts the property and a
+mistyped one still fails as `TS2339`.
 
 ## Spawning `git`
 
