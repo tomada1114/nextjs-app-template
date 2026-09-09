@@ -5,14 +5,17 @@ import { describe, expect, it } from "vitest";
 import HomePage from "../src/app/[locale]/page";
 import en from "../messages/en.json";
 
-// The one Client Component this template ships, rendered the way
-// `writing-tests`/`placing-tests` settle it for issue #12: under jsdom,
-// through Testing Library, with `NextIntlClientProvider` supplying the
-// `locale`/`messages` context that `src/app/[locale]/layout.tsx` gets for
-// free from the Server Component tree in a real request but a unit test must
-// pass explicitly (see `NextIntlClientProvider`'s own `locale` doc comment).
-// An asynchronous Server Component — `LocaleLayout` itself — is explicitly
-// out of scope; this test never renders it.
+// The home page, rendered the way `writing-tests`/`placing-tests` settle it
+// for issue #12: under jsdom, through Testing Library, with
+// `NextIntlClientProvider` supplying the `locale`/`messages` context that
+// `src/app/[locale]/layout.tsx` gets for free from the Server Component tree
+// in a real request but a unit test must pass explicitly (see
+// `NextIntlClientProvider`'s own `locale` doc comment). The page carries no
+// `"use client"` — `building-app-routes` explains why hooks alone do not make
+// it one — so what makes it renderable here is that it is synchronous, not
+// that it runs on the client. An asynchronous Server Component —
+// `LocaleLayout` itself — is explicitly out of scope; this test never renders
+// it.
 
 function renderHomePage(): void {
   render(

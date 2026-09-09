@@ -2,8 +2,10 @@
 //
 // Scripts here are imported by tests *and* run as commands, so the CLI half
 // must stay dormant on import. `import.meta.url.endsWith("foo.mjs")` is true in
-// both cases and cannot make that distinction, and `import.meta.main` is Node
-// 24+ while the supported floor is 22.14.
+// both cases and cannot make that distinction. Node's own `import.meta.main`
+// does, but it only ever describes the module it is written in, so a shared
+// helper has to take the caller's `import.meta.url` as an argument instead —
+// which is this.
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
