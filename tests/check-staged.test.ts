@@ -197,8 +197,10 @@ describe("checkStagedChange", () => {
     // The pre-commit layer deliberately does not check lockfile content: a
     // regenerated lockfile is an ordinary, expected commit, and a git diff
     // cannot tell it apart from a hand edit. Only a layer that sees the tool
-    // call that produced the change can — `permissions.deny`'s
-    // `Edit(/pnpm-lock.yaml)`. See AGENTS.md's "Enforcement layers".
+    // call that produced the change could, and this repository ships none — so
+    // "generated, never hand-edited" holds as an instruction a reviewer checks,
+    // not as a block. See AGENTS.md's "Enforcement layers", and
+    // `managing-dependencies` for the reasoning.
     const dir = makeRepo();
     stage(dir, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
     commit(dir);
