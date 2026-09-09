@@ -87,6 +87,12 @@ Decide by risk, and state the reasoning in the plan.
 - no contested files between them, and
 - each is `CLEAN` with `PASSING` checks.
 
+`PASSING` is an allow-list verdict, so it is safe to gate on: only `SUCCESS`, `NEUTRAL`
+and `SKIPPED` count as passing. Every other conclusion — a failure, one the script does
+not recognise, or a rollup entry carrying none at all — comes back as `FAILING` and is
+named in `failingChecks`, so an unknown CI state holds a PR here rather than being waved
+through.
+
 Note that every npm PR touches `package.json` and `pnpm-lock.yaml`, so two open npm PRs
 are contested by definition. In practice, individual merges are for GitHub Actions PRs;
 npm PRs almost always go through the combined path.
