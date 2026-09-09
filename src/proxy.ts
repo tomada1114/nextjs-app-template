@@ -23,11 +23,14 @@ export default createMiddleware(routing);
  * @remarks
  * Everything except API routes, the framework's own asset trees, and any path
  * with a file extension: none of those is a page, so prefixing one with a
- * locale would only break it. This pattern and the `[locale]` segment have to
- * agree — a page path the proxy skips never gets a prefix and 404s against the
- * segment, with nothing else in the tree noticing — so `tests/proxy.test.ts`
- * asserts both halves.
+ * locale would only break it. Each excluded name is anchored to a whole path
+ * segment — followed by `/` or the end of the path — so it excludes `api` and
+ * `api/...` without also excluding `apiary` or `api-docs`, which are ordinary
+ * page paths that need a locale prefix like any other. This pattern and the
+ * `[locale]` segment have to agree — a page path the proxy skips never gets a
+ * prefix and 404s against the segment, with nothing else in the tree noticing
+ * — so `tests/proxy.test.ts` asserts both halves.
  */
 export const config = {
-  matcher: "/((?!api|_next|_vercel|.*\\..*).*)",
+  matcher: "/((?!api(?:/|$)|_next(?:/|$)|_vercel(?:/|$)|.*\\..*).*)",
 };
