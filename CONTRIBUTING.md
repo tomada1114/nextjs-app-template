@@ -15,12 +15,20 @@ The first command must report Node 24.x. `devEngines.runtime.onFail` is an inten
 hard error, and nothing in this repository runs on another Node, so there is no occasion
 to reach for the `--config.runtime-on-fail=ignore` override.
 
-The install writes the Git hooks too: `package.json`'s `prepare` script runs
-`scripts/install-hooks.mjs`, which installs what `lefthook.yml` declares and fails the
-install rather than leaving the hook silently absent. Installing them is therefore not a
-setup step of its own. `pnpm hooks:install` is the repair, and there are two occasions
-for it: an install run with `--ignore-scripts`, which skips `prepare` entirely, and
-hooks removed by hand afterwards.
+The install writes the Git hooks too, and nothing above has to ask for it: `lefthook`
+ships its own `postinstall`, which `pnpm-workspace.yaml` allowlists, so every non-CI
+`pnpm install` syncs the hooks `lefthook.yml` declares. That postinstall ignores the
+exit status of the install it runs, though, so `package.json`'s `prepare` script then
+runs `scripts/verify-hooks.mjs`, which installs nothing and fails the install unless a
+lefthook pre-commit hook really sits at the path git will use. Installing the hooks is
+therefore not a setup step of its own; `pnpm hooks:install` is the repair when the check
+says one is needed.
+
+Three things still leave a clone without the gate, each of them deliberate or on screen:
+`pnpm install --ignore-scripts`, which runs neither lifecycle script; setting
+`ALLOW_MISSING_GIT_HOOKS=1`, the documented opt-out for a machine that genuinely cannot
+have a Git hook, which every failure message names; and removing the hooks by hand after
+the install.
 
 Useful focused commands are `pnpm check:source`, `pnpm test`, and `pnpm test:coverage`.
 

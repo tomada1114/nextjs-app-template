@@ -45,7 +45,7 @@ pnpm test:coverage # tests with the coverage thresholds enforced
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
-pnpm hooks:install # reinstall the Git hooks; `pnpm install` already does this
+pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
 ```
@@ -223,21 +223,33 @@ The rules above are enforced by two layers, from mechanical to procedural. Each 
 holds only what belongs there — the rule itself lives in exactly one place, never copied
 between layers:
 
-| Layer                 | Fires on              | Applies to                                          | Holds                                                          |
-| --------------------- | --------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| `lefthook` pre-commit | `git commit`          | every author, any tool, once `pnpm install` has run | Formatting, a related-test run, and the one content rule below |
-| This file             | read at session start | every agent                                         | Everything else — the reasons behind the rules above           |
+| Layer                 | Fires on              | Applies to             | Holds                                                          |
+| --------------------- | --------------------- | ---------------------- | -------------------------------------------------------------- |
+| `lefthook` pre-commit | `git commit`          | every author, any tool | Formatting, a related-test run, and the one content rule below |
+| This file             | read at session start | every agent            | Everything else — the reasons behind the rules above           |
 
-That qualifier is the whole of the first row's installation story, and it is not a
-second step anybody has to remember: `package.json`'s `prepare` script runs
-`scripts/install-hooks.mjs` on every `pnpm install`, so the clone that ran the quick
-start has the hook. The installer skips itself, and lets the install succeed, only where
-a hook is meaningless — a directory that is not a Git work tree root, an install that
-left no `lefthook` in `node_modules`, or `CI` set — and fails the install with an
-`ERR_HOOKS_*` report on anything else, so the layer is either in place or its absence is
-on screen. The two ways to end up without it are `pnpm install --ignore-scripts`, which
-runs no `prepare` at all, and hooks removed afterwards; `pnpm hooks:install` is the
-repair for both.
+The first row's "every author" is not a second step anybody has to remember, and not
+something `prepare` arranges either. `lefthook` ships its own `postinstall`, which
+`pnpm-workspace.yaml`'s `allowBuilds` allowlists, so every non-CI `pnpm install` writes
+the hook by itself. What that postinstall cannot do is fail: it never reads the exit
+status of the `lefthook install -f` it spawns, so an install that could not write the
+hook — a `core.hooksPath` pointing somewhere it cannot create — leaves `pnpm install`
+green, the gate absent, and nothing on screen. `package.json`'s `prepare` script runs
+`scripts/verify-hooks.mjs` after that, and it **verifies rather than installs**: it
+fails the install with an `ERR_HOOKS_*` report unless `lefthook.yml` declares a
+`pre-commit` block and a lefthook pre-commit hook really sits at the path
+`git rev-parse --git-path hooks` names. Both halves are checked because either alone is
+satisfiable while the gate is absent — `lefthook install` writes a blank config and
+calls that success — and the path is resolved rather than assumed, because
+`core.hooksPath` and a linked worktree both move it legitimately.
+
+Verification skips, and the install succeeds, only where it is meaningless: `CI` set, a
+directory that is not a Git work tree root, and an install that left no `lefthook` in
+`node_modules`. The remaining ways to end up without the gate are all deliberate or
+visible: `pnpm install --ignore-scripts`, which runs neither lifecycle script;
+`ALLOW_MISSING_GIT_HOOKS=1`, the documented opt-out for a developer who genuinely cannot
+have the hook, which every failure message names; and hooks removed by hand afterwards.
+`pnpm hooks:install` is the repair, not a setup step.
 
 This repository ships no declarative, tool-call-aware permission list (a Claude Code
 `permissions.allow`/`permissions.deny` or equivalent) — the committed

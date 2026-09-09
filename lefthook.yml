@@ -14,11 +14,17 @@
 # keeping the tree formatted and typechecked belongs here instead, where it
 # also catches a human or a differently-tooled agent.
 #
-# "Every author" holds because installation is not a step anyone has to
-# remember: `package.json`'s `prepare` script runs `scripts/install-hooks.mjs`
-# on every `pnpm install`. `pnpm hooks:install` is the repair for the two ways
-# to end up without the hook anyway — `pnpm install --ignore-scripts`, which
-# runs no `prepare`, and hooks removed after the install.
+# "Every author" holds because installing this is not a step anyone has to
+# remember: lefthook's own `postinstall` — allowlisted in
+# `pnpm-workspace.yaml` — writes the hook on every non-CI `pnpm install`. That
+# postinstall cannot fail, though: it never reads the exit status of the
+# `lefthook install -f` it spawns. So `package.json`'s `prepare` script runs
+# `scripts/verify-hooks.mjs` afterwards, which installs nothing and instead
+# fails the install unless this file declares a `pre-commit` block and a
+# lefthook hook really sits where `git rev-parse --git-path hooks` points.
+# `pnpm hooks:install` is the repair. The remaining ways to end up without the
+# hook are `pnpm install --ignore-scripts`, the documented
+# `ALLOW_MISSING_GIT_HOOKS=1` opt-out, and hooks removed by hand.
 
 pre-commit:
   # A merge or rebase replays commits that already passed these checks.
