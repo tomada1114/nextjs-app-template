@@ -173,5 +173,7 @@ pnpm exec vitest run tests/proxy.test.ts     # only if routing or the matcher ch
 pnpm build                                   # only if a page or layout changed
 ```
 
-Then open `/en` and `/ja` under `pnpm dev`. No check in this repository boots a server,
-so a locale that never renders is something only that does.
+Then open `/en` and `/ja` under `pnpm dev`. `pnpm run test:smoke` (after `pnpm build`)
+serves the built application and checks that both answer 200 with the matching
+`<html lang>`, which catches a locale that never renders at all; nothing checks that a
+string reads correctly in it, and that is what opening the pages is for.

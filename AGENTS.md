@@ -42,6 +42,7 @@ pnpm check:source  # the same gate plus the build, with coverage thresholds enfo
 pnpm fix           # ESLint autofix, then Prettier
 pnpm test          # tests only
 pnpm test:coverage # tests with the coverage thresholds enforced
+pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts over HTTP
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
@@ -80,10 +81,11 @@ on every edit is slow enough that it stops being run at all.
 | A module under `src/core/` or `src/ai/`                | `pnpm exec vitest run tests/<module>.test.ts`        |
 | A handler or the composition root under `src/server/`  | `pnpm exec vitest run tests/server-handler.test.ts`  |
 | `src/server/env.ts` or `.env.example`                  | `pnpm exec vitest run tests/server-env.test.ts`      |
-| A page, layout or route handler under `src/app/`       | `pnpm build`                                         |
+| A page, layout or route handler under `src/app/`       | `pnpm build`, then `pnpm test:smoke`                 |
 | A component with a rendered test                       | `pnpm exec vitest run tests/<name>.test.tsx`         |
 | A catalog under `messages/`, or `src/i18n/messages.ts` | `pnpm exec vitest run tests/messages.test.ts`        |
 | `src/proxy.ts` or the locale routing behind it         | `pnpm exec vitest run tests/proxy.test.ts`           |
+| Anything only a running server shows                   | `pnpm build`, then `pnpm test:smoke`                 |
 | An import that crosses a zone boundary                 | `pnpm exec vitest run tests/boundaries.test.ts`      |
 | A test                                                 | `pnpm exec vitest run tests/<name>.test.ts`          |
 | A script under `scripts/`                              | `pnpm exec vitest run tests/<script>.test.ts`        |

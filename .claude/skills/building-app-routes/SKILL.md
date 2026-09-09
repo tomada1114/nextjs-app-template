@@ -168,9 +168,11 @@ Next.js 16 renamed `middleware.ts` to `proxy.ts`. In this repository that file i
 `src/` and Next.js looks for the proxy beside it.
 
 This is the trap this section exists for: at the repository root the file is simply
-never loaded. Nothing reports it — `pnpm build`, `pnpm lint`, `pnpm typecheck` and the
-whole suite stay green while every unprefixed path 404s, because no check in this
-repository boots a server. A `/` that 404s under `pnpm dev` while the gate is green is
+never loaded, and `pnpm build`, `pnpm lint`, `pnpm typecheck` and `pnpm test` all stay
+green while every unprefixed path 404s. The one check that sees it is
+`pnpm run test:smoke`, which serves the build with `next start` and asks it for `/` —
+and it runs after `pnpm build`, not from `pnpm test`, so a green `pnpm check:quick`
+still proves nothing here. A `/` that 404s under `pnpm dev` while the gate is green is
 this, until proven otherwise.
 
 - What belongs in it: a cheap decision made on the way to a route, for every matching

@@ -61,6 +61,15 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      # The only check that starts the application and asks it for a page over
+      # HTTP. It sits here, immediately after `Build`, because it serves that
+      # build: in the `test` job below there is none, and giving it one would
+      # mean building this application twice in a single workflow. The default
+      # test run filters it out for the same reason — see `test:smoke` in
+      # package.json.
+      - name: Smoke test
+        run: pnpm run test:smoke
+
   test:
     name: Test (${{ matrix.os }})
     strategy:
