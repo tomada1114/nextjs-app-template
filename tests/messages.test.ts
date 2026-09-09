@@ -51,8 +51,184 @@ function valueAt(catalog: unknown, key: string): unknown {
     );
 }
 
+/** The ICU argument shapes that change what dummy value a message needs to format without error; everything else accepts a plain string. */
+type IcuArgumentType =
+  "plain" | "number" | "plural" | "selectordinal" | "select" | "date" | "time";
+
+interface IcuArgument {
+  name: string;
+  type: IcuArgumentType;
+  /**
+   * A `select` argument's own branch keys, so a dummy value can pick one that
+   * actually exists on the message rather than relying on an implicit
+   * `other` fallback the message may not declare.
+   */
+  selectOptions: readonly string[];
+}
+
+const KNOWN_ARGUMENT_TYPES: ReadonlySet<string> = new Set([
+  "number",
+  "plural",
+  "selectordinal",
+  "select",
+  "date",
+  "time",
+]);
+
+function toIcuArgumentType(type: string): IcuArgumentType {
+  return KNOWN_ARGUMENT_TYPES.has(type) ? (type as IcuArgumentType) : "plain";
+}
+
 /**
- * The ICU argument names a message reads, in the order they first appear.
+ * A hand-written recursive-descent scan of ICU MessageFormat syntax: it walks
+ * brace nesting explicitly instead of scraping argument names with a single
+ * regular expression. A regular expression cannot tell a top-level `{name}`
+ * from a `select`/`plural` branch's own label or one-word message body — both
+ * are a bare word immediately inside braces — and widening its character
+ * class to accept every name ICU allows (a hyphen included) would only make
+ * that ambiguity worse. Recursing on brace boundaries makes both
+ * distinctions structural instead: a branch's selector key is consumed as a
+ * key, never examined for a name, and only what is nested *inside* a
+ * branch's own `{...}` is scanned again for an argument reference.
+ *
+ * `@formatjs/icu-messageformat-parser` is what `next-intl` actually compiles
+ * with (via `use-intl` and `intl-messageformat`), which would make this
+ * unnecessary — but it is not a direct dependency of this repository, and
+ * pnpm's non-hoisted `node_modules` does not expose a transitive package that
+ * is not declared: `require.resolve("@formatjs/icu-messageformat-parser")`
+ * fails with `MODULE_NOT_FOUND` from this tree. Adding it as a direct
+ * dependency is out of scope for a test file, so this scan stands in for it.
+ *
+ * This is not a validator: malformed ICU syntax (an unbalanced brace, a
+ * broken `plural` clause) is left for `createTranslator` itself to reject at
+ * format time, in the test below. This function only has to extract what it
+ * can without throwing or looping forever, for a catalog that may not yet be
+ * valid.
+ */
+function parseIcuArguments(message: string): IcuArgument[] {
+  const found: IcuArgument[] = [];
+  const seen = new Set<string>();
+  const { length } = message;
+  let pos = 0;
+
+  // Letters, digits, and underscore — not a hyphen. `intl-messageformat`'s
+  // own identifier rule accepts any character that is not Unicode
+  // whitespace or `Pattern_Syntax`, and a hyphen *is* `Pattern_Syntax`:
+  // confirmed empirically that `{user-name}` raises
+  // `MALFORMED_ARGUMENT` from the real parser, so a hyphenated name is
+  // not legal ICU and is already caught as broken by the invoke-through-
+  // `createTranslator` test below regardless of what this scan does with
+  // it. Digits are included because a leading digit (`{1fast}`) *is*
+  // legal and the original `[A-Za-z_]\w*` missed it the same way it
+  // missed a hyphen — that gap is real even though the hyphen example
+  // was not.
+  function isNameChar(char: string | undefined): boolean {
+    return char !== undefined && /[A-Za-z0-9_]/.test(char);
+  }
+
+  function skipSpace(): void {
+    while (pos < length && /\s/.test(message[pos] ?? "")) pos++;
+  }
+
+  function readWhile(matches: (char: string) => boolean): string {
+    const start = pos;
+    while (pos < length && matches(message[pos] ?? "")) pos++;
+    return message.slice(start, pos);
+  }
+
+  function record(
+    name: string,
+    type: IcuArgumentType,
+    selectOptions: readonly string[] = [],
+  ): void {
+    if (name === "" || seen.has(name)) return;
+    seen.add(name);
+    found.push({ name, type, selectOptions });
+  }
+
+  /**
+   * Consumes a `plural`/`selectordinal`/`select` argument's `key {pattern}`
+   * branches, up to (not including) the argument's own closing brace.
+   * Returns the branch keys seen, which only a `select` argument's dummy
+   * value needs.
+   */
+  function parseBranches(): string[] {
+    const keys: string[] = [];
+    skipSpace();
+    while (pos < length && message[pos] !== "}") {
+      const key = readWhile((char) => char !== "{" && char !== "}" && !/\s/.test(char));
+      if (key !== "") keys.push(key);
+      skipSpace();
+      if (message[pos] === "{") parsePattern();
+      skipSpace();
+    }
+    return keys;
+  }
+
+  /**
+   * Consumes one branch's `{pattern}`, recursing into a nested argument
+   * reference but never mistaking the branch's own literal text — even a
+   * single word that happens to look like a name — for one.
+   */
+  function parsePattern(): void {
+    pos++; // consume '{'
+    while (pos < length && message[pos] !== "}") {
+      if (message[pos] === "{") parseArgument();
+      else pos++;
+    }
+    if (message[pos] === "}") pos++;
+  }
+
+  /** Consumes `number`/`date`/`time`'s optional style or `{skeleton}`, up to (not including) the argument's own closing brace. */
+  function skipStyle(): void {
+    while (pos < length && message[pos] !== "}") {
+      if (message[pos] === "{") parseArgument();
+      else pos++;
+    }
+  }
+
+  /** Consumes one `{...}` argument reference; `message[pos]` is its opening brace. */
+  function parseArgument(): void {
+    pos++; // consume '{'
+    skipSpace();
+    const name = readWhile(isNameChar);
+    skipSpace();
+
+    if (message[pos] === "}") {
+      pos++;
+      record(name, "plain");
+      return;
+    }
+    if (message[pos] !== ",") {
+      return; // unbalanced or malformed; createTranslator reports this, not this scan
+    }
+    pos++; // consume ','
+    skipSpace();
+    const type = toIcuArgumentType(readWhile((char) => /[A-Za-z]/.test(char)));
+    skipSpace();
+    if (message[pos] === ",") pos++;
+
+    if (type === "plural" || type === "selectordinal" || type === "select") {
+      record(name, type, parseBranches());
+    } else {
+      record(name, type);
+      skipStyle();
+    }
+    skipSpace();
+    if (message[pos] === "}") pos++;
+  }
+
+  while (pos < length) {
+    if (message[pos] === "{") parseArgument();
+    else pos++;
+  }
+
+  return found;
+}
+
+/**
+ * The ICU argument names a message reads, in the order `parseIcuArguments`
+ * first records them.
  *
  * @remarks
  * Only the name matters here, never the rest of the ICU syntax around it: the
@@ -61,35 +237,37 @@ function valueAt(catalog: unknown, key: string): unknown {
  * does not pass is a runtime formatting error in that locale alone.
  */
 function icuArguments(message: string): string[] {
-  const names = [...message.matchAll(/\{\s*([A-Za-z_]\w*)\s*[,}]/g)].flatMap(
-    (match) => match[1] ?? [],
-  );
-  return [...new Set(names)].sort();
+  return [
+    ...new Set(parseIcuArguments(message).map((argument) => argument.name)),
+  ].sort();
 }
 
 /**
- * Whether `message` reads `name` as a `plural` or `selectordinal` argument,
- * which `intl-messageformat` requires a number for; every other argument
- * shape (a plain placeholder, or a `select`'s discriminant) accepts a string.
+ * A dummy value per ICU argument `message` reads, typed from the argument's
+ * own ICU type so a well-formed message never fails to format for a reason
+ * unrelated to its syntax: a `Date` for `date`/`time`, a number for
+ * `number`/`plural`/`selectordinal`, one of the message's own branch keys for
+ * `select`, and a plain string for a bare placeholder.
  */
-function isNumericArgument(message: string, name: string): boolean {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\{\\s*${escaped}\\s*,\\s*(?:plural|selectordinal)\\b`).test(
-    message,
-  );
-}
-
-/**
- * A dummy value per ICU argument `message` reads, typed to match how the
- * argument is used so a well-formed message never fails to format for a
- * reason unrelated to its syntax.
- */
-function dummyIcuValues(message: string): Record<string, string | number> {
+function dummyIcuValues(message: string): Record<string, string | number | Date> {
   return Object.fromEntries(
-    icuArguments(message).map((name) => [
-      name,
-      isNumericArgument(message, name) ? 1 : "value",
-    ]),
+    parseIcuArguments(message).map(
+      ({ name, type, selectOptions }): [string, string | number | Date] => {
+        if (type === "number" || type === "plural" || type === "selectordinal") {
+          return [name, 1];
+        }
+        if (type === "date" || type === "time") {
+          return [name, new Date("2024-01-01T00:00:00Z")];
+        }
+        if (type === "select") {
+          return [
+            name,
+            selectOptions.includes("other") ? "other" : (selectOptions[0] ?? "value"),
+          ];
+        }
+        return [name, "value"];
+      },
+    ),
   );
 }
 
@@ -133,13 +311,15 @@ describe("the message catalogs", () => {
     expect(mismatched).toStrictEqual([]);
   });
 
-  // The comparison above only ever looks at argument *names*, extracted with a
-  // regular expression that never parses the message. An unbalanced brace, a
+  // The comparison above only ever looks at argument *names*, and never asks
+  // next-intl to actually compile the message. An unbalanced brace, a
   // malformed `plural` clause, or a broken `select` can leave the names
   // untouched and still pass it, then fail at render time in whichever locale
   // nobody was looking at. Actually invoking the message through the same
-  // translator the app renders with is what a regular expression cannot
-  // stand in for.
+  // translator the app renders with, with a rethrowing `onError`, is what
+  // catches that; `dummyIcuValues` passing a values object also defeats
+  // next-intl's no-compile fast path, so every message is genuinely parsed
+  // rather than only the ones a component happens to pass arguments to.
   it.each([...LOCALES])(
     "formats every message in %s without an ICU error",
     (locale) => {
@@ -152,25 +332,126 @@ describe("the message catalogs", () => {
         },
       }) as unknown as (
         key: string,
-        values?: Record<string, string | number>,
+        values?: Record<string, string | number | Date>,
       ) => string;
 
-      const broken = referenceKeys.filter((key) => {
+      // Each failure keeps the ICU error's own message, not just the key
+      // name: the whole point of actually parsing the message is the
+      // diagnostic, and a maintainer reading a failed assertion needs the
+      // reason, not just which key broke.
+      const broken = referenceKeys.flatMap((key) => {
         const message = valueAt(messages, key);
         if (typeof message !== "string") {
-          return true;
+          return [`${key}: not a string`];
         }
         try {
           translate(key, dummyIcuValues(message));
-          return false;
-        } catch {
-          return true;
+          return [];
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          return [`${key}: ${reason}`];
         }
       });
 
       expect(broken).toStrictEqual([]);
     },
   );
+
+  describe("dummy ICU values", () => {
+    // Finding: a date/time argument used to get the string "value", the same
+    // as a bare placeholder, and formatting a valid `{when, date, short}`
+    // message then threw `FORMATTING_ERROR: Invalid time value` — a false
+    // positive on a perfectly valid message. No catalog uses `date`/`time`
+    // today, so this fixture is what stands in for one.
+    it("passes a Date for a date/time argument, so a valid date message formats", () => {
+      const message = "{when, date, short}";
+      const translate = createTranslator({
+        locale: "en",
+        messages: { Fixture: { when: message } },
+        onError: (error) => {
+          throw error;
+        },
+      }) as unknown as (
+        key: string,
+        values?: Record<string, string | number | Date>,
+      ) => string;
+
+      expect(() => translate("Fixture.when", dummyIcuValues(message))).not.toThrow();
+    });
+
+    // Finding, as reported: the argument-name scan used `[A-Za-z_]\w*`,
+    // which skips a "legal ICU argument name such as `{user-name}`".
+    // Checked empirically against the real parser (the same one
+    // `createTranslator` compiles with) and rejected: a hyphen is Unicode
+    // `Pattern_Syntax`, which `intl-messageformat`'s own identifier rule
+    // excludes, so `{user-name}` is not valid ICU syntax at all — it
+    // raises `MALFORMED_ARGUMENT` regardless of what dummy value this
+    // scan supplies, and the invoke-through-`createTranslator` test above
+    // already reports it as broken for that reason.
+    it("still reports a hyphenated name as broken, because it is not legal ICU syntax", () => {
+      const message = "{user-name}";
+      const translate = createTranslator({
+        locale: "en",
+        messages: { Fixture: { greeting: message } },
+        onError: (error) => {
+          throw error;
+        },
+      }) as unknown as (
+        key: string,
+        values?: Record<string, string | number | Date>,
+      ) => string;
+
+      expect(() => translate("Fixture.greeting", dummyIcuValues(message))).toThrow(
+        /MALFORMED_ARGUMENT/,
+      );
+    });
+
+    // The real latent gap `[A-Za-z_]\w*` had: a name is legal ICU syntax as
+    // long as it starts with a character that is not Unicode whitespace or
+    // `Pattern_Syntax`, so a *digit*-leading name such as `{1fast}` is
+    // legal and the old pattern (start class `[A-Za-z_]`) missed it too.
+    it("treats a digit-leading name as an argument", () => {
+      const message = "{1fast}";
+      expect(icuArguments(message)).toStrictEqual(["1fast"]);
+
+      const translate = createTranslator({
+        locale: "en",
+        messages: { Fixture: { greeting: message } },
+        onError: (error) => {
+          throw error;
+        },
+      }) as unknown as (
+        key: string,
+        values?: Record<string, string | number | Date>,
+      ) => string;
+
+      expect(() =>
+        translate("Fixture.greeting", dummyIcuValues(message)),
+      ).not.toThrow();
+    });
+
+    // Finding: the old regular expression also matched a `select` branch's
+    // own one-word label or message body — `{Other}` inside `other {Other}`
+    // — as if it were a top-level argument, so introducing any `select`
+    // failed the name-comparison test on a phantom argument.
+    it("does not mistake a select branch's own label or text for an argument", () => {
+      const message = "{gender, select, male {He} female {She} other {Other}}";
+      expect(icuArguments(message)).toStrictEqual(["gender"]);
+
+      const translate = createTranslator({
+        locale: "en",
+        messages: { Fixture: { pronoun: message } },
+        onError: (error) => {
+          throw error;
+        },
+      }) as unknown as (
+        key: string,
+        values?: Record<string, string | number | Date>,
+      ) => string;
+
+      expect(() => translate("Fixture.pronoun", dummyIcuValues(message))).not.toThrow();
+    });
+  });
 });
 
 describe("the typed message keys", () => {
