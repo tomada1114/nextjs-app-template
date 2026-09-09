@@ -156,6 +156,7 @@ const EDITED_CODE_FILES = [
  */
 const EDITED_DOCUMENT_FILES = [
   ".agents/skills/building-app-routes/SKILL.md",
+  ".agents/skills/changing-gates/SKILL.md",
   ".agents/skills/designing-errors/SKILL.md",
   ".agents/skills/localizing-ui/SKILL.md",
   ".agents/skills/starting-an-app/SKILL.md",

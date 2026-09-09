@@ -120,6 +120,27 @@ const message = "imported from ../ai/adapters/fake/index by hand";
 /* import { blocked } from "./block-comment-only"; */
 `;
 
+/**
+ * Modules the walk has to come back with, chosen for the shapes they cover.
+ *
+ * @remarks
+ * A named subset rather than the whole tree: enumerating every module made the
+ * suite fail on each legal new file, which teaches its reader to edit the
+ * expectation. Each entry earns its place — three directories deep (the
+ * recursion), a `.tsx` inside a bracketed segment (the extension filter and the
+ * directory name), a zone holding exactly one module, a file at the root of
+ * `src/`, and a nested module in the zone the surface rules are about. What the
+ * exhaustive list was really standing in for — a scan that quietly found
+ * nothing — is asserted directly by this and by the zone-coverage case below.
+ */
+const SCAN_ANCHORS = [
+  "src/ai/adapters/fake/index.ts",
+  "src/app/[locale]/page.tsx",
+  "src/core/result.ts",
+  "src/proxy.ts",
+  "src/server/handlers/ask.ts",
+];
+
 describe("the import scanner the zone assertions run on", () => {
   it("finds every spelling of an import and nothing that only looks like one", () => {
     expect(importSpecifiers(SCANNER_CONTROL)).toStrictEqual([
@@ -149,32 +170,9 @@ describe("the import scanner the zone assertions run on", () => {
   });
 
   it("walks the whole src/ tree, not a subdirectory of it", () => {
-    expect(sourceModules.map((module) => module.file)).toStrictEqual([
-      "src/ai/adapters/anthropic/client.ts",
-      "src/ai/adapters/anthropic/deadline.ts",
-      "src/ai/adapters/anthropic/errors.ts",
-      "src/ai/adapters/anthropic/index.ts",
-      "src/ai/adapters/anthropic/request.ts",
-      "src/ai/adapters/anthropic/retry-after.ts",
-      "src/ai/adapters/fake/index.ts",
-      "src/ai/errors.ts",
-      "src/ai/index.ts",
-      "src/ai/port.ts",
-      "src/app/[locale]/layout.tsx",
-      "src/app/[locale]/page.tsx",
-      "src/app/api/ask/route.ts",
-      "src/app/layout.tsx",
-      "src/core/result.ts",
-      "src/i18n/locales.ts",
-      "src/i18n/messages.ts",
-      "src/i18n/navigation.ts",
-      "src/i18n/request.ts",
-      "src/i18n/routing.ts",
-      "src/proxy.ts",
-      "src/server/composition.ts",
-      "src/server/env.ts",
-      "src/server/handlers/ask.ts",
-    ]);
+    expect(sourceModules.map((module) => module.file)).toEqual(
+      expect.arrayContaining(SCAN_ANCHORS),
+    );
   });
 
   it("resolves a relative specifier to the module it names", () => {
@@ -189,6 +187,126 @@ describe("the import scanner the zone assertions run on", () => {
 });
 
 // --- the zone edges ----------------------------------------------------------
+
+/**
+ * Every zone under `src/`, and the zones a module in it may not import.
+ *
+ * @remarks
+ * AGENTS.md's `app → server → ai → core` written as a table, with `i18n` the
+ * leaf the page tree and the handlers read. A zone added to `src/` has to be
+ * given a row here before this suite passes, which is the review the table
+ * exists to force. `eslint.config.mjs` states the same edges as
+ * `no-restricted-imports` groups; the two layers are checked independently, so
+ * a rule deleted there still fails here.
+ */
+const FORBIDDEN_ZONE_IMPORTS: Readonly<Record<string, readonly string[]>> = {
+  "src/ai": ["src/app", "src/i18n", "src/server"],
+  "src/app": [],
+  "src/core": ["src/ai", "src/app", "src/i18n", "src/server"],
+  "src/i18n": ["src/ai", "src/app", "src/server"],
+  "src/server": ["src/app"],
+};
+
+/** The AI layer's whole surface, as a repo-relative module. */
+const AI_SURFACE = "src/ai/index";
+
+/**
+ * The only two spellings of that surface a caller outside the layer may use.
+ *
+ * @remarks
+ * Derived from {@link AI_SURFACE} rather than typed again: the bare directory
+ * import resolves to the same module, and `eslint.config.mjs`'s
+ * `AI_LAYER_PRIVATE` leaves both alone, so the two layers have to agree on
+ * exactly this pair.
+ */
+const AI_SURFACE_MODULES = [path.posix.dirname(AI_SURFACE), AI_SURFACE];
+
+/** Whether `resolved` is `zone` itself or a module inside it. */
+function inZone(resolved: string, zone: string): boolean {
+  return resolved === zone || resolved.startsWith(`${zone}/`);
+}
+
+/**
+ * `"<file>: <specifier>"` for every import crossing an edge the table forbids.
+ *
+ * @remarks
+ * The module list is a parameter rather than {@link sourceModules} closed over,
+ * so the checker can be driven with a synthetic module and proved to report as
+ * well as to stay silent.
+ */
+function crossZoneOffenders(modules: readonly Module[]): string[] {
+  return modules.flatMap((module) => {
+    const zone = Object.keys(FORBIDDEN_ZONE_IMPORTS).find((candidate) =>
+      inZone(module.file, candidate),
+    );
+    const forbidden = zone === undefined ? [] : (FORBIDDEN_ZONE_IMPORTS[zone] ?? []);
+    return module.specifiers
+      .filter((specifier) => {
+        const resolved = resolveWithin(module.file, specifier);
+        return (
+          resolved !== undefined && forbidden.some((other) => inZone(resolved, other))
+        );
+      })
+      .map((specifier) => `${module.file}: ${specifier}`);
+  });
+}
+
+/** The same, for an AI-layer import that is not one of its surface spellings. */
+function aiLayerBypasses(modules: readonly Module[]): string[] {
+  return modules.flatMap((module) =>
+    module.specifiers
+      .filter((specifier) => {
+        const resolved = resolveWithin(module.file, specifier);
+        return (
+          resolved !== undefined &&
+          inZone(resolved, path.posix.dirname(AI_SURFACE)) &&
+          !AI_SURFACE_MODULES.includes(resolved)
+        );
+      })
+      .map((specifier) => `${module.file}: ${specifier}`),
+  );
+}
+
+describe("src/ imports run one way, app → server → ai → core", () => {
+  it("reaches every zone the table names", () => {
+    const unscanned = Object.keys(FORBIDDEN_ZONE_IMPORTS).filter(
+      (zone) => !sourceModules.some((module) => inZone(module.file, zone)),
+    );
+    expect(unscanned).toStrictEqual([]);
+  });
+
+  it("gives every zone under src/ a row, so a new one needs a decision", () => {
+    const zones = readdirSync(path.join(repoRoot, "src"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `src/${entry.name}`)
+      .sort();
+    expect(zones).toStrictEqual(Object.keys(FORBIDDEN_ZONE_IMPORTS).sort());
+  });
+
+  it("keeps exactly one module at the root of src/, which belongs to no zone", () => {
+    const atRoot = sourceModules
+      .map((module) => module.file)
+      .filter((file) => file.split("/").length === 2);
+    expect(atRoot).toStrictEqual(["src/proxy.ts"]);
+  });
+
+  it.each(Object.entries(FORBIDDEN_ZONE_IMPORTS))(
+    "leaves %s importing none of %p",
+    (zone) => {
+      expect(crossZoneOffenders(modulesIn(zone))).toStrictEqual([]);
+    },
+  );
+
+  it("reports a crossing when there is one, so the rows above are not vacuous", () => {
+    const offenders = crossZoneOffenders([
+      {
+        file: "src/core/probe.ts",
+        specifiers: ["../server/env", "./result", "next"],
+      },
+    ]);
+    expect(offenders).toStrictEqual(["src/core/probe.ts: ../server/env"]);
+  });
+});
 
 describe("src/core/ is framework-free and vendor-free", () => {
   // The zone holds the vocabulary the other three are written in. A framework
@@ -207,13 +325,28 @@ describe("src/core/ is framework-free and vendor-free", () => {
 });
 
 describe("src/app/ and src/server/ reach the AI layer only through src/ai/index.ts", () => {
-  it("imports no adapter directly", () => {
-    const offenders = modulesIn("src/app", "src/server").flatMap((module) =>
-      module.specifiers
-        .filter((specifier) => importsAdapter(module.file, specifier))
-        .map((specifier) => `${module.file}: ${specifier}`),
-    );
-    expect(offenders).toStrictEqual([]);
+  it("names no module inside the layer but its surface", () => {
+    expect(aiLayerBypasses(modulesIn("src/app", "src/server"))).toStrictEqual([]);
+  });
+
+  it("reports a bypass when there is one, so the check above is not vacuous", () => {
+    // Both legal spellings and both private ones in one module: this is what
+    // pins the allow-list, and what keeps it agreeing with `AI_LAYER_PRIVATE`.
+    const offenders = aiLayerBypasses([
+      {
+        file: "src/server/probe.ts",
+        specifiers: [
+          "../ai/index",
+          "../ai",
+          "../ai/errors",
+          "../ai/adapters/fake/index",
+        ],
+      },
+    ]);
+    expect(offenders.sort()).toStrictEqual([
+      "src/server/probe.ts: ../ai/adapters/fake/index",
+      "src/server/probe.ts: ../ai/errors",
+    ]);
   });
 
   it("imports no vendor SDK", () => {
@@ -223,18 +356,6 @@ describe("src/app/ and src/server/ reach the AI layer only through src/ai/index.
         .map((specifier) => `${module.file}: ${specifier}`),
     );
     expect(offenders).toStrictEqual([]);
-  });
-
-  it("still reaches the AI layer, so the edges above are not vacuous", () => {
-    const throughTheEntryPoint = modulesIn("src/app", "src/server").filter((module) =>
-      module.specifiers.some(
-        (specifier) => resolveWithin(module.file, specifier) === "src/ai/index",
-      ),
-    );
-    expect(throughTheEntryPoint.map((module) => module.file)).toStrictEqual([
-      "src/server/composition.ts",
-      "src/server/handlers/ask.ts",
-    ]);
   });
 });
 
@@ -270,9 +391,6 @@ describe("src/ai/port.ts does not know its adapters", () => {
 // a guess.
 
 const COMPOSITION_ROOT = "src/server/composition.ts";
-
-/** The AI layer's whole surface, as a repo-relative module. */
-const AI_SURFACE = "src/ai/index";
 
 /**
  * Names `src/ai/index.ts` publishes that the composition root can call while
