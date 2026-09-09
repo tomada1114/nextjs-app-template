@@ -118,6 +118,32 @@ The hook is deliberately narrow, and AGENTS.md's "Enforcement layers" holds the 
 for why. The bar for a new or changed job follows from it: it must never fire on
 intended work — test it against a normal commit before trusting it to catch a bad one.
 
+A changed job only reaches an author whose clone has the hook, and what puts it there is
+lefthook's own `postinstall`, allowlisted in `pnpm-workspace.yaml`, on every non-CI
+`pnpm install`. Nothing here re-installs it: `package.json`'s `prepare` script runs
+`scripts/verify-hooks.mjs`, which **verifies and never writes**, because the defect
+issue #81 was really about is that lefthook's postinstall cannot fail — it ignores the
+exit status of the `lefthook install -f` it spawns, so a hook that could not be written
+leaves the install green and silent.
+
+The verifier checks both halves, and neither is redundant. `lefthook.yml` has to declare
+a `pre-commit` block, because `lefthook install` run without a config _creates a blank
+one_, reports success and exits 0 — an empty gate that installs cleanly. And a lefthook
+pre-commit hook has to exist at the path `git rev-parse --git-path hooks` resolves to,
+which is asked rather than assumed: `core.hooksPath` set to a writable directory is
+perfectly fine and is not a defect, and a linked worktree's hooks live in the shared
+common directory. Verification skips only where it is meaningless (`CI` set, not a Git
+work tree root, no `lefthook` in `node_modules`) and otherwise fails the install with an
+`ERR_HOOKS_*` report naming `ALLOW_MISSING_GIT_HOOKS=1`, the one deliberate opt-out.
+`tests/verify-hooks.test.ts` pins that behaviour against throwaway `git init`
+repositories and the real lefthook, the `prepare` entry included; it isolates `HOME` and
+`XDG_CONFIG_HOME` rather than relying on `isolatedGitEnv`, which strips `GIT_*` and so
+cannot keep a developer's global `core.hooksPath` out of a fixture repository.
+
+Pointing `prepare` at an installer instead is the change to reject: it repeats what
+lefthook already does, and repeats it just as silently, which leaves AGENTS.md's "every
+author, any tool" row resting on an install nobody checked.
+
 Job ordering is load-bearing rather than incidental. `format` runs alone before the
 parallel group so `eslint`, `typecheck` and `check:staged` see the formatted, re-staged
 blobs rather than the working tree as it stood before the commit began. Preserve that

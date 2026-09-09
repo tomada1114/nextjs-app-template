@@ -63,9 +63,14 @@ documentation.
 
 ```sh
 corepack pnpm@11.18.0 install --frozen-lockfile
-pnpm hooks:install
 pnpm check:quick
 ```
+
+The install puts the Git hooks in place on its own — lefthook's `postinstall` does it,
+on every non-CI install — and `package.json`'s `prepare` script then runs
+`scripts/verify-hooks.mjs`, which fails the install if the pre-commit hook did not
+actually land. So there is no setup step for the hooks; `pnpm hooks:install` is the
+repair when that check reports one is needed.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete workflow, and
 [AGENTS.md](AGENTS.md) for the architecture, the command index, and the rules every
