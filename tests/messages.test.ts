@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 
 import { LOCALES } from "../src/i18n/locales";
-import { MESSAGE_KEYS } from "../src/i18n/messages";
+import { MESSAGE_KEYS, type Messages } from "../src/i18n/messages";
 
 // A message catalog is the one place in this repository where a missing entry
 // is invisible: `next-intl` renders an absent key as the key itself, in
@@ -66,6 +67,32 @@ function icuArguments(message: string): string[] {
   return [...new Set(names)].sort();
 }
 
+/**
+ * Whether `message` reads `name` as a `plural` or `selectordinal` argument,
+ * which `intl-messageformat` requires a number for; every other argument
+ * shape (a plain placeholder, or a `select`'s discriminant) accepts a string.
+ */
+function isNumericArgument(message: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\{\\s*${escaped}\\s*,\\s*(?:plural|selectordinal)\\b`).test(
+    message,
+  );
+}
+
+/**
+ * A dummy value per ICU argument `message` reads, typed to match how the
+ * argument is used so a well-formed message never fails to format for a
+ * reason unrelated to its syntax.
+ */
+function dummyIcuValues(message: string): Record<string, string | number> {
+  return Object.fromEntries(
+    icuArguments(message).map((name) => [
+      name,
+      isNumericArgument(message, name) ? 1 : "value",
+    ]),
+  );
+}
+
 const catalogs = new Map(LOCALES.map((locale) => [locale, readCatalog(locale)]));
 
 /** The reference catalog: the one every other locale is a translation of. */
@@ -105,6 +132,45 @@ describe("the message catalogs", () => {
 
     expect(mismatched).toStrictEqual([]);
   });
+
+  // The comparison above only ever looks at argument *names*, extracted with a
+  // regular expression that never parses the message. An unbalanced brace, a
+  // malformed `plural` clause, or a broken `select` can leave the names
+  // untouched and still pass it, then fail at render time in whichever locale
+  // nobody was looking at. Actually invoking the message through the same
+  // translator the app renders with is what a regular expression cannot
+  // stand in for.
+  it.each([...LOCALES])(
+    "formats every message in %s without an ICU error",
+    (locale) => {
+      const messages = catalogs.get(locale) as Messages;
+      const translate = createTranslator({
+        locale,
+        messages,
+        onError: (error) => {
+          throw error;
+        },
+      }) as unknown as (
+        key: string,
+        values?: Record<string, string | number>,
+      ) => string;
+
+      const broken = referenceKeys.filter((key) => {
+        const message = valueAt(messages, key);
+        if (typeof message !== "string") {
+          return true;
+        }
+        try {
+          translate(key, dummyIcuValues(message));
+          return false;
+        } catch {
+          return true;
+        }
+      });
+
+      expect(broken).toStrictEqual([]);
+    },
+  );
 });
 
 describe("the typed message keys", () => {
