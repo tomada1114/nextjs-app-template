@@ -65,6 +65,36 @@ function postRequest(body: string, init: RequestInit = {}): Request {
 /** The answer the fake port is configured to give unless a test says otherwise. */
 const ANSWER = { answer: "Kyoto is the old capital." };
 
+/**
+ * The two ceilings the handler enforces, written out rather than imported.
+ *
+ * @remarks
+ * Importing `MAX_PROMPT_LENGTH` or `MAX_REQUEST_BODY_BYTES` would make every
+ * boundary case below agree with the implementation by construction — a
+ * ceiling raised by mistake would move the tests with it and nothing would
+ * fail. These are the numbers a caller is promised, so they are typed here.
+ * The body ceiling is stated in bytes and exercised with ASCII JSON, where a
+ * character is one byte.
+ */
+const MAX_PROMPT_LENGTH = 8_000;
+const MAX_REQUEST_BODY_BYTES = 65_536;
+
+/**
+ * A well-formed request body padded out to exactly `bytes` bytes.
+ *
+ * @remarks
+ * The padding goes in a property the schema does not declare — `zod` strips an
+ * unknown key rather than rejecting it — because the `prompt` has a ceiling of
+ * its own far below the body's, so no legal prompt can fill a body on its own.
+ */
+function bodyOfBytes(bytes: number): string {
+  const envelope = JSON.stringify({ prompt: "Which city?", padding: "" });
+  return JSON.stringify({
+    prompt: "Which city?",
+    padding: "a".repeat(bytes - envelope.length),
+  });
+}
+
 describe("the ask handler", () => {
   it("answers a well-formed request with the model's structured output", async () => {
     const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
@@ -78,7 +108,7 @@ describe("the ask handler", () => {
     await expect(response.json()).resolves.toStrictEqual(ANSWER);
   });
 
-  it("passes the prompt through to the port unchanged", async () => {
+  it("passes the prompt to the port with its surrounding whitespace trimmed", async () => {
     const seen: CapturedRequest[] = [];
     const handler = createAskHandler({
       llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
@@ -89,7 +119,7 @@ describe("the ask handler", () => {
     );
 
     expect(seen).toHaveLength(1);
-    expect(seen[0]?.prompt).toBe("  Which city? ");
+    expect(seen[0]?.prompt).toBe("Which city?");
   });
 
   // The mapping itself, not the port's field: the UI ships `en` and `ja`, and
@@ -157,6 +187,16 @@ describe("the ask handler", () => {
   it.each([
     ["an object with no prompt", JSON.stringify({ locale: "en" })],
     ["an empty prompt", JSON.stringify({ prompt: "" })],
+    ["a whitespace-only prompt", JSON.stringify({ prompt: "   " })],
+    ["a prompt of tabs and newlines", JSON.stringify({ prompt: "\t\n \r\n" })],
+    [
+      "a prompt one character over the ceiling",
+      JSON.stringify({ prompt: "a".repeat(MAX_PROMPT_LENGTH + 1) }),
+    ],
+    [
+      "a prompt still over the ceiling once its whitespace is trimmed",
+      JSON.stringify({ prompt: ` ${"a".repeat(MAX_PROMPT_LENGTH + 1)} ` }),
+    ],
     ["a non-string prompt", JSON.stringify({ prompt: 42 })],
     ["a locale this app does not ship", JSON.stringify({ prompt: "Hi", locale: "fr" })],
     ["a blank locale", JSON.stringify({ prompt: "Hi", locale: "" })],
@@ -171,6 +211,99 @@ describe("the ask handler", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "ERR_BAD_REQUEST" },
     });
+  });
+
+  it("rejects a request that carries no body at all", async () => {
+    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+
+    const response = await handler(new Request(ENDPOINT, { method: "POST" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "ERR_BAD_REQUEST" },
+    });
+  });
+
+  it.each([
+    ["at the ceiling", "a".repeat(MAX_PROMPT_LENGTH)],
+    ["at the ceiling once trimmed", `  ${"a".repeat(MAX_PROMPT_LENGTH)}  `],
+    ["at the floor", "a"],
+  ])("answers a prompt %s", async (_label, prompt) => {
+    const seen: CapturedRequest[] = [];
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    const response = await handler(postRequest(JSON.stringify({ prompt })));
+
+    expect(response.status).toBe(200);
+    expect(seen[0]?.prompt).toBe(prompt.trim());
+  });
+
+  // The endpoint's own promise, and the one place message text is asserted on:
+  // a caller learns which constraint it broke and never reads its own input
+  // back out of the answer, which is what would copy a prompt into every log
+  // that records a 400. See the `designing-errors` skill.
+  it("names the prompt constraint without echoing the prompt that broke it", async () => {
+    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+    const rejected = "hunter2-".repeat(MAX_PROMPT_LENGTH);
+
+    const response = await handler(postRequest(JSON.stringify({ prompt: rejected })));
+    const body = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(body).toContain("ERR_BAD_REQUEST");
+    expect(body).toContain(String(MAX_PROMPT_LENGTH));
+    expect(body).not.toContain("hunter2");
+  });
+
+  it("answers a body of exactly the byte ceiling", async () => {
+    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+
+    const response = await handler(postRequest(bodyOfBytes(MAX_REQUEST_BODY_BYTES)));
+
+    expect(response.status).toBe(200);
+  });
+
+  // The point is not only the status: a body this endpoint refuses must be
+  // refused *before* the port is reached, or the request has already cost
+  // money by the time it is rejected.
+  it("rejects a body over the byte ceiling without reaching the port", async () => {
+    const seen: CapturedRequest[] = [];
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    const response = await handler(
+      postRequest(bodyOfBytes(MAX_REQUEST_BODY_BYTES + 1)),
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "ERR_PAYLOAD_TOO_LARGE",
+        message: `The request body must be at most ${String(MAX_REQUEST_BODY_BYTES)} bytes.`,
+      },
+    });
+    expect(seen).toStrictEqual([]);
+  });
+
+  // A ceiling enforced by reading is a ceiling a lying client cannot move; one
+  // read off `Content-Length` would be exactly as wrong as the header is.
+  it("rejects an oversized body that declares a small Content-Length", async () => {
+    const seen: CapturedRequest[] = [];
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    const response = await handler(
+      postRequest(bodyOfBytes(MAX_REQUEST_BODY_BYTES + 1), {
+        headers: { "content-type": "application/json", "content-length": "12" },
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(seen).toStrictEqual([]);
   });
 
   it.each([
