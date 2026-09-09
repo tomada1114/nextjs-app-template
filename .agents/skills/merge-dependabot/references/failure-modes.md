@@ -134,6 +134,23 @@ for the bot's PRs.
 **Fix:** re-run with `gh run rerun <run-id>`. Never merge a PR whose checks never
 actually ran — a missing check is not a passing check.
 
+## F9 — Unrecognised or absent conclusion
+
+**Symptom:** `checks=FAILING` naming a check as `<name>=STARTUP_FAILURE`,
+`<name>=STALE`, or `<name>=UNKNOWN`.
+
+**Cause:** the check did not finish in a state the classifier vouches for.
+`STARTUP_FAILURE` means the runner never got the job started; `STALE` means GitHub
+superseded the result; `UNKNOWN` means the rollup entry carried neither a conclusion nor
+a status, which is the shape an API change or a partially-written check produces.
+
+**Fix:** none of these is a test failure, so do not read the diff for a cause — open the
+run and find out why it did not complete, then `gh run rerun <run-id>`. The verdict is
+the classifier declining to vouch for the check, not a report that the check failed;
+`PASSING` is an allow-list of `SUCCESS`, `NEUTRAL` and `SKIPPED`, and everything else is
+held deliberately. A state that ought to pass and does not is a bug in
+`scripts/lib/pr-checks.mjs`, not a reason to merge past it.
+
 ## Security review checklist
 
 Read this before approving any PR at Step 2 — this is the point of the gate, not a
