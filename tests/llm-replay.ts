@@ -178,21 +178,49 @@ export function recordingFetch(
  * during the body decode therefore surfaces as a bare `AbortError` instead.
  * Reproducing that window is what keeps the port's `cause`-by-identity promise
  * under test on both sides of the headers rather than only the near side.
+ *
+ * `bodyRead` settles once the consumer has actually started reading the body —
+ * the moment the SDK stops owning the request, and the boundary a caller can
+ * wait on instead of estimating with a real sleep. It is created once, at
+ * helper construction, with the `let resolve` pattern rather than
+ * `Promise.withResolvers`, which is ES2024 and outside `tsconfig.json`'s
+ * `lib: ["ES2023", "DOM", "DOM.Iterable"]`.
+ *
+ * The stream's `{ highWaterMark: 0 }` strategy is load-bearing: at the default
+ * high-water mark of 1 the stream pre-fills and `pull` runs at construction,
+ * before any consumer, which would resolve `bodyRead` on the near side of the
+ * boundary it exists to mark. At HWM 0, `pull` runs only once something (here,
+ * the SDK's own `Response` decoding) actually reads.
  */
-export function headersThenStallFetch(): typeof globalThis.fetch {
-  return (_input, init) => {
-    const body = new ReadableStream({
-      start(controller) {
-        const signal = init?.signal;
-        signal?.addEventListener(
-          "abort",
-          () => {
-            controller.error(abortRejection(signal.reason));
-          },
-          { once: true },
-        );
+export function headersThenStallFetch(): {
+  fetch: typeof globalThis.fetch;
+  /** Settles once the consumer has actually started reading the body. */
+  bodyRead: Promise<void>;
+} {
+  let resolveBodyRead: () => void = () => undefined;
+  const bodyRead = new Promise<void>((resolve) => {
+    resolveBodyRead = resolve;
+  });
+
+  const fetch: typeof globalThis.fetch = (_input, init) => {
+    const body = new ReadableStream(
+      {
+        start(controller) {
+          const signal = init?.signal;
+          signal?.addEventListener(
+            "abort",
+            () => {
+              controller.error(abortRejection(signal.reason));
+            },
+            { once: true },
+          );
+        },
+        pull() {
+          resolveBodyRead();
+        },
       },
-    });
+      { highWaterMark: 0 },
+    );
 
     return Promise.resolve(
       new Response(body, {
@@ -201,4 +229,6 @@ export function headersThenStallFetch(): typeof globalThis.fetch {
       }),
     );
   };
+
+  return { fetch, bodyRead };
 }
