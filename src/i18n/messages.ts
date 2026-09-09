@@ -27,7 +27,16 @@ type DottedKeys<TCatalog> = {
     : `${TKey}.${DottedKeys<TCatalog[TKey]>}`;
 }[keyof TCatalog & string];
 
-/** Every message key in the catalog, as `Namespace.key`. */
+/**
+ * Every message key in the catalog, as `Namespace.key`.
+ *
+ * @remarks
+ * Derived, so it cannot disagree with `messages/en.json` — which also means it
+ * cannot notice a key nobody added there. Catching that takes a manifest
+ * written by hand, and `tests/messages.test.ts` holds it: nothing under `src/`
+ * reads such a list, and a compile-time assertion belongs where the two things
+ * it holds together live (`type-testing`).
+ */
 export type MessageKey = DottedKeys<Messages>;
 
 /**
@@ -39,25 +48,6 @@ export type MessageKey = DottedKeys<Messages>;
  * what gives {@link Messages} something to be inferred from.
  */
 export const MESSAGES: Readonly<Record<Locale, Messages>> = { en, ja };
-
-/**
- * Every key the catalog is expected to contain, written out.
- *
- * @remarks
- * The two halves of the check pull in opposite directions, which is the point.
- * `satisfies readonly MessageKey[]` fails to compile when an entry here is not
- * in the catalog, and `tests/messages.test.ts` fails when the catalog holds a
- * key this list does not — so neither a rename nor an addition can land with
- * the typed key union and the JSON out of step.
- */
-export const MESSAGE_KEYS = [
-  "HomePage.title",
-  "HomePage.intro",
-  "HomePage.localeCount",
-  "LocaleSwitcher.label",
-  "LocaleSwitcher.en",
-  "LocaleSwitcher.ja",
-] as const satisfies readonly MessageKey[];
 
 declare module "next-intl" {
   // Teaches `useTranslations`, `getTranslations` and `useLocale` this

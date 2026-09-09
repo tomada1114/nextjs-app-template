@@ -47,16 +47,35 @@ have not made yet, so make all four first.
 2. `messages/ja.json` — add the same key. Omitting it is a type error rather than a
    blank string in production, because `MESSAGES` is annotated
    `Readonly<Record<Locale, Messages>>`.
-3. `src/i18n/messages.ts` — add the dotted `Namespace.key` to `MESSAGE_KEYS`.
+3. `tests/messages.test.ts` — add the dotted `Namespace.key` to `MESSAGE_KEYS`. It lives
+   in the test, not in `src/`, because nothing the application ships reads it: it exists
+   only to be diffed against the catalog (see the three checks below).
 4. Render it: `const t = useTranslations("Namespace")`, then `t("key")`.
 
 Then `pnpm exec vitest run tests/messages.test.ts && pnpm typecheck`.
 
-The two halves of the check pull in opposite directions, and that is the point.
-`MESSAGE_KEYS` is `as const satisfies readonly MessageKey[]`, so a key listed there that
-no catalog holds fails to compile; `tests/messages.test.ts` fails when a catalog holds a
-key the list does not. Neither direction alone catches both, so neither a rename nor an
-addition can land with the union and the JSON out of step.
+Three checks hold the catalog, the hand-written list and the typed union together. The
+last two overlap on purpose: both fail when `en.json` gains a key nobody listed, but
+only the runtime case names it.
+
+- `MESSAGE_KEYS` is `as const satisfies readonly MessageKey[]`, so an entry the catalog
+  does not hold — a typo, a key renamed or deleted in `en.json` — fails
+  `pnpm typecheck`.
+- `expectTypeOf<(typeof MESSAGE_KEYS)[number]>().toEqualTypeOf<MessageKey>()` fails
+  `pnpm typecheck` when `en.json` gained a key nobody listed, but the error names a type
+  mismatch, not the key. `as const satisfies` rather than an annotation of
+  `readonly MessageKey[]` is what makes this possible: the annotation would discard the
+  literal tuple type and let a new key land silently.
+- The runtime case fires on that same omission, comparing the list against the keys read
+  from `messages/en.json` on disk rather than from what the bundler resolved — keep it
+  for that: it is the one check that names the offending key, and the only one that
+  would notice `DottedKeys` and the test's own `dottedKeys` walk disagreeing, a
+  divergence that would make both type checks agree wrongly.
+
+`MESSAGE_KEYS` is the one thing here that is not derived from `en.json`, and that is
+deliberate. `MessageKey` agrees with the catalog by construction, so it can never report
+a key that was never added; only a list a human maintains as step 3 above can. Deriving
+it would collapse all three checks into `flatten(en) === flatten(en)`.
 
 A namespace is a first-level object in the catalog and the argument `useTranslations`
 takes. Group by the component that reads it — the template's `LocaleSwitcher` namespace
@@ -90,10 +109,11 @@ than a paraphrase. What is worth knowing before you open one:
 - `locales.ts` — `LOCALES`, `Locale`, `DEFAULT_LOCALE`. It imports nothing on purpose,
   so a module that only has to name a locale does not pull `next-intl` in behind it.
   Import the list from here, not from `routing.ts`.
-- `messages.ts` — the catalogs, `MessageKey`, `MESSAGE_KEYS`, and the
-  `declare module "next-intl"` block that teaches `AppConfig` this application's
-  `Locale` and `Messages`. That block is why a key outside the catalog fails to compile
-  instead of rendering as its own name.
+- `messages.ts` — the catalogs, `MessageKey`, and the `declare module "next-intl"` block
+  that teaches `AppConfig` this application's `Locale` and `Messages`. That block is why
+  a key outside the catalog fails to compile instead of rendering as its own name. The
+  hand-written `MESSAGE_KEYS` manifest that `MessageKey` is checked against lives in
+  `tests/messages.test.ts`.
 - `routing.ts` — `defineRouting`. `localePrefix` defaults to `"always"`, which is why
   `/en` and `/ja` are the only shapes a page is served under and `/` is a redirect.
 - `request.ts` — the per-request config, loaded by exact path from `next.config.ts`, so
@@ -154,8 +174,8 @@ The template ships `en` and `ja`. A third is one list read five times: `LOCALES`
 `src/i18n/locales.ts`; a new `messages/<locale>.json` translating every key `en.json`
 holds; a static import and a `MESSAGES` entry in `src/i18n/messages.ts`; a row in
 `OUTPUT_LANGUAGE_BY_LOCALE`; and a `LocaleSwitcher.<locale>` entry in **every** catalog
-— that one is a new key, so `MESSAGE_KEYS` gains a line too. Nothing under `src/app/` or
-in `src/proxy.ts` changes; neither names a locale.
+— that one is a new key, so `MESSAGE_KEYS` in `tests/messages.test.ts` gains a line too.
+Nothing under `src/app/` or in `src/proxy.ts` changes; neither names a locale.
 
 Locale negotiation is `next-intl`'s middleware reading the request's `Accept-Language`
 header and its locale cookie, and nothing more — no domain routing, no geolocation, no
@@ -167,8 +187,8 @@ owns it.
 ## What to run
 
 ```bash
-pnpm exec vitest run tests/messages.test.ts  # catalogs against each other and MESSAGE_KEYS
-pnpm typecheck                               # the satisfies half, and every t() call site
+pnpm exec vitest run tests/messages.test.ts  # catalogs against each other and against MESSAGE_KEYS
+pnpm typecheck                               # both type directions, and every t() call site
 pnpm exec vitest run tests/proxy.test.ts     # only if routing or the matcher changed
 pnpm build                                   # only if a page or layout changed
 ```
