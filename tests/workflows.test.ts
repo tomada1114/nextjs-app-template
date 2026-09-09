@@ -191,15 +191,69 @@ function triggerNames(lines: Line[]): Trigger[] {
   }
 
   const events = blockOf(lines, lines.indexOf(on));
-  const eventIndent = events[0]?.indent;
-  return events.flatMap((line) =>
-    line.indent === eventIndent ? named(eventName(line.text), line) : [],
-  );
+  const first = events[0];
+  if (first === undefined) {
+    return [];
+  }
+  const eventIndent = first.indent;
+
+  // A block body is a sequence (every outermost entry is a trigger) or a
+  // mapping (every outermost key is a trigger). YAML lets a mapping value be
+  // written as a sequence at its key's own column, which puts a sequence item
+  // at the same indent as the key it belongs to — so in a mapping body, an
+  // outermost `- ` line is that key's value, never a sibling trigger.
+  const isSequence = first.text.startsWith("- ");
+  return events.flatMap((line) => {
+    if (line.indent !== eventIndent) {
+      return [];
+    }
+    if (!isSequence && line.text.startsWith("- ")) {
+      return [];
+    }
+    return named(eventName(line.text), line);
+  });
 }
 
 /** The line on which `on:` names `pull_request_target`, if any. */
 function pullRequestTargetLine(lines: Line[]): Line | undefined {
   return triggerNames(lines).find(({ name }) => name === "pull_request_target")?.line;
+}
+
+/**
+ * The top-level `on:` line, when its inline value opens a flow collection
+ * (`[` or `{`) that never closes again on that same physical line.
+ *
+ * @remarks
+ * A flow collection is legal YAML spread across several physical lines
+ * (`on: [` … `]`), but {@link scan} reads one physical line at a time and
+ * nothing rejoins them into a single value. Fed a lone `[`, {@link
+ * flowEntries} slices it to `""`, {@link eventName} reports no event for
+ * that, and {@link triggerNames} comes back empty — silently, with no
+ * problem reported. That would let a workflow declare `pull_request_target`
+ * past `ERR_WORKFLOW_PULL_REQUEST_TARGET` and skip
+ * `ERR_WORKFLOW_CONCURRENCY_MISSING` too, so this is read for and reported on
+ * directly rather than parsed: failing closed on an `on:` this lint cannot
+ * finish reading is cheaper, and strictly safer, than teaching the scanner to
+ * rejoin physical lines into one flow value.
+ */
+function unterminatedFlowOn(lines: Line[]): Line | undefined {
+  const on = triggerLine(lines);
+  if (on === undefined) {
+    return undefined;
+  }
+  const inline = inlineValue(on);
+  if (!/^[[{]/.test(inline)) {
+    return undefined;
+  }
+  let depth = 0;
+  for (const character of inline) {
+    if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      depth -= 1;
+    }
+  }
+  return depth !== 0 ? on : undefined;
 }
 
 interface Job {
@@ -552,6 +606,17 @@ function lintWorkflow(source: string): Problem[] {
   const report = (code: string, line: number, message: string): void => {
     problems.push({ code, line, message });
   };
+
+  // An `on:` this lint cannot finish reading must not silently pass as "no
+  // triggers": that is exactly the shape a pull_request_target could hide in.
+  const unreadableOn = unterminatedFlowOn(lines);
+  if (unreadableOn !== undefined) {
+    report(
+      "ERR_WORKFLOW_ON_UNREADABLE",
+      unreadableOn.number,
+      "on: opens a flow collection ([ or {) that continues onto later lines. This lint cannot read a flow collection split across physical lines — rewrite it as a block sequence/mapping, or keep it on one line.",
+    );
+  }
 
   const pullRequestTarget = pullRequestTargetLine(lines);
   if (pullRequestTarget !== undefined) {
@@ -1201,6 +1266,23 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
   });
 
+  it("reports on: as unreadable for a flow sequence that spans multiple lines", () => {
+    // #108 follow-up: `on: [` on its own line is a legal flow sequence that
+    // continues onto later physical lines, but the scanner reads each
+    // physical line on its own, so `inlineValue` sees only the bare `[` and
+    // `triggerNames` silently reports zero triggers. That would let a
+    // workflow declare `pull_request_target` past ERR_WORKFLOW_PULL_REQUEST_TARGET
+    // and skip ERR_WORKFLOW_CONCURRENCY_MISSING as well, so an `on:` this
+    // lint cannot finish reading is reported directly instead of silently
+    // parsed as empty.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [\n  pull_request_target,\n  push,\n]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+  });
+
   it("does not read a branch named after the trigger as the trigger itself", () => {
     const source = CLEAN_WORKFLOW.replace(
       "  pull_request:\n",
@@ -1705,6 +1787,62 @@ describe("lintWorkflow", () => {
     );
 
     expect(lintWorkflow(source)).toEqual([]);
+  });
+});
+
+// --- triggerNames, in isolation from lintWorkflow's other rules --------------
+
+describe("triggerNames", () => {
+  it("does not read a mapping value's own-column sequence item as a sibling trigger", () => {
+    // #108: a mapping value written as a block sequence at its key's own
+    // column (legal YAML, same shape `blockOf` already special-cases for
+    // `steps:`) put the sequence item at the same indent as `schedule:`
+    // itself, so it used to read as a second, bogus trigger named "cron".
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      'on:\n  schedule:\n  - cron: "0 6 * * 1"\n',
+    );
+
+    expect(triggerNames(scan(source)).map(({ name }) => name)).toEqual(["schedule"]);
+  });
+
+  it.each([
+    ["scalar", "on: push\n", ["push"]],
+    ["flow sequence", "on: [push, pull_request]\n", ["push", "pull_request"]],
+    ["block sequence", "on:\n  - push\n  - pull_request\n", ["push", "pull_request"]],
+    [
+      "block sequence at the key's own column",
+      "on:\n- push\n- pull_request\n",
+      ["push", "pull_request"],
+    ],
+    [
+      "mapping with a nested sub-key",
+      "on:\n  pull_request:\n    branches: [main]\n",
+      ["pull_request"],
+    ],
+    [
+      "mapping with a nested sub-mapping",
+      "on:\n  workflow_dispatch:\n    inputs:\n      environment:\n        required: true\n",
+      ["workflow_dispatch"],
+    ],
+  ])("reads the %s form of on: correctly", (_shape, onBlock, expected) => {
+    const source = CLEAN_WORKFLOW.replace("on:\n  pull_request:\n", onBlock);
+
+    expect(triggerNames(scan(source)).map(({ name }) => name)).toEqual(expected);
+  });
+
+  it("reports no triggers for a flow sequence that spans multiple lines", () => {
+    // A flow collection may legally continue past its opening line, but scan()
+    // reads one physical line at a time, so inlineValue(on) sees only the bare
+    // "[" and every entry is lost. triggerNames stays silent about it on
+    // purpose: lintWorkflow's ERR_WORKFLOW_ON_UNREADABLE is what turns this
+    // shape into a reported problem instead of a silently empty trigger list.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [\n  pull_request_target,\n  push,\n]\n",
+    );
+
+    expect(triggerNames(scan(source))).toEqual([]);
   });
 });
 
