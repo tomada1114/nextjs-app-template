@@ -53,11 +53,13 @@ const automationTests = [
 // HTTP. That is why it is its own project rather than another entry in
 // `automationTests` — the default run (`pnpm test`, `pnpm test:coverage`, and
 // ci.yml's `test` job) has no build to serve, and a suite that quietly built
-// one for itself would pay for a second build in every workflow. `pnpm run
-// test:smoke` is what runs it, from `check:source` and from ci.yml's `static`
-// job immediately after `Build`; the two default scripts filter it out with
-// `--project='!smoke'`. Naming the file here is still what keeps it out of
-// `unit` below, whose glob would otherwise collect it on a 5-second budget.
+// one for itself would pay for a second build in every workflow. It refuses to
+// run against a missing or stale build instead, so the build stays the
+// caller's to do exactly once. `pnpm run test:smoke` is what runs it, from
+// `check:source` and from ci.yml's `static` job immediately after `Build`; the
+// two default scripts filter it out with `--project='!smoke'`. Naming the file
+// here is still what keeps it out of `unit` below, whose glob would otherwise
+// collect it on a 5-second budget.
 const smokeTests = ["tests/server-smoke.test.ts"];
 
 // `server-only` is a build-time marker rather than a runtime module: its only
@@ -198,8 +200,9 @@ export default defineConfig({
         // boundary, so the v8 provider reports these files at whatever the
         // in-process tests reach and no number below moves when the smoke
         // suite passes. They stay inside `include` above, so they still
-        // report as a percentage — they simply have no floor to trip. This is a narrower threshold glob, not a
-        // `coverage.exclude` entry, which AGENTS.md forbids by name.
+        // report as a percentage — they simply have no floor to trip. This is
+        // a narrower threshold glob, not a `coverage.exclude` entry, which
+        // AGENTS.md forbids by name.
         "src/{core,ai,server}/**": {
           lines: 80,
           functions: 80,

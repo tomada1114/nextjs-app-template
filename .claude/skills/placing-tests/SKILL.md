@@ -75,8 +75,12 @@ subject:
   `--project='!smoke'`, because there is no build there to serve and a suite that built
   one for itself would pay for a second build in every workflow. `pnpm run test:smoke`
   is what runs it, from `check:source` and from ci.yml's `static` job, both times
-  straight after `Build`. Adding a file here is a claim that no in-process test could
-  have asserted the same thing; prefer `automation` whenever one could.
+  straight after `Build`. A test here checks the build it was handed rather than making
+  one: `tests/server-smoke.test.ts` fails with an instruction when `.next/BUILD_ID` is
+  missing, and again when it is older than `src/`, `messages/` or `next.config.ts`,
+  because a run against last commit's build passes every assertion while proving nothing
+  about the change. Adding a file here is a claim that no in-process test could have
+  asserted the same thing; prefer `automation` whenever one could.
 
 The two directions fail differently, which is why `automation` is a list rather than a
 glob. Forgetting to register a test that does I/O leaves it in `unit`, where the short
