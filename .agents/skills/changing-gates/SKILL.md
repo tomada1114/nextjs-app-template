@@ -82,36 +82,39 @@ own `ERR_WORKFLOW_*` code:
   flow mapping alike. The flow mapping has to be one physical line with balanced braces.
   Only two shapes are read at all — a flow collection whose braces balance on its own
   line, and a plain scalar taken at face value — and anything else is refused as
-  `ERR_WORKFLOW_CONCURRENCY_UNREADABLE`, the same way an `on:` in that shape is refused
-  as `ERR_WORKFLOW_ON_UNREADABLE`. That covers a flow collection continued onto the next
-  line or unbalanced because a quoted value carries a brace, one left unbalanced by a
-  collection that opens part-way along the value rather than at its first character, and
-  a value led by a YAML anchor, alias or tag (`&`, `*`, `!`) — none of which is the
-  scalar the rules behind the check would otherwise take it for. Refusing the class
-  rather than widening the detector is deliberate: an alias carries no brace at all, so
-  a detector hunting for one would still pass it, and teaching the group and cancel
-  readers to look past an indicator is the same flow-scalar parser this bullet ends by
-  ruling out. Being readable is a property of the whole declaration, not of its first
-  line: the `group:` and `cancel-in-progress:` values are read wherever they are written
-  — in the header's inline value, in a one-line flow mapping's entry, or on their own
-  body line — and each is refused on the line it sits on, under that same code. Only
-  those two keys are checked, since they are the only values the two rules read. An
-  unreadable header is the exception that reports once: the lines under a value already
-  refused are fragments of it rather than values of a declaration this lint has read.
-  That refusal does not silence the cancel rule: the cancel-on-push loop still reads an
-  unreadable block's body, so a spelling it happens to catch — an unconditional
-  `cancel-in-progress: true` sitting on its own line — is reported alongside it as
-  `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the same block rather than one
-  hiding the other. Nor does it silence the missing-concurrency rule wholesale: that one
-  is suppressed only by a `group:` question this lint could not read, so a block naming
-  no group and carrying an unreadable `cancel-in-progress` is reported under both codes.
-  Rejoining physical lines into one flow value is a flow-scalar parser this repository
-  has decided not to write. A workflow-level block covers every job and a job-level one
-  covers only its own, so declaring it per job answers the first rule only when every
-  job does, and only when the block names a `group:` — a bare `concurrency:` key queues
-  nothing. Any block cancelling unconditionally trips the second, except on a job whose
-  own `if:` pins it to a pull request: that job never runs on push, so no push record is
-  what its cancellation discards.
+  `ERR_WORKFLOW_CONCURRENCY_UNREADABLE`, the same way an unreadable `on:` or trigger
+  entry is refused as `ERR_WORKFLOW_ON_UNREADABLE`. The `on:` check reads the header,
+  every outermost sequence entry or mapping key, and every flow entry; it does not read
+  event bodies such as `branches:` or `types:`. That covers a flow collection continued
+  onto the next line or unbalanced because a quoted value carries a brace, one left
+  unbalanced by a collection that opens part-way along the value rather than at its
+  first character, and a value led by a YAML anchor, alias or tag (`&`, `*`, `!`) — none
+  of which is the scalar the rules behind the check would otherwise take it for.
+  Refusing the class rather than widening the detector is deliberate: an alias carries
+  no brace at all, so a detector hunting for one would still pass it, and teaching the
+  group and cancel readers to look past an indicator is the same flow-scalar parser this
+  bullet ends by ruling out. Being readable is a property of the whole declaration, not
+  of its first line: the `group:` and `cancel-in-progress:` values are read wherever
+  they are written — in the header's inline value, in a one-line flow mapping's entry,
+  or on their own body line — and each is refused on the line it sits on, under that
+  same code. Only those two keys are checked, since they are the only values the two
+  rules read. An unreadable header is the exception that reports once: the lines under a
+  value already refused are fragments of it rather than values of a declaration this
+  lint has read. That refusal does not silence the cancel rule: the cancel-on-push loop
+  still reads an unreadable block's body, so a spelling it happens to catch — an
+  unconditional `cancel-in-progress: true` sitting on its own line — is reported
+  alongside it as `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the same block
+  rather than one hiding the other. Nor does it silence the missing-concurrency rule
+  wholesale: that one is suppressed only by a `group:` question this lint could not
+  read, so a block naming no group and carrying an unreadable `cancel-in-progress` is
+  reported under both codes. Rejoining physical lines into one flow value is a
+  flow-scalar parser this repository has decided not to write. A workflow-level block
+  covers every job and a job-level one covers only its own, so declaring it per job
+  answers the first rule only when every job does, and only when the block names a
+  `group:` — a bare `concurrency:` key queues nothing. Any block cancelling
+  unconditionally trips the second, except on a job whose own `if:` pins it to a pull
+  request: that job never runs on push, so no push record is what its cancellation
+  discards.
 - a multi-line `run:` that neither opens with `set -euo pipefail` nor runs under a
   fail-closed `defaults.run.shell`. `shell: bash` is not enough: it leaves `-u` off.
 - a `pnpm … install` without `--frozen-lockfile`, which would make every other gate
