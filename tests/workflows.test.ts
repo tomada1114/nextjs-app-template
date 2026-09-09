@@ -191,10 +191,27 @@ function triggerNames(lines: Line[]): Trigger[] {
   }
 
   const events = blockOf(lines, lines.indexOf(on));
-  const eventIndent = events[0]?.indent;
-  return events.flatMap((line) =>
-    line.indent === eventIndent ? named(eventName(line.text), line) : [],
-  );
+  const first = events[0];
+  if (first === undefined) {
+    return [];
+  }
+  const eventIndent = first.indent;
+
+  // A block body is a sequence (every outermost entry is a trigger) or a
+  // mapping (every outermost key is a trigger). YAML lets a mapping value be
+  // written as a sequence at its key's own column, which puts a sequence item
+  // at the same indent as the key it belongs to — so in a mapping body, an
+  // outermost `- ` line is that key's value, never a sibling trigger.
+  const isSequence = first.text.startsWith("- ");
+  return events.flatMap((line) => {
+    if (line.indent !== eventIndent) {
+      return [];
+    }
+    if (!isSequence && line.text.startsWith("- ")) {
+      return [];
+    }
+    return named(eventName(line.text), line);
+  });
 }
 
 /** The line on which `on:` names `pull_request_target`, if any. */
@@ -1048,6 +1065,39 @@ describe("lintWorkflow", () => {
     );
 
     expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("does not read a mapping value's own-column sequence item as a sibling trigger", () => {
+    // #108: a mapping value written as a block sequence at its key's own
+    // column (legal YAML, same shape `blockOf` already special-cases for
+    // `steps:`) put the sequence item at the same indent as `schedule:`
+    // itself, so it used to read as a second, bogus trigger named "cron".
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      'on:\n  schedule:\n  - cron: "0 6 * * 1"\n',
+    );
+
+    expect(triggerNames(scan(source)).map(({ name }) => name)).toEqual(["schedule"]);
+  });
+
+  it.each([
+    ["scalar", "on: push\n", ["push"]],
+    ["flow sequence", "on: [push, pull_request]\n", ["push", "pull_request"]],
+    ["block sequence", "on:\n  - push\n  - pull_request\n", ["push", "pull_request"]],
+    [
+      "mapping with a nested sub-key",
+      "on:\n  pull_request:\n    branches: [main]\n",
+      ["pull_request"],
+    ],
+    [
+      "mapping with a nested sub-mapping",
+      "on:\n  workflow_dispatch:\n    inputs:\n      environment:\n        required: true\n",
+      ["workflow_dispatch"],
+    ],
+  ])("reads the %s form of on: correctly", (_shape, onBlock, expected) => {
+    const source = CLEAN_WORKFLOW.replace("on:\n  pull_request:\n", onBlock);
+
+    expect(triggerNames(scan(source)).map(({ name }) => name)).toEqual(expected);
   });
 
   it("rejects an install that is not frozen", () => {
