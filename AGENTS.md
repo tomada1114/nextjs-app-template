@@ -167,24 +167,24 @@ to work inside a zone is a skill's subject, not this section's.
 Each skill owns one kind of change. Load the one whose subject you are working on; each
 names its own boundary with its neighbours.
 
-| Skill                   | Load it when you are working on                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------- |
-| `building-app-routes`   | a page, layout or Route Handler under `src/app/`, `src/proxy.ts`, or `src/server/`    |
-| `localizing-ui`         | a catalog under `messages/`, a module under `src/i18n/`, or adding a UI string        |
-| `integrating-llm`       | the `LlmPort`, an adapter under `src/ai/`, or a fixture under `tests/fixtures/llm/`   |
-| `writing-typescript`    | a `.ts` module or a `.tsx` component under `src/`                                     |
-| `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                             |
-| `writing-tests`         | the body of a test under `tests/`                                                     |
-| `placing-tests`         | a new test file, a vitest project, or a coverage floor                                |
-| `type-testing`          | an `expectTypeOf` assertion or a `@ts-expect-error` inside a test                     |
-| `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                             |
-| `authoring-skills`      | a skill under `.agents/skills/`                                                       |
-| `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                       |
-| `managing-dependencies` | adding, bumping, or removing a package by hand (an open bot PR is `merge-dependabot`) |
-| `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                     |
-| `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all    |
-| `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                          |
-| `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales           |
+| Skill                   | Load it when you are working on                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `building-app-routes`   | a page, layout or Route Handler under `src/app/`, `src/proxy.ts`, or `src/server/`                                                  |
+| `localizing-ui`         | a catalog under `messages/`, a module under `src/i18n/`, or adding a UI string                                                      |
+| `integrating-llm`       | the `LlmPort`, an adapter under `src/ai/`, or a fixture under `tests/fixtures/llm/`                                                 |
+| `writing-typescript`    | a `.ts` module or a `.tsx` component under `src/`                                                                                   |
+| `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                                                                           |
+| `writing-tests`         | the body of a test under `tests/`                                                                                                   |
+| `placing-tests`         | a new test file, a vitest project, or a coverage floor                                                                              |
+| `type-testing`          | an `expectTypeOf` assertion or a `@ts-expect-error` inside a test                                                                   |
+| `writing-repo-scripts`  | a `.mjs` under `scripts/`                                                                                                           |
+| `authoring-skills`      | a skill under `.agents/skills/`                                                                                                     |
+| `changing-gates`        | a CI workflow, `lefthook.yml`, or a tool config                                                                                     |
+| `managing-dependencies` | adding, bumping, or removing a package by hand, or pinning `.mcp.json`'s MCP server versions (an open bot PR is `merge-dependabot`) |
+| `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                                                                   |
+| `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all                                                  |
+| `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
+| `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales                                                         |
 
 ## Security and human approval
 
