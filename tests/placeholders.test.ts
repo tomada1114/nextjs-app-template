@@ -50,11 +50,10 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * `messages/*.json` added later with its own translated title contributes no
  * row until that value is added to this list. The description is a single
  * entry because `src/app/[locale]/layout.tsx` hard-codes one for every locale.
- * The Japanese title is a knowing exception to AGENTS.md's English-only
- * convention for tests: deriving it from `messages/ja.json`'s `HomePage.title`
- * at runtime instead would make that inventory row self-fulfilling — it would
- * still appear after a correct rename, so the list could never empty. Whether
- * AGENTS.md should record this exception is filed separately.
+ * The Japanese title is the needle AGENTS.md's Conventions allows a test to
+ * quote verbatim: deriving it from `messages/ja.json`'s `HomePage.title` at
+ * runtime would make that inventory row self-fulfilling — it would still
+ * appear after a correct rename, so the list could never empty.
  *
  * The home page's body copy — `HomePage.intro` and `HomePage.localeCount` in
  * each catalog — is deliberately absent. It is demo copy for a demo page a

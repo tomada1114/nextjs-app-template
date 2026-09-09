@@ -785,9 +785,12 @@ function lintWorkflow(source: string): Problem[] {
 
   // Cancelling is right for a superseded pull request and wrong for a push: the
   // run being killed is the only CI or analysis record a merged commit gets.
-  // That is as true of a job-level block as of the workflow-level one, so both
-  // are read here rather than only the one at column zero.
-  if (onPullRequest && onPush) {
+  // That holds whether or not the workflow also runs on pull_request — a
+  // push-only workflow that cancels unconditionally is, if anything, the more
+  // destructive case, since there is no pull-request run to fall back on. It
+  // is as true of a job-level block as of the workflow-level one, so both are
+  // read here rather than only the one at column zero.
+  if (onPush) {
     for (const block of concurrency) {
       // A job pinned to a pull request by its own `if:` does not run on push,
       // so cancelling its runs destroys no push record.
@@ -798,12 +801,18 @@ function lintWorkflow(source: string): Problem[] {
       if (cancel === undefined) {
         continue;
       }
+      // When push is the workflow's only trigger, "also runs on push" is
+      // false and the usual advice produces a constantly-false expression —
+      // dead configuration that reads as a fix. Push-only gets its own
+      // message, pointing at the shape that is actually correct there.
+      const subject =
+        block.job === undefined ? "This workflow" : `Job "${block.job.name}"`;
       report(
         "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
         cancel.number,
-        block.job === undefined
-          ? "This workflow also runs on push. Make cancel-in-progress conditional on the event being a pull request."
-          : `Job "${block.job.name}" also runs on push. Make cancel-in-progress conditional on the event being a pull request.`,
+        onPullRequest
+          ? `${subject} also runs on push. Make cancel-in-progress conditional on the event being a pull request.`
+          : `${subject} runs only on push, so cancelling always discards a push record. Use \`cancel-in-progress: false\`.`,
       );
     }
   }
@@ -1573,6 +1582,55 @@ describe("lintWorkflow", () => {
     expect(lintWorkflow(source)).toEqual([]);
   });
 
+  it("rejects cancelling unconditionally on a workflow that runs on push alone", () => {
+    // #137: a push-only workflow has no pull-request run to fall back on, so
+    // an unconditional cancellation here is the most destructive shape of
+    // this defect — and the one the old `onPullRequest && onPush` guard let
+    // through entirely, since such a workflow never sets `onPullRequest`.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH"]);
+    // The advice for a mixed pull_request/push workflow ("also runs on push",
+    // gate on the event) is wrong here: push is the *only* trigger, so
+    // following it literally produces `cancel-in-progress: ${{ github.event_name
+    // == 'pull_request' }}` — an expression that is constantly false. The
+    // message for this shape has to name the actual fix instead.
+    expect(problems[0]?.message).toBe(
+      "This workflow runs only on push, so cancelling always discards a push record. Use `cancel-in-progress: false`.",
+    );
+  });
+
+  it("accepts a push-only workflow whose cancellation is conditional on a pull request", () => {
+    // The linter reads text, not expressions: it cannot tell that this
+    // condition is constantly false in a workflow with no pull_request
+    // trigger, so it stays accepted. It is not the shape to recommend — the
+    // case below is — but it must not regress into a false report either.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    ).replace(
+      "cancel-in-progress: true",
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("accepts a push-only workflow whose cancellation is unconditionally false", () => {
+    // This is the shape the corrected message above points a reader at: it
+    // says what it means, instead of gating on an event that never occurs.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    ).replace("cancel-in-progress: true", "cancel-in-progress: false");
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
   it("requires a concurrency group when the triggers are a flow sequence", () => {
     const source = CLEAN_WORKFLOW.replace(
       "on:\n  pull_request:\n",
@@ -1637,6 +1695,38 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
     ]);
+  });
+
+  it("rejects a job-level cancellation on a workflow that runs on push alone", () => {
+    // #137's widened guard is `if (onPush)`, not `if (onPullRequest && onPush)`,
+    // and every job-level case above still gives the job a `pull_request`
+    // trigger to also run on. A push-only workflow needs its own case so a
+    // regression back to the old guard's job-level counterpart cannot hide.
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH"]);
+    expect(problems[0]?.message).toBe(
+      'Job "build" runs only on push, so cancelling always discards a push record. Use `cancel-in-progress: false`.',
+    );
+  });
+
+  it("accepts a job-level cancellation on a job its own `if:` pins to a pull request, in a push-only workflow", () => {
+    // The exemption reads the job's own `if:` text, never the workflow's
+    // trigger set, so it has to hold even when the workflow declares no
+    // `pull_request` trigger at all for the job to "also" run under.
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on:\n  push:\n    branches: [main]\n",
+    ).replace(
+      "    timeout-minutes: 10\n",
+      "    timeout-minutes: 10\n    if: github.event_name == 'pull_request'\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
   });
 
   it("rejects a job-level cancellation the top-level block is careful to avoid", () => {
