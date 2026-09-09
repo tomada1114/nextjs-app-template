@@ -4,7 +4,7 @@ import {
   checkCredentials,
   isCredentialShapedValue,
 } from "../scripts/lib/guard/credentials.mjs";
-import { checkRead } from "../scripts/lib/guard/paths.mjs";
+import { checkCommit, checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // Pure-function coverage for the secret-detection rules under
 // scripts/lib/guard/, used by scripts/check-staged.mjs. Nothing here spawns a
@@ -26,6 +26,10 @@ describe("paths: checkRead", () => {
   it("blocks reading a direnv .envrc", () => {
     // direnv's file is neither `.env` nor `.env.`-prefixed, so it is named
     // rather than derived; its content is the same kind as a dotenv file's.
+    // This is the one path on which the two layers deliberately diverge:
+    // `checkCommit` lets a bare `.envrc` through to the content scan, because
+    // a direnv project tracks it on purpose. Reading it is still refused — a
+    // `.envrc` in a checkout may hold values whether or not it is tracked.
     expect(checkRead(".envrc")).toMatch(/\.env\*/);
   });
 
@@ -77,6 +81,74 @@ describe("paths: checkRead", () => {
     // `settings.local.json` whose immediate parent is not `.claude/` is not
     // this rule's concern.
     expect(checkRead("some/other/settings.local.json")).toBeNull();
+  });
+});
+
+describe("paths: checkCommit", () => {
+  it("allows committing direnv's bare .envrc", () => {
+    // The decision this suite exists to pin. In direnv's convention `.envrc`
+    // is the shared, secret-free script — `use flake`,
+    // `source_env_if_exists .envrc.local` — and refusing it would fire on work
+    // someone meant to do, teaching its author to reach for `--no-verify`,
+    // which turns off the credential scan for every other staged file too.
+    expect(checkCommit(".envrc")).toBeNull();
+  });
+
+  it("allows committing a nested .envrc", () => {
+    // The rule reads the basename, not the repository root, so a workspace
+    // package's own direnv script is treated the same way.
+    expect(checkCommit("apps/web/.envrc")).toBeNull();
+  });
+
+  it.each([".envrc.local", ".envrc.private"])(
+    "blocks committing a direnv override such as %s",
+    (name) => {
+      // Only the bare name diverges: these are where direnv convention keeps
+      // the real values, so they stay refused on their path alone.
+      expect(checkCommit(name)).toMatch(/\.env\*/);
+    },
+  );
+
+  it.each([".env", ".env.local"])("blocks committing %s", (name) => {
+    // dotenv's polarity is the opposite of direnv's — `.env` holds the values
+    // and `.env.example` is the tracked one — so the carve-out never reaches
+    // it.
+    expect(checkCommit(name)).toMatch(/\.env\*/);
+  });
+
+  it.each([".env.example", ".envrc.example"])("allows committing %s", (name) => {
+    expect(checkCommit(name)).toBeNull();
+  });
+
+  it("blocks committing a path under secrets/", () => {
+    expect(checkCommit("secrets/token.txt")).toMatch(/secrets\//);
+  });
+
+  it("blocks committing a .envrc under secrets/", () => {
+    // The carve-out is scoped to the dotenv branch, so it must not reach into
+    // the `secrets/` rule — the one non-obvious interaction in the split.
+    expect(checkCommit("secrets/.envrc")).toMatch(/secrets\//);
+  });
+
+  it.each([
+    ["at the repository root", ".claude/settings.local.json"],
+    ["nested under a package", "packages/app/.claude/settings.local.json"],
+  ])("blocks committing the personal settings file %s", (_label, path) => {
+    // The regression guard for the two-layer split: the shared body carries
+    // three rules, and a version that dropped this one would still pass every
+    // other row here.
+    expect(checkCommit(path)).toMatch(/settings\.local\.json/);
+  });
+
+  it("allows committing the shared .claude/settings.json", () => {
+    expect(checkCommit(".claude/settings.json")).toBeNull();
+  });
+
+  it.each([
+    ["an empty path", ""],
+    ["an ordinary source file", "src/example.ts"],
+  ])("allows committing %s", (_label, path) => {
+    expect(checkCommit(path)).toBeNull();
   });
 });
 
@@ -238,6 +310,16 @@ describe("credentials: checkCredentials", () => {
     ["a Slack token", secretShaped("xoxb-", "1".repeat(15)), /Slack/],
     ["a Google API key", secretShaped("AIza", "a".repeat(35)), /Google/],
     ["a Stripe live API key", secretShaped("sk_live_", "a".repeat(20)), /Stripe/],
+    [
+      // The content layer is what now stands between a committable `.envrc`
+      // and a real key in it, so pin that it covers the recognizable shape.
+      // The variable is named generically on purpose: the suite that keeps the
+      // AI layer removable tracks the provider's own env name, so writing it
+      // here would enlist this file in that removal.
+      "a provider API key exported from a direnv script",
+      secretShaped("export LLM_API_KEY=", "sk-ant-", "a".repeat(25)),
+      /Anthropic/,
+    ],
   ])("blocks %s", (_label, text, matcher) => {
     expect(checkCredentials(text)).toMatch(matcher);
   });
@@ -315,6 +397,15 @@ describe("credentials: checkCredentials", () => {
     ["a placeholder carrying a trailing digit", 'password: "changeme123"'],
     ["a masked display value", 'password: "********"'],
     ["a reset URL under a password key", 'password: "https://example.com/reset"'],
+    [
+      // The named residual risk of letting a bare `.envrc` through on its
+      // path: an opaque, prefix-less value matches no pattern here, and no
+      // entropy test is applied — the AWS entry was anchored precisely because
+      // an unanchored one hits `pnpm-lock.yaml`'s integrity hashes. Accepted
+      // rather than overlooked, and no worse than any other tracked file.
+      "an opaque, prefix-less secret exported from a direnv script",
+      secretShaped("export SESSION_SECRET=", "a".repeat(32)),
+    ],
   ])("does not flag %s", (_label, text) => {
     expect(checkCredentials(text)).toBeNull();
   });
