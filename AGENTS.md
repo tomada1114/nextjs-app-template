@@ -52,10 +52,10 @@ pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall foll
 ```
 
 Reach for `pnpm clean`/`pnpm clean:deep` rather than an `rm -rf`: `scripts/clean.mjs`
-refuses any path that resolves outside this repository, so a typo cannot reach the
-machine, and the target list is reviewable in `package.json` instead of retyped at a
-prompt each time. `clean:deep` leaves the checkout without dependencies — run
-`pnpm install` after it.
+refuses any path that resolves outside this repository, symlinks followed, so neither a
+typo nor a directory link leading out of the checkout can reach the machine, and the
+target list is reviewable in `package.json` instead of retyped at a prompt each time.
+`clean:deep` leaves the checkout without dependencies — run `pnpm install` after it.
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
 
