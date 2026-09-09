@@ -362,9 +362,11 @@ interface ConcurrencyBlock {
   /** Whether the declaration names a group, which is what a run is queued against. */
   groups: boolean;
   /**
-   * Whether the declaration closes on its own line — false when its inline flow
-   * collection is continued onto later physical lines, or is unbalanced. A false
-   * here means the two rules below are reading a fragment, not a declaration.
+   * Whether the inline value is a shape this lint can read — false when its flow
+   * collection is continued onto later physical lines or is otherwise unbalanced,
+   * and false when a YAML anchor, alias or tag leads the value. A false here means
+   * the two rules below would be reading a fragment, or a node property nothing
+   * resolved, rather than a declaration.
    */
   readable: boolean;
 }
