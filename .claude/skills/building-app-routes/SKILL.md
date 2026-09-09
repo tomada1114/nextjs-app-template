@@ -145,6 +145,16 @@ store injected through `AskHandlerDependencies` like every other dependency — 
 from `process.env` in the handler, and never in `src/proxy.ts`, which does not run for
 `api` paths at all.
 
+**What the endpoint does bound is the size of one request.** `src/server/http.ts` reads
+a JSON body through a wrapper that abandons it once it crosses `MAX_REQUEST_BODY_BYTES`,
+rather than trusting `Content-Length` — a header that is absent under chunked transfer
+encoding and is otherwise whatever the client says it is, so only what is actually read
+bounds anything. The request schema bounds the `prompt` at both ends after trimming it,
+which is what bounds the input tokens billed for a call. Read a new endpoint's body
+through the same helper instead of calling `request.json()`, and keep both refusals
+ahead of the port: a request rejected after the model has answered has already been paid
+for.
+
 The endpoint all of this is illustrated with is the AI layer's only caller, so removing
 that layer deletes `src/app/api/` and `src/server/composition.ts` outright. The pattern
 above outlives them — the first endpoint of your own restores the composition root — but

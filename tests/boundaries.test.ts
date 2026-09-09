@@ -161,7 +161,7 @@ describe("the import scanner the zone assertions run on", () => {
     ],
     [
       "src/server/handlers/ask.ts",
-      ["node:crypto", "zod", "../../ai/index", "../../i18n/locales"],
+      ["node:crypto", "zod", "../../ai/index", "../../i18n/locales", "../http"],
     ],
     ["src/app/api/ask/route.ts", ["../../../server/composition"]],
   ])("reads %s as %p", (file, expected) => {

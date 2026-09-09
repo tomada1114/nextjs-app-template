@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { checkCredentials } from "../scripts/lib/guard/credentials.mjs";
+import {
+  checkCredentials,
+  isCredentialShapedValue,
+} from "../scripts/lib/guard/credentials.mjs";
 import { checkRead } from "../scripts/lib/guard/paths.mjs";
 
 // Pure-function coverage for the secret-detection rules under
@@ -112,6 +115,87 @@ describe("credentials: checkCredentials", () => {
       /password/,
     ],
     [
+      // The shape this rule exists to catch and used to walk past: JSON quotes
+      // the key, so the separator no longer follows the word directly. The
+      // value mixes upper case, lower case, digits and punctuation, which is
+      // what the rule now reads rather than the key above it.
+      "a quoted JSON password assignment",
+      secretShaped('{ "password', '": ', '"S3cr3t-Example" }'),
+      /password/,
+    ],
+    [
+      "a single-quoted password assignment",
+      secretShaped("password", ": ", "'s3cr3t-value'"),
+      /password/,
+    ],
+    [
+      "a camelCase password assignment",
+      secretShaped("dbPassword", ": ", '"s3cr3t-value"'),
+      /password/,
+    ],
+    [
+      // Every candidate site is judged, not merely the first: an
+      // implementation that stopped at the schema field above would let the
+      // assignment below through.
+      "a real assignment below a password schema field",
+      secretShaped("password: z.string()\n", "password", "=", '"s3cr3t-value"'),
+      /password/,
+    ],
+    [
+      // A generated password carries `$`, `(`, `{` or `<` as freely as any
+      // other punctuation. Inside quotes none of them can open an expression,
+      // so the marker test that keeps `z.string()` out is applied to a bare
+      // value only — these five rows were exempted while it was applied to
+      // both.
+      "a quoted generated password carrying a dollar sign",
+      secretShaped("password", ": ", '"aB3$xQ9!zP"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying parentheses",
+      secretShaped("password", ": ", '"P@ssw0rd(2024)"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying braces",
+      secretShaped("const password", " = ", '"x9{Kq2}Lm4"'),
+      /password/,
+    ],
+    [
+      "a quoted generated password carrying an angle bracket",
+      secretShaped("password", " = ", '"a<b1234xyz"'),
+      /password/,
+    ],
+    [
+      // A bcrypt hash begins with a cost-prefixed run of dollar signs and no
+      // brace or parenthesis after them, so it is a literal rather than an
+      // interpolation.
+      "a quoted bcrypt hash",
+      secretShaped("password", ": ", '"$2b$10$N9qo8uLOickgx2ZMRZoMy"'),
+      /password/,
+    ],
+    [
+      // The bare capture runs to the next whitespace rather than stopping at
+      // the comma, so the value is judged whole. Truncated at the comma it
+      // was six characters and fell under the length floor.
+      "a bare password value carrying a comma",
+      secretShaped("password", "=", "Str0ng,Pass"),
+      /password/,
+    ],
+    [
+      // The service-credential shape, which the character-class test cannot
+      // reach on its own: one lower-case word is one class. An upper snake
+      // case key and a value that ends the line are what stand in for it.
+      "an upper snake case service credential in a compose file",
+      secretShaped("POSTGRES_", "PASSWORD", ": ", "postgres"),
+      /password/,
+    ],
+    [
+      "an upper snake case service credential in an env-style assignment",
+      secretShaped("MYSQL_ROOT_", "PASSWORD", "=", "rootpassword"),
+      /password/,
+    ],
+    [
       "a GitHub fine-grained personal access token",
       secretShaped("github_pat_", "11AAAAAAA0AAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAA"),
       /fine-grained/,
@@ -178,7 +262,116 @@ describe("credentials: checkCredentials", () => {
     ["a short xoxb-shaped string", "xoxb-revoked"],
     ["a short AIza-prefixed string", "AIzaExpired"],
     ["a Stripe test key", secretShaped("sk_test_", "a".repeat(20))],
+    // Ordinary code that a sign-in form, a credential schema or a user model
+    // brings into a project. Each of the six rows below was blocked before the
+    // rule began judging the assigned value instead of the key.
+    ["a zod password schema", "password: z.string()"],
+    ["a TypeScript password field", "password: string;"],
+    ["a Prisma or GraphQL password field", "password: String"],
+    ["an optional TypeScript password property", "password?: string"],
+    ["a destructured password read", "const password = form.password;"],
+    ["a snake_case password identifier read", "password = user_password"],
+    [
+      // Eight characters, but a bare word carries neither a digit nor
+      // credential-shaped punctuation, so it is a label rather than a value.
+      // This row and the Japanese message below it pass on HEAD too: they
+      // pin shapes the rule must never start firing on.
+      "an English UI label under a password key",
+      secretShaped('"password', '": ', '"Password"'),
+    ],
+    [
+      // Why the printable-ASCII condition exists: `messages/ja.json` is a
+      // Japanese catalog by definition, and its values sit under English keys.
+      "a Japanese UI message under a password key",
+      secretShaped('"password', '": ', '"パスワードを入力してください"'),
+    ],
+    [
+      // Blocked before this change, since any non-space character after the
+      // separator was enough.
+      "a shell interpolation of a password variable",
+      secretShaped("PASSWORD", "=", "${DB_PASS}"),
+    ],
+    [
+      "a GitHub Actions expression reading a password secret",
+      secretShaped("password", ": ", "${{ secrets.DB_PASSWORD }}"),
+    ],
+    [
+      // The `.env.example` shape: every name shipped with an empty value.
+      "an empty password value in an example file",
+      secretShaped("DB_PASSWORD", "=", "\n"),
+    ],
+    // Written out rather than assembled, because none of the six is
+    // secret-shaped — that is the whole claim each row makes. Every one of
+    // them blocked the commit while the rule counted a hyphen or a slash as
+    // enough on its own.
+    [
+      // The React `autoComplete` value, written by every sign-in form there
+      // is, and the single likeliest string to sit under a password key.
+      "the standard new-password autocomplete value",
+      'password: "new-password"',
+    ],
+    ["a kebab-case identifier under a password key", 'password: "sign-in-form"'],
+    ["a documented placeholder value", 'password: "your-password-here"'],
+    ["a placeholder carrying a trailing digit", 'password: "changeme123"'],
+    ["a masked display value", 'password: "********"'],
+    ["a reset URL under a password key", 'password: "https://example.com/reset"'],
   ])("does not flag %s", (_label, text) => {
     expect(checkCredentials(text)).toBeNull();
+  });
+
+  it("returns null for empty text", () => {
+    expect(checkCredentials("")).toBeNull();
+  });
+
+  it("does not flag a whitespace-separated schema field", () => {
+    // Deliberately out of scope, and the reason is the same one that keeps
+    // `password: String` out: a value that is a type name is never a
+    // credential, whichever separator precedes it. The rule therefore keeps
+    // requiring a `:` or `=` separator.
+    expect(checkCredentials("password  String")).toBeNull();
+  });
+});
+
+describe("credentials: isCredentialShapedValue", () => {
+  // The second argument is whether the value was written inside quotes. It
+  // decides one thing only: a bare value is rejected on any expression marker,
+  // a quoted one only on a real interpolation opener.
+  it.each<[string, string, boolean]>([
+    ["a hyphenated value mixing letters and digits", "s3cr3t-value", false],
+    ["a quoted generated password carrying punctuation", "aB3$xQ9!zP", true],
+    [
+      "a quoted hash-shaped literal that opens no interpolation",
+      "$2b$10$N9qo8uLO",
+      true,
+    ],
+    ["a bare value mixing upper case, lower case and a digit", "Str0ngPass", false],
+  ])("judges %s credential-shaped", (_label, value, quoted) => {
+    expect(isCredentialShapedValue(value, quoted)).toBe(true);
+  });
+
+  it.each<[string, string, boolean]>([
+    ["a value one character under the length floor", "aB3-xY9", false],
+    ["a word with neither a digit nor punctuation", "plainletters", false],
+    ["a kebab-case identifier mixing only two classes", "new-password", true],
+    ["a lower-case word with a digit stuck on the end", "changeme123", true],
+    ["a value containing a space", "Str0ng value", true],
+    [
+      "a value containing non-ASCII characters",
+      "\u30d1\u30b9\u30ef\u30fc\u30c9-1",
+      true,
+    ],
+    ["a bare value opening a template interpolation", "aB3${xY9z}", false],
+    ["a bare value carrying a backtick", "aB3`xY9z`", false],
+    ["a bare value opening a call", "aB3(xY9z)", false],
+    ["a bare value opening an object literal", "aB3{xY9z}", false],
+    ["a bare value opening a generic", "aB3<xY9z>", false],
+    ["a quoted value interpolating a variable", "aB3${xY9z}", true],
+    ["a quoted value carrying a backtick", "aB3`xY9z`", true],
+    ["a quoted value substituting a command", "aB3$(xY9z)", true],
+    ["a member expression", "form.password", false],
+    ["a snake_case identifier", "user_password", false],
+    ["the empty string", "", false],
+  ])("judges %s not credential-shaped", (_label, value, quoted) => {
+    expect(isCredentialShapedValue(value, quoted)).toBe(false);
   });
 });

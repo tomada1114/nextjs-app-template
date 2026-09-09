@@ -156,6 +156,32 @@ describe("checkStagedChange", () => {
     expect(checkStagedChange(change, dir)).toBeNull();
   });
 
+  it("allows staging a password schema field", () => {
+    // The end-to-end statement of the false positive this layer used to have:
+    // the moment a sign-in form enters a project, this line is written, and a
+    // hook that blocks it teaches its author to reach for `--no-verify` —
+    // which switches off every credential rule at once.
+    const dir = makeRepo();
+    const change = {
+      status: "A",
+      path: stage(dir, "src/sign-in.ts", "password: z.string()\n"),
+    };
+    expect(checkStagedChange(change, dir)).toBeNull();
+  });
+
+  it("blocks a staged file that assigns a quoted password", () => {
+    // Assembled rather than written out, for the reason
+    // tests/guard-rules.test.ts states: a literal secret-shaped string in a
+    // test file is a real finding for any scanner pointed at the repository.
+    const dir = makeRepo();
+    const assignment = ['{ "password', '": ', '"S3cr3t-Example" }'].join("");
+    const change = {
+      status: "A",
+      path: stage(dir, "config/app.json", `${assignment}\n`),
+    };
+    expect(checkStagedChange(change, dir)).toMatch(/password/);
+  });
+
   it.each([
     ["id_rsa", "id_rsa"],
     ["id_dsa", "id_dsa"],

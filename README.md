@@ -44,6 +44,12 @@ as `Authorization: Bearer <value>`. Exporting a provider credential does not on 
 close anything: while the fake adapter answers, nothing is billed and nothing is
 required. That is authentication and nothing more: this template ships no rate limit.
 
+What the route does bound is the size of a request. The `prompt` is trimmed and must be
+1 to 8000 characters, and the body is refused with `413` once it crosses 64 KiB while it
+is being read — before the model is asked, on either path. Both ceilings are constants:
+`MAX_PROMPT_LENGTH` in `src/server/handlers/ask.ts` and `MAX_REQUEST_BODY_BYTES` in
+`src/server/http.ts`.
+
 ## Starting a new app from this template
 
 Copy the tree, then work through
