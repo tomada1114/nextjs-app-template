@@ -43,7 +43,6 @@ import process from "node:process";
 
 import { checkCredentials } from "./lib/guard/credentials.mjs";
 import { checkCommit, describePath } from "./lib/guard/paths.mjs";
-import { isMain } from "./lib/is-main.mjs";
 import { repoRoot } from "./lib/node-tools.mjs";
 
 /**
@@ -225,6 +224,6 @@ export function main(cwd = repoRoot) {
   return blocked ? 1 : 0;
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = main();
 }

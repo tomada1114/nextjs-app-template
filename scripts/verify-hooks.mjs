@@ -44,7 +44,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { isolatedGitEnv } from "./lib/git-env.mjs";
-import { isMain } from "./lib/is-main.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -332,6 +331,6 @@ export function verifyHooks({
   return 0;
 }
 
-if (isMain(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = verifyHooks();
 }
