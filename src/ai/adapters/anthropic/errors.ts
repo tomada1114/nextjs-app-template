@@ -82,9 +82,11 @@ export function toLlmError(reason: unknown, signal: AbortSignal): LlmError {
     return abortedLlmError(signal.reason);
   }
   if (reason instanceof APIConnectionTimeoutError) {
-    return new LlmError("ERR_LLM_TIMEOUT", `LLM request timed out: ${reason.message}`, {
-      cause: reason,
-    });
+    return new LlmError(
+      "ERR_LLM_TIMEOUT",
+      "The LLM request timed out before the provider responded.",
+      { cause: reason },
+    );
   }
   if (isAbortError(reason)) {
     // An abort the SDK no longer had a chance to label. Reported through the
@@ -97,15 +99,21 @@ export function toLlmError(reason: unknown, signal: AbortSignal): LlmError {
     // it no further than `any`. Re-narrowing here keeps the mapping honest
     // rather than trusting a type the check did not actually establish.
     const status: unknown = reason.status;
+    // Never `reason.message`: the provider's own text can quote the prompt or
+    // the model's output straight back. The original stays on `cause`.
     return new LlmError(
       codeForStatus(typeof status === "number" ? status : undefined),
-      reason.message,
+      "The LLM provider rejected the request.",
       { cause: reason },
     );
   }
 
   const cause = asError(reason, "The LLM request failed for an unknown reason.");
-  return new LlmError("ERR_LLM_UNAVAILABLE", `LLM request failed: ${cause.message}`, {
-    cause,
-  });
+  return new LlmError(
+    "ERR_LLM_UNAVAILABLE",
+    "The LLM request failed for an unknown reason.",
+    {
+      cause,
+    },
+  );
 }
