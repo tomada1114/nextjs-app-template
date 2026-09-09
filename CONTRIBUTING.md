@@ -36,6 +36,11 @@ gate at every commit; AGENTS.md's "Enforcement layers" explains why nothing here
 it.
 
 Useful focused commands are `pnpm check:source`, `pnpm test`, and `pnpm test:coverage`.
+Neither of the last two is the whole suite: both filter out the `smoke` project, which
+serves the output of `pnpm build` with `next start` and asserts over HTTP, and which
+refuses to run against a missing or stale build rather than reporting on one. Run that
+one with `pnpm build && pnpm run test:smoke`; `pnpm check:source` runs both halves, in
+that order.
 
 ## Dependency cooldown
 
