@@ -427,7 +427,21 @@ describe("createAnthropicAdapter still honors a retry-after it can afford (#66)"
 });
 
 describe("createAnthropicAdapter rejects a deadline the platform cannot arm", () => {
-  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN, 4_294_967_296])(
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.POSITIVE_INFINITY,
+    Number.NaN,
+    // One past the new ceiling (Node's signed 32-bit timer maximum,
+    // INT32_MAX): the platform would not throw for this one either — it
+    // silently clamps it and fires within a millisecond — so this is the
+    // construction-time check's own job, not `AbortSignal.timeout`'s.
+    2_147_483_648,
+    // The *old* ceiling this issue lowers from. It used to construct cleanly
+    // here and then fire immediately; it is rejected now.
+    4_294_967_295,
+  ])(
     "throws at construction rather than per request for deadlineMs %o",
     (deadlineMs: number) => {
       // `AbortSignal.timeout` throws a RangeError for anything outside an
@@ -441,6 +455,48 @@ describe("createAnthropicAdapter rejects a deadline the platform cannot arm", ()
   );
 });
 
+describe("createAnthropicAdapter arms a near-ceiling deadline instead of firing it immediately (#99)", () => {
+  // The bug this pins down: Node backs a timer's delay with a *signed* 32-bit
+  // integer and silently clamps any delay from 2**31 upward to a token value
+  // instead of rejecting it — `AbortSignal.timeout(2_147_483_648)` does not
+  // throw, it fires within a millisecond rather than after the ~24.9 days
+  // requested. Construction not throwing was the whole of the original
+  // boundary test, and that assertion cannot tell a correctly-armed ~24.9-day
+  // timer apart from one that already fired. `headersThenStallFetch` answers
+  // 200 at once and then never closes the body, so nothing but the deadline
+  // itself can settle this call, and racing it against a short real-clock
+  // delay is what makes "still armed, not fired" observable.
+  const STILL_PENDING = Symbol("still pending");
+
+  it.each([
+    // Just under the signed 32-bit ceiling.
+    2_147_483_646,
+    // Exactly INT32_MAX, the new MAX_DEADLINE_MS.
+    2_147_483_647,
+  ] as const)(
+    "does not fire within 50ms of real time for deadlineMs %i",
+    async (deadlineMs) => {
+      const pending = createAnthropicAdapter({
+        apiKey: "test-key",
+        maxRetries: 0,
+        deadlineMs,
+        fetch: headersThenStallFetch(),
+      }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+
+      const winner = await Promise.race([
+        pending,
+        new Promise<typeof STILL_PENDING>((resolve) => {
+          setTimeout(() => {
+            resolve(STILL_PENDING);
+          }, 50);
+        }),
+      ]);
+
+      expect(winner).toBe(STILL_PENDING);
+    },
+  );
+});
+
 describe("createAnthropicAdapter derives its default deadline from timeoutMs and maxRetries (#65)", () => {
   // The derived deadline is not directly observable — the adapter arms it
   // inside `generate` and `LlmPort` has nowhere to report it — so this pins
@@ -450,15 +506,15 @@ describe("createAnthropicAdapter derives its default deadline from timeoutMs and
   // per-attempt/per-retry terms together (rows 3-4). Expected numbers are
   // worked out by hand below, not by re-running the derivation:
   //
-  //   row 1: (0 + 1) * 4_294_965_295 + 0 * 8_000 + 2_000 = 4_294_967_295
-  //   row 2: (0 + 1) * 4_294_965_296 + 0 * 8_000 + 2_000 = 4_294_967_296
-  //   row 3: (1 + 1) * 2_147_478_647 + 1 * 8_000 + 2_000 = 4_294_967_294
-  //   row 4: (1 + 1) * 2_147_478_648 + 1 * 8_000 + 2_000 = 4_294_967_296
+  //   row 1: (0 + 1) * 2_147_481_646 + 0 * 8_000 + 2_000 = 2_147_483_646
+  //   row 2: (0 + 1) * 2_147_481_648 + 0 * 8_000 + 2_000 = 2_147_483_648
+  //   row 3: (1 + 1) * 1_073_736_823 + 1 * 8_000 + 2_000 = 2_147_483_646
+  //   row 4: (1 + 1) * 1_073_736_824 + 1 * 8_000 + 2_000 = 2_147_483_648
   it.each([
-    [4_294_965_295, 0, "constructs"],
-    [4_294_965_296, 0, "RangeError"],
-    [2_147_478_647, 1, "constructs"],
-    [2_147_478_648, 1, "RangeError"],
+    [2_147_481_646, 0, "constructs"],
+    [2_147_481_648, 0, "RangeError"],
+    [1_073_736_823, 1, "constructs"],
+    [1_073_736_824, 1, "RangeError"],
   ] as const)(
     "timeoutMs %i with maxRetries %i %s",
     (timeoutMs, maxRetries, outcome) => {
@@ -486,13 +542,13 @@ describe("createAnthropicAdapter derives its default deadline from timeoutMs and
 
   it("honours an explicit deadlineMs and skips the derivation entirely", () => {
     // The same `timeoutMs` refused in the boundary table above (it implies
-    // `4_294_967_296`, one past `MAX_DEADLINE_MS`) constructs fine the moment
+    // `2_147_483_648`, one past `MAX_DEADLINE_MS`) constructs fine the moment
     // a total bound is given directly — precedence and the no-cross-check
     // rule pinned in one assertion.
     expect(() =>
       createAnthropicAdapter({
         apiKey: "test-key",
-        timeoutMs: 4_294_965_296,
+        timeoutMs: 1_073_736_824,
         deadlineMs: 60_000,
       }),
     ).not.toThrow();
@@ -500,7 +556,7 @@ describe("createAnthropicAdapter derives its default deadline from timeoutMs and
 });
 
 describe("createAnthropicAdapter rejects timeoutMs and maxRetries on their own terms (#72)", () => {
-  it.each([0, -1, 100.5, Number.NaN, Number.POSITIVE_INFINITY, 4_294_967_296])(
+  it.each([0, -1, 100.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
     "rejects timeoutMs %o naming the option, not the deadline it would derive",
     (timeoutMs: number) => {
       expect(() => createAnthropicAdapter({ apiKey: "test-key", timeoutMs })).toThrow(
