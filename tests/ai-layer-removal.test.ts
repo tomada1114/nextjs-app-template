@@ -1,19 +1,9 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { checkRead } from "../scripts/lib/guard/paths.mjs";
+import { readText, repoRoot, walk } from "./repo-tree";
 
 // Not every app built from this template wants a language model in it, so the
 // AI layer has to come out in one piece: delete `src/ai/`, the handlers that
@@ -33,8 +23,6 @@ import { checkRead } from "../scripts/lib/guard/paths.mjs";
 // that starts referring to the AI layer without joining one of those two lists
 // fails this suite, which is the moment the layer stops being removable.
 
-const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-
 /** Where a skill is authored; `.claude/skills/` mirrors it. */
 const AUTHORED_SKILLS_ROOT = ".agents/skills/";
 
@@ -46,7 +34,9 @@ const AUTHORED_SKILLS_ROOT = ".agents/skills/";
  * the whole of what it does; if this template ever grows a second thing to
  * compose, that file splits rather than staying half-deleted here. This test
  * file is on the list too — it names every path above and would itself be the
- * first dangling reference left behind.
+ * first dangling reference left behind. So is its sibling
+ * `tests/ai-vendor-swap.test.ts`, whose whole subject is which vendor sits
+ * behind a port that is no longer there.
  *
  * The `integrating-llm` skill is deleted rather than edited, because the whole
  * of its subject is the layer that is going away. Both its authored copy and
@@ -64,6 +54,7 @@ const REMOVED_PATHS = [
   "tests/ai-anthropic.test.ts",
   "tests/ai-layer-removal.test.ts",
   "tests/ai-port.test.ts",
+  "tests/ai-vendor-swap.test.ts",
   "tests/fixtures/llm",
   "tests/llm-replay.ts",
   "tests/server-handler.test.ts",
@@ -199,71 +190,6 @@ const EDITED_FILES = [
   ...withMirror(EDITED_DOCUMENT_FILES),
 ].sort();
 
-// Mirrors tests/placeholders.test.ts: dependencies, version-control internals,
-// build and coverage output, data under test, and agent worktrees hold nothing
-// hand-written — matched by name whatever the entry turns out to be, because a
-// linked worktree's `.git` is a file rather than a directory.
-// `secrets` is named here as well, although `checkRead` already drops every
-// entry inside it: without the name, the directory is still `readdirSync`'d,
-// and a checkout that keeps it unreadable throws EACCES at module scope —
-// outside any `it()`, so the suite errors out instead of failing.
-const SKIPPED_DIRECTORIES = new Set([
-  "node_modules",
-  ".git",
-  ".next",
-  "dist",
-  "coverage",
-  "fixtures",
-  "worktrees",
-  ".idea",
-  ".vscode",
-  "secrets",
-]);
-
-const SKIPPED_FILES = new Set([
-  "pnpm-lock.yaml",
-  ".eslintcache",
-  ".DS_Store",
-  "next-env.d.ts",
-]);
-
-/**
- * Every readable, hand-written file under `root`, as root-relative paths.
- *
- * @remarks
- * Mirrors tests/placeholders.test.ts, guard import included: what must never
- * be read — `.env*`, `.envrc*`, anything under `secrets/`, and the personal
- * `.claude/settings.local.json` — is decided by the one engine
- * `scripts/check-staged.mjs` already uses, so the rule is not written a
- * third time here; `SKIPPED_DIRECTORIES` names `secrets` on top of it only so
- * the directory is never enumerated. `root` is a parameter so the exclusions
- * can be asserted over a synthetic tree rather than vacuously over this one.
- */
-function walk(root: string, directory = ""): string[] {
-  const absolute = directory === "" ? root : path.join(root, directory);
-  return readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
-    const relative = directory === "" ? entry.name : `${directory}/${entry.name}`;
-    if (SKIPPED_DIRECTORIES.has(entry.name) || checkRead(relative) !== null) {
-      return [];
-    }
-    if (entry.isDirectory()) {
-      return walk(root, relative);
-    }
-    if (!entry.isFile() || SKIPPED_FILES.has(entry.name)) {
-      return [];
-    }
-    return entry.name.endsWith(".tsbuildinfo") || entry.name.endsWith(".log")
-      ? []
-      : [relative];
-  });
-}
-
-/** `undefined` for a binary file, which cannot carry a textual reference. */
-function readText(relative: string): string | undefined {
-  const bytes = readFileSync(path.join(repoRoot, relative));
-  return bytes.includes(0) ? undefined : bytes.toString("utf8");
-}
-
 /** Whether `relative` is one of the removed paths, or lives under one. */
 function isRemoved(relative: string): boolean {
   return REMOVED_PATHS.some(
@@ -396,64 +322,5 @@ describe("the AI layer can be removed whole", () => {
     expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
       EDITED_FILES,
     );
-  });
-});
-
-describe("the walk that feeds the reference scan", () => {
-  // Mirrors tests/placeholders.test.ts: every path the walk returns is opened
-  // by `readText`, and AGENTS.md counts the read itself as the disclosure. A
-  // synthetic tree, because a checkout rarely holds a `secrets/` directory and
-  // an assertion over this one would otherwise pass for the wrong reason.
-  const body = "fixture body, nothing sensitive\n";
-  let root = "";
-
-  beforeEach(() => {
-    root = mkdtempSync(path.join(tmpdir(), "ai-layer-removal-walk-"));
-    mkdirSync(path.join(root, "secrets"));
-    mkdirSync(path.join(root, ".claude", "skills"), { recursive: true });
-    for (const relative of [
-      "secrets/token.txt",
-      ".env",
-      ".env.local",
-      ".envrc",
-      ".env.example",
-      ".claude/settings.local.json",
-      ".claude/settings.json",
-      ".claude/skills/example.md",
-      "README.md",
-    ]) {
-      writeFileSync(path.join(root, relative), body);
-    }
-    // What `.git` is inside a linked worktree: a pointer file, not a directory.
-    writeFileSync(path.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/1\n");
-  });
-
-  afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("does not read anything under secrets/", () => {
-    expect(walk(root)).not.toContain("secrets/token.txt");
-  });
-
-  it("does not read a linked worktree's .git, which is a file and not a directory", () => {
-    expect(walk(root)).not.toContain(".git");
-  });
-
-  it("does not read the personal .claude/settings.local.json", () => {
-    expect(walk(root)).not.toContain(".claude/settings.local.json");
-  });
-
-  it("still walks .claude/skills/, which the generated skill mirror lives under", () => {
-    expect(walk(root)).toContain(".claude/skills/example.md");
-  });
-
-  it("reads the tracked env example, the shared Claude settings and no real dotenv, direnv, or personal settings file", () => {
-    expect(walk(root).sort()).toStrictEqual([
-      ".claude/settings.json",
-      ".claude/skills/example.md",
-      ".env.example",
-      "README.md",
-    ]);
   });
 });

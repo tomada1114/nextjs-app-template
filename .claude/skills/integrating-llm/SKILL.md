@@ -7,7 +7,7 @@ description: >
   guarantee, where a request's deadline sits, and which ERR_LLM_* code a failure
   becomes. Use when editing the port, an adapter, or a file under tests/fixtures/llm/,
   wiring a model call in src/server/composition.ts, recording or replaying an LLM
-  fixture, adding a second provider, removing the AI layer, or when a call hangs or
+  fixture, swapping or adding a provider, removing the AI layer, or when a call hangs or
   reaches the network in CI.
 ---
 
@@ -50,7 +50,7 @@ and nothing else — not `src/i18n/`, not `src/proxy.ts`, and not inside `src/ai
 where the rule is yours to hold and matters most: `src/ai/port.ts`, `errors.ts`,
 `index.ts` and the fake adapter must stay SDK-free, or the port stops being an interface
 a second vendor could implement. `src/ai/index.ts` is the layer's whole surface, and
-`src/server/composition.ts` the single line naming a vendor.
+`src/server/composition.ts` the single line choosing a vendor.
 
 ## Two layers of structured output, and only one is guaranteed
 
@@ -193,12 +193,43 @@ no caller can handle uniformly. Procedure:
 Streaming responses, and adapters for vendors this repository does not ship, are out of
 scope by decision. Do not add speculative support for either.
 
+## Swapping the vendor
+
+Keeping the port and replacing what answers behind it is the **common** path — a project
+built from this template usually wants a language model, not necessarily this one — and
+it is a bounded edit rather than a rewrite. `tests/ai-vendor-swap.test.ts` is where that
+bound is written down and checked, so the list of places the vendor may be named lives
+there and is not restated here.
+
+Two lines of application code decide it. `src/server/composition.ts` chooses the adapter
+and flips `ADAPTER_BILLS_A_PROVIDER` in the same commit; `src/ai/index.ts` republishes
+whichever adapter the layer is willing to expose. `src/server/env.ts` names the
+credential, and the rest is manifests and gate configs — the dependency, the import
+restriction, the environment example, the automation-test list. The seam test fails the
+moment a fourth module joins them, which is the moment the choice of vendor has escaped
+the composition root.
+
+Untouched: `src/ai/port.ts`, `src/ai/errors.ts` and the fake adapter — the whole
+vendor-neutral vocabulary, and the reason the edit is bounded at all — plus the handler,
+which only ever sees an `LlmPort`, and everything above it.
+
+**The provider adapter stays in the tree although the default composition wires the
+fake.** A port with only a fake behind it is an untested abstraction: the fake answers
+whatever its options say, so it agrees with any interface, including one no real
+provider could implement. Running `describeLlmPortContract` against an adapter that
+speaks to a real API — over recorded fixtures, so CI neither pays nor reaches the
+network — is the only evidence `LlmPort` is genuinely vendor-neutral. Deleting the
+adapter to simplify removes the evidence rather than the complexity. The seam test
+asserts the contract suite runs against every adapter `src/ai/index.ts` publishes, so a
+replacement inherits the same bar the one it replaced met.
+
 ## Removing the layer
 
 Three properties let the layer come out in one piece: adapters are private to `src/ai/`,
 `src/ai/index.ts` is the only way anything above reaches them, and
-`src/server/composition.ts` is the only line naming a vendor. Every edit here either
-preserves those or quietly ends them.
+`src/server/composition.ts` is the only line _choosing_ a vendor. The same three are
+what make the swap above bounded, so an edit that quietly ends one costs both paths at
+once.
 
 `tests/ai-layer-removal.test.ts` is the specification, checkable only while the layer is
 still present — run it before deleting anything. It names the paths the removal deletes
