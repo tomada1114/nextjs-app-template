@@ -75,6 +75,36 @@ const REMOVED_PATHS = [
 const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
 
 /**
+ * Names this repository gives the AI layer's own surface, which a document can
+ * cite without naming a file it lives in.
+ *
+ * @remarks
+ * Separate from `AI_LAYER_TOKENS`, whose subject is vendor product names: these
+ * are ours, and folding them into that list would make its TSDoc false. They
+ * exist because a skill illustrates a rule with a symbol as often as with a
+ * path — `LlmErrorCode` in a sentence about unions, `outputLanguage` in one
+ * about a seam — and a removal that greps only for paths edits the file it
+ * found for one reason and leaves the sentence it did not.
+ *
+ * Each needle is as narrow as the name it has to catch. A bare `LLM_` would
+ * also match the `LLM_API_KEY` sample line in `tests/guard-rules.test.ts` and
+ * `tests/check-staged.test.ts`, where it stands for any secret-shaped
+ * assignment and stays whether or not this application calls a model; the two
+ * prefixes here name the port's error codes and the fixture recorder instead.
+ * `ask`, `port`, `handler` and `adapter` are left out for the same reason —
+ * each appears in this repository's prose about something that is not the AI
+ * layer, and a needle matching a survivor that is not on the edited lists
+ * fails this suite for a false reason.
+ */
+const AI_LAYER_SYMBOLS = [
+  "Llm",
+  "ERR_LLM_",
+  "LLM_RECORD",
+  "outputLanguage",
+  "askHandler",
+];
+
+/**
  * The bare name of every skill the removal deletes.
  *
  * @remarks
@@ -209,11 +239,14 @@ function isRemoved(relative: string): boolean {
 const everyFile = walk(repoRoot);
 const survivingFiles = everyFile.filter((relative) => !isRemoved(relative));
 
-/** The removed paths, tokens and skill names `text` names, if any. */
+/** The removed paths, tokens, symbols and skill names `text` names, if any. */
 function referencesInText(text: string): string[] {
-  return [...REMOVED_PATHS, ...AI_LAYER_TOKENS, ...REMOVED_SKILL_NAMES].filter(
-    (needle) => text.includes(needle),
-  );
+  return [
+    ...REMOVED_PATHS,
+    ...AI_LAYER_TOKENS,
+    ...AI_LAYER_SYMBOLS,
+    ...REMOVED_SKILL_NAMES,
+  ].filter((needle) => text.includes(needle));
 }
 
 /** The same, for a file in the tree; `[]` for a binary one. */
@@ -329,6 +362,25 @@ describe("the AI layer can be removed whole", () => {
     );
     // Removing it: back to exactly what the suite asserts today.
     expect(survivorsNaming(files, readingPosedAs(withoutReference))).toStrictEqual(
+      EDITED_FILES,
+    );
+  });
+
+  it("catches a skill whose only mention of the layer is one of its symbols", () => {
+    // The falsification case for `AI_LAYER_SYMBOLS`: a sentence that names the
+    // layer through one of its own symbols and no path at all is the site a
+    // removal greping only for paths would walk past.
+    const posed = ".agents/skills/posed-by-this-test/SKILL.md";
+    const withSymbol = "Map the UI locale to the port's `outputLanguage` tag.\n";
+    const withoutSymbol = "Map the UI locale to the catalog it selects.\n";
+    const readingPosedAs = (body: string) => (relative: string) =>
+      relative === posed ? body : readText(relative);
+    const files = [...survivingFiles, posed];
+
+    expect(survivorsNaming(files, readingPosedAs(withSymbol))).toStrictEqual(
+      [...EDITED_FILES, posed].sort(),
+    );
+    expect(survivorsNaming(files, readingPosedAs(withoutSymbol))).toStrictEqual(
       EDITED_FILES,
     );
   });
