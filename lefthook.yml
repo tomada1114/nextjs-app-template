@@ -37,13 +37,16 @@ pre-commit:
     # Formatting is applied and re-staged, so "always formatted" holds without
     # anyone remembering to run `pnpm fix`. Runs alone, before the parallel
     # group below: eslint and typecheck must see the formatted content, not
-    # the pre-format one. Caveat — `stage_fixed` re-stages a reformatted file
-    # with a plain `git add`, which stages the file *whole*. So on a
-    # partially-staged file (`git add -p`) that Prettier rewrites, the unstaged
-    # hunks are swept into the commit too — their content, not merely their
-    # formatting. Unlike lint-staged, lefthook does not stash the unstaged half
-    # first. Commit a partial stage of an already-formatted file, or stash the
-    # rest before committing.
+    # the pre-format one. `stage_fixed` re-stages only the reformatted staged
+    # content: lefthook stashes the unstaged half around the job and restores
+    # it afterward, the same way lint-staged does, so a partially-staged file
+    # (`git add -p`) that Prettier rewrites keeps its unstaged hunk out of the
+    # commit. That restore is not unconditional: an unstaged hunk overlapping
+    # a line Prettier itself rewrites fails to reapply and aborts the whole
+    # commit (worktree recovered, nothing lost, index left unformatted) —
+    # stage the whole file or `git stash` the rest first.
+    # tests/lefthook-partial-stage.test.ts pins both cases against a future
+    # lefthook major that might change them.
     - name: format
       run: pnpm exec prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
