@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
 import consoleModule from "node:console";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -209,10 +211,11 @@ describe("verifyHooks", () => {
     const env = isolatedEnv();
     const root = makeRepository(env);
     addLefthook(root);
-    writeFileSync(
-      path.join(root, ".git", "hooks", "pre-commit"),
-      "#!/bin/sh\nexit 0\n",
-    );
+    const hookPath = path.join(root, ".git", "hooks", "pre-commit");
+    writeFileSync(hookPath, "#!/bin/sh\nexit 0\n");
+    // Executable but not lefthook's, so this hits the content check rather
+    // than the executable-bit check F4 added.
+    chmodSync(hookPath, 0o755);
     const messages: string[] = [];
 
     expect(verifyHooks({ root, env, log: (m) => messages.push(m) })).toBe(1);
@@ -233,13 +236,98 @@ describe("verifyHooks", () => {
       // answers, so the run reaches the half that cannot be resolved.
       git: (args, options) =>
         args[1] === "--git-path"
-          ? undefined
-          : execFileSync("git", [...args], { ...options, encoding: "utf8" }).trim(),
+          ? { stdout: undefined, stderr: "boom" }
+          : {
+              stdout: execFileSync("git", [...args], {
+                ...options,
+                encoding: "utf8",
+              }).trim(),
+              stderr: "",
+            },
       log: (m) => messages.push(m),
     });
 
     expect(status).toBe(1);
     expect(messages).toEqual([expect.stringContaining("ERR_HOOKS_PATH_UNRESOLVED")]);
+    expect(messages[0]).toContain("boom");
+  });
+
+  it("fails, rather than reading it as no repository, when git errors for any other reason", () => {
+    // Reproduces the class of bug F2 closes: a `safe.directory` mismatch
+    // ("detected dubious ownership"), a permission error, or `git` missing
+    // from `PATH` all exit non-zero the same way a genuine "not a git
+    // repository" does, but none of them mean the directory is not a work
+    // tree — and unlike that case, they often mean lefthook's own postinstall
+    // could not write the hook either. Before the fix, `runGit` collapsed
+    // every failure to `undefined` and the caller treated that as "not a Git
+    // work tree", printing a skip message and exiting 0 — silently passing on
+    // exactly the condition this test drives.
+    const env = isolatedEnv();
+    const root = makeRepository(env);
+    addLefthook(root);
+    const messages: string[] = [];
+
+    const status = verifyHooks({
+      root,
+      env,
+      git: (args) =>
+        args[0] === "rev-parse" && args[1] === "--show-toplevel"
+          ? {
+              stdout: undefined,
+              stderr:
+                "fatal: detected dubious ownership in repository at '/repo'\n" +
+                "To add an exception for this directory, call:\n\n" +
+                "\tgit config --global --add safe.directory /repo",
+            }
+          : { stdout: "", stderr: "" },
+      log: (m) => messages.push(m),
+    });
+
+    expect(status).toBe(1);
+    expect(messages).toEqual([expect.stringContaining("ERR_HOOKS_GIT_UNAVAILABLE")]);
+    expect(messages[0]).toContain("dubious ownership");
+    expect(messages[0]).not.toContain("not a Git work tree");
+  });
+
+  it("fails, not skips, when git itself cannot be spawned", () => {
+    const env = isolatedEnv();
+    const root = makeRepository(env);
+    addLefthook(root);
+    const messages: string[] = [];
+
+    const status = verifyHooks({
+      root,
+      env,
+      git: () => ({ stdout: undefined, stderr: "spawnSync git ENOENT" }),
+      log: (m) => messages.push(m),
+    });
+
+    expect(status).toBe(1);
+    expect(messages).toEqual([expect.stringContaining("ERR_HOOKS_GIT_UNAVAILABLE")]);
+    expect(messages[0]).toContain("ENOENT");
+  });
+
+  it("fails when the installed pre-commit hook lost its executable bit", () => {
+    // Reproduces the class of bug F4 closes: `existsSync` alone passes for a
+    // `pre-commit` file whose mode lost every executable bit (a `chmod -x`, an
+    // `unzip` or `rsync` that dropped modes, a copied `.git` directory). Git
+    // silently ignores a non-executable hook at commit time, so before the
+    // fix this ran to completion and returned 0 — success — with the gate
+    // absent.
+    const env = isolatedEnv();
+    const root = makeRepository(env);
+    addLefthook(root);
+    expect(installLefthookHooks(root, env).status).toBe(0);
+    const hookPath = path.join(root, ".git", "hooks", "pre-commit");
+    expect(existsSync(hookPath)).toBe(true);
+
+    chmodSync(hookPath, 0o644);
+    expect(statSync(hookPath).mode & 0o111).toBe(0);
+
+    const messages: string[] = [];
+    expect(verifyHooks({ root, env, log: (m) => messages.push(m) })).toBe(1);
+
+    expect(messages).toEqual([expect.stringContaining("ERR_HOOKS_NOT_EXECUTABLE")]);
   });
 });
 

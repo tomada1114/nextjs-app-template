@@ -29,12 +29,16 @@
 // `--frozen-lockfile` and commits nothing), a directory that is not the root of
 // a Git work tree (a tarball extract, a Docker build context, a subtree copied
 // inside somebody else's checkout), and an install that left no `lefthook` in
-// `node_modules` (a `--prod` install).
+// `node_modules` (a `--prod` install). A `git` failure that is not a genuine
+// "not a repository" — a `safe.directory` mismatch, a permission error, `git`
+// missing from `PATH` — fails instead: those usually mean lefthook's own
+// postinstall could not write the hook either, so asserting the work tree is
+// absent would be the exact silent pass this script exists to close.
 //
 // Node globals are imported explicitly, as in every other .mjs here.
 import { spawnSync } from "node:child_process";
 import console from "node:console";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -104,13 +108,31 @@ function canonical(target) {
 }
 
 /**
- * Run `git` and return its trimmed stdout, or `undefined` when it failed.
+ * Git's own wording for "there is no repository here at all".
+ *
+ * @remarks
+ * Matched against text, not the exit status alone: `git` also exits non-zero
+ * for a `safe.directory` mismatch ("detected dubious ownership"), for a
+ * permission error, and — via a spawn failure — for `git` missing from
+ * `PATH`, and none of those mean the directory is not a repository. They mean
+ * the check could not complete, and frequently mean lefthook's own
+ * postinstall could not install the hook either, so they must fail rather
+ * than read as the one case verification is genuinely meaningless for.
+ */
+const NOT_A_WORK_TREE = "not a git repository";
+
+/**
+ * Run `git` and report enough to tell "no repository here" from any other failure.
  *
  * @param {readonly string[]} args - Arguments after `git`.
  * @param {object} options - Spawn options.
  * @param {string} options.cwd - Directory to run in.
  * @param {NodeJS.ProcessEnv} options.env - Environment for the child.
- * @returns {string | undefined} Trimmed stdout, or `undefined` on any failure.
+ * @returns {{ stdout: string | undefined; stderr: string }} `stdout` is the
+ * trimmed output on success, `undefined` on any failure. `stderr` is git's own
+ * message on a non-zero exit, or a locally built one when `git` itself could
+ * not be spawned, so a caller can distinguish a genuine "not a repository"
+ * from `git` being absent or erroring for any other reason.
  */
 function runGit(args, { cwd, env }) {
   const result = spawnSync("git", [...args], {
@@ -119,10 +141,13 @@ function runGit(args, { cwd, env }) {
     encoding: "utf8",
     timeout: 60_000,
   });
-  if (result.error !== undefined || result.status !== 0) {
-    return undefined;
+  if (result.error !== undefined) {
+    return { stdout: undefined, stderr: result.error.message };
   }
-  return result.stdout.trim();
+  if (result.status !== 0) {
+    return { stdout: undefined, stderr: result.stderr.trim() };
+  }
+  return { stdout: result.stdout.trim(), stderr: "" };
 }
 
 /**
@@ -199,13 +224,24 @@ export function verifyHooks({
 
   const gitEnv = isolatedGitEnv(env);
   const topLevel = git(["rev-parse", "--show-toplevel"], { cwd: root, env: gitEnv });
-  if (topLevel === undefined) {
-    log("verify-hooks: not a Git work tree; not checking the pre-commit hook.");
-    return 0;
+  if (topLevel.stdout === undefined) {
+    if (topLevel.stderr.includes(NOT_A_WORK_TREE)) {
+      log("verify-hooks: not a Git work tree; not checking the pre-commit hook.");
+      return 0;
+    }
+    log(
+      "ERR_HOOKS_GIT_UNAVAILABLE: `git rev-parse --show-toplevel` failed.\n" +
+        "Expected: git to answer whether this directory is a work tree, so the hook can be verified.\n" +
+        `Actual: ${topLevel.stderr === "" ? "git could not be run at all" : topLevel.stderr}\n` +
+        "Next: fix what git reports — a `git config --global --add safe.directory` line for " +
+        "dubious ownership, or installing git — then try again. " +
+        `Set ${OPT_OUT}=1 to install without the hook, deliberately.`,
+    );
+    return 1;
   }
   // Compared with `root` so a copy of this project unpacked *inside* somebody
   // else's checkout reports on their hooks instead of its own missing ones.
-  if (canonical(topLevel) !== canonical(root)) {
+  if (canonical(topLevel.stdout) !== canonical(root)) {
     log(
       "verify-hooks: this directory sits inside another Git repository rather than being one; " +
         "not checking the pre-commit hook.",
@@ -223,7 +259,7 @@ export function verifyHooks({
   const configPath = path.join(root, LEFTHOOK_CONFIG);
   if (!existsSync(configPath)) {
     log(
-      `ERR_HOOKS_CONFIG_MISSING: ${LEFTHOOK_CONFIG} is not in ${display(root, configPath)}.\n` +
+      `ERR_HOOKS_CONFIG_MISSING: no ${LEFTHOOK_CONFIG} at the project root.\n` +
         `Expected: the committed ${LEFTHOOK_CONFIG} that declares the pre-commit jobs.\n` +
         "Actual: no such file. `lefthook install` writes a blank one when it finds none, and reports success doing it.\n" +
         `Next: restore it with \`git checkout -- ${LEFTHOOK_CONFIG}\`, then run \`pnpm hooks:install\`. ` +
@@ -246,11 +282,11 @@ export function verifyHooks({
     cwd: root,
     env: gitEnv,
   });
-  if (hooksDirectory === undefined) {
+  if (hooksDirectory.stdout === undefined) {
     log(
       "ERR_HOOKS_PATH_UNRESOLVED: `git rev-parse --git-path hooks` failed.\n" +
         "Expected: the directory git runs hooks from, which `core.hooksPath` may legitimately redirect.\n" +
-        "Actual: git could not answer, so whether the hook is in force is unknown.\n" +
+        `Actual: ${hooksDirectory.stderr === "" ? "git could not answer" : hooksDirectory.stderr}\n` +
         "Next: run `git rev-parse --git-path hooks` here and fix what it reports. " +
         `Set ${OPT_OUT}=1 to install without the hook, deliberately.`,
     );
@@ -259,7 +295,7 @@ export function verifyHooks({
   // `--git-path` answers relatively in an ordinary checkout (`.git/hooks`) and
   // absolutely from a linked worktree, where hooks live in the shared common
   // directory. Resolving against `root` covers both.
-  const hookPath = path.resolve(root, hooksDirectory, "pre-commit");
+  const hookPath = path.resolve(root, hooksDirectory.stdout, "pre-commit");
 
   if (!existsSync(hookPath)) {
     log(
@@ -267,6 +303,17 @@ export function verifyHooks({
         "Expected: the hook lefthook's own postinstall writes on every non-CI `pnpm install`.\n" +
         "Actual: nothing there. lefthook's postinstall ignores `lefthook install`'s exit status, so a failed install leaves `pnpm install` green and the gate absent.\n" +
         "Next: run `pnpm hooks:install` and read what it reports; a `core.hooksPath` lefthook cannot write to (`git config --get core.hooksPath`) is the usual cause. " +
+        `Set ${OPT_OUT}=1 to install without the hook, deliberately.`,
+    );
+    return 1;
+  }
+  const hookMode = statSync(hookPath).mode;
+  if ((hookMode & 0o111) === 0) {
+    log(
+      `ERR_HOOKS_NOT_EXECUTABLE: the pre-commit hook at ${display(root, hookPath)} is not executable.\n` +
+        "Expected: the executable bit lefthook sets when it writes the hook.\n" +
+        "Actual: a file present but not executable — git silently skips a hook like that at commit time, with nothing on screen.\n" +
+        `Next: run \`chmod +x ${display(root, hookPath)}\` or \`pnpm hooks:install\` to have lefthook rewrite it. ` +
         `Set ${OPT_OUT}=1 to install without the hook, deliberately.`,
     );
     return 1;

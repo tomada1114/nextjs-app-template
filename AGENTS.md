@@ -245,10 +245,13 @@ calls that success — and the path is resolved rather than assumed, because
 
 Verification skips, and the install succeeds, only where it is meaningless: `CI` set, a
 directory that is not a Git work tree root, and an install that left no `lefthook` in
-`node_modules`. The remaining ways to end up without the gate are all deliberate or
+`node_modules`. Most of the remaining ways to end up without the gate are deliberate or
 visible: `pnpm install --ignore-scripts`, which runs neither lifecycle script;
 `ALLOW_MISSING_GIT_HOOKS=1`, the documented opt-out for a developer who genuinely cannot
 have the hook, which every failure message names; and hooks removed by hand afterwards.
+`LEFTHOOK=0` is not among them: it leaves the hook installed and `verify-hooks` green
+while disabling the gate at every commit it is set for — "Two consequences" below is
+where that invisibility, and why nothing here closes it, is explained once.
 `pnpm hooks:install` is the repair, not a setup step.
 
 This repository ships no declarative, tool-call-aware permission list (a Claude Code
