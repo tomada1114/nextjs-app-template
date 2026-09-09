@@ -117,9 +117,9 @@ export function defaultDeadlineMs(timeoutMs: number, maxRetries: number): number
  * Node backs a timer's delay with a **signed** 32-bit integer — `INT32_MAX`,
  * this value — and *silently clamps* anything larger instead of rejecting it:
  * `AbortSignal.timeout(2_147_483_648)` fires within a millisecond, not after
- * the ~24.9 days requested. The larger, unsigned bound where that call itself
- * starts throwing (`2 ** 32 - 1`) is the wrong ceiling for that reason.
- * Rejected here at construction, because `LlmPort` promises never to throw.
+ * the ~24.9 days requested. That call only starts throwing at `2 ** 32`, so
+ * deriving this ceiling from its unsigned bound accepts a whole band of delays
+ * it then clamps. Rejected at construction, because `LlmPort` never throws.
  */
 export const MAX_DEADLINE_MS = 2_147_483_647;
 

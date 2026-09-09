@@ -444,10 +444,14 @@ describe("createAnthropicAdapter rejects a deadline the platform cannot arm", ()
   ])(
     "throws at construction rather than per request for deadlineMs %o",
     (deadlineMs: number) => {
-      // `AbortSignal.timeout` throws a RangeError for anything outside an
-      // unsigned 32-bit delay, and the adapter arms it outside every `try` in
-      // `generate` — so left unchecked here it would surface as a *rejected*
-      // `generate()`, which is the one thing `LlmPort` promises never happens.
+      // Two different platform failures, both refused in the same place. A
+      // delay outside `AbortSignal.timeout`'s own unsigned 32-bit range (the
+      // first five rows) throws a RangeError there, and the adapter arms the
+      // signal outside every `try` in `generate` — so left unchecked it would
+      // surface as a *rejected* `generate()`, the one thing `LlmPort` promises
+      // never happens. The last two rows are *inside* that range and throw
+      // nothing at all: Node clamps them to a ~1 ms delay, so left unchecked
+      // they would surface as a deadline firing at once instead.
       expect(() => createAnthropicAdapter({ apiKey: "test-key", deadlineMs })).toThrow(
         RangeError,
       );
@@ -456,16 +460,21 @@ describe("createAnthropicAdapter rejects a deadline the platform cannot arm", ()
 });
 
 describe("createAnthropicAdapter arms a near-ceiling deadline instead of firing it immediately (#99)", () => {
-  // The bug this pins down: Node backs a timer's delay with a *signed* 32-bit
-  // integer and silently clamps any delay from 2**31 upward to a token value
-  // instead of rejecting it — `AbortSignal.timeout(2_147_483_648)` does not
-  // throw, it fires within a millisecond rather than after the ~24.9 days
-  // requested. Construction not throwing was the whole of the original
-  // boundary test, and that assertion cannot tell a correctly-armed ~24.9-day
-  // timer apart from one that already fired. `headersThenStallFetch` answers
-  // 200 at once and then never closes the body, so nothing but the deadline
-  // itself can settle this call, and racing it against a short real-clock
-  // delay is what makes "still armed, not fired" observable.
+  // What this block is worth, stated exactly: it proves `MAX_DEADLINE_MS`
+  // itself is genuinely armable, so a ceiling lowered past the largest delay
+  // Node really honours fails here instead of silently shortening every
+  // deadline. It does *not* pin #99's bug — both values are below the old
+  // ceiling too, so they construct and arm identically before the fix. The row
+  // that regresses pre-fix `src/` is `4_294_967_295` in the rejection table
+  // above; `2_147_483_648`, the value that used to clamp, is refused at
+  // construction now and so can never reach `generate()` at all.
+  //
+  // Construction not throwing was the whole of the original boundary test, and
+  // that assertion cannot tell a correctly-armed ~24.9-day timer apart from one
+  // that already fired. `headersThenStallFetch` answers 200 at once and then
+  // never closes the body, so nothing but the deadline itself can settle this
+  // call, and racing it against a short real-clock delay is what makes "still
+  // armed, not fired" observable.
   const STILL_PENDING = Symbol("still pending");
 
   it.each([
@@ -476,12 +485,22 @@ describe("createAnthropicAdapter arms a near-ceiling deadline instead of firing 
   ] as const)(
     "does not fire within 50ms of real time for deadlineMs %i",
     async (deadlineMs) => {
+      // The deadline under test is ~24.9 days out and the stalled body only
+      // errors on abort, so this signal is the only thing that can settle the
+      // call once the race is decided; without it the suite would end with a
+      // permanently pending request and its abort listener still registered.
+      const controller = new AbortController();
       const pending = createAnthropicAdapter({
         apiKey: "test-key",
         maxRetries: 0,
         deadlineMs,
         fetch: headersThenStallFetch(),
-      }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+      }).generate({
+        schema: SCHEMA,
+        prompt: "?",
+        outputLanguage: "en",
+        signal: controller.signal,
+      });
 
       const winner = await Promise.race([
         pending,
@@ -493,6 +512,9 @@ describe("createAnthropicAdapter arms a near-ceiling deadline instead of firing 
       ]);
 
       expect(winner).toBe(STILL_PENDING);
+
+      controller.abort();
+      await pending;
     },
   );
 });
@@ -506,12 +528,18 @@ describe("createAnthropicAdapter derives its default deadline from timeoutMs and
   // per-attempt/per-retry terms together (rows 3-4). Expected numbers are
   // worked out by hand below, not by re-running the derivation:
   //
-  //   row 1: (0 + 1) * 2_147_481_646 + 0 * 8_000 + 2_000 = 2_147_483_646
+  //   row 1: (0 + 1) * 2_147_481_647 + 0 * 8_000 + 2_000 = 2_147_483_647
   //   row 2: (0 + 1) * 2_147_481_648 + 0 * 8_000 + 2_000 = 2_147_483_648
   //   row 3: (1 + 1) * 1_073_736_823 + 1 * 8_000 + 2_000 = 2_147_483_646
   //   row 4: (1 + 1) * 1_073_736_824 + 1 * 8_000 + 2_000 = 2_147_483_648
+  //
+  // Rows 1-2 straddle `MAX_DEADLINE_MS` exactly — row 1 derives it, row 2 the
+  // next integer up — so a `>` relaxed to `>=` fails here. Rows 3-4 cannot be
+  // that tight: `2 * timeoutMs + 10_000` is always even, so the odd
+  // `2_147_483_647` is unreachable at `maxRetries: 1` and the closest pair
+  // available straddles it one either side.
   it.each([
-    [2_147_481_646, 0, "constructs"],
+    [2_147_481_647, 0, "constructs"],
     [2_147_481_648, 0, "RangeError"],
     [1_073_736_823, 1, "constructs"],
     [1_073_736_824, 1, "RangeError"],
