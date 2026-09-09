@@ -168,8 +168,8 @@ function flowEntries(value: string): string[] {
  * The arithmetic is deliberately the same naive brace/bracket count {@link
  * flowEntries} splits on, and deliberately not quote-aware. A quote-aware count
  * would call `{ group: "a}b", … }` readable while `flowEntries`, still counting
- * naively, mis-splits it — a detector more permissive than the splitter it
- * guards is how a silent mis-read gets back in. So a value whose depth does not
+ * naively, splits it wrongly — a detector more permissive than the splitter
+ * it guards is how a silent misreading gets back in. So a value whose depth does not
  * return to zero on this line, negative as well as positive, is one this lint
  * refuses rather than half-reads.
  */
@@ -2197,7 +2197,7 @@ describe("lintWorkflow", () => {
   });
 
   it("refuses a one-line mapping whose quoted group value hides an unbalanced brace", () => {
-    // A silent pass on HEAD: flowEntries mis-splits `"a}b"` and the cancel rule
+    // A silent pass on HEAD: flowEntries splits `"a}b"` wrongly and the cancel rule
     // never sees the entry it needs. depth < 0 refuses it instead of half-reading.
     const source = CLEAN_WORKFLOW.replace(
       "  pull_request:",
