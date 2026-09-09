@@ -95,6 +95,15 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
  * each appears in this repository's prose about something that is not the AI
  * layer, and a needle matching a survivor that is not on the edited lists
  * fails this suite for a false reason.
+ *
+ * `/api/ask` belongs here rather than on `REMOVED_PATHS` because it names the
+ * removed route by its URL, not its source path: `REMOVED_PATHS` carries
+ * `src/app/api`, and `"src/app/api".includes(text)` never matches a sentence
+ * or a test request that spells the route as `POST /api/ask` — the two
+ * strings share no substring. A document names an endpoint by the address a
+ * caller sends a request to at least as often as by the file that answers it,
+ * so the URL needs a needle of its own the same way `outputLanguage` needs one
+ * separate from `src/ai/port.ts`.
  */
 const AI_LAYER_SYMBOLS = [
   "Llm",
@@ -102,6 +111,7 @@ const AI_LAYER_SYMBOLS = [
   "LLM_RECORD",
   "outputLanguage",
   "askHandler",
+  "/api/ask",
 ];
 
 /**
@@ -147,7 +157,11 @@ const REMOVED_SKILL_NAMES = [
  * `tests/server-smoke.test.ts` asks the running application for every route it
  * publishes, `POST /api/ask` among them, so the removal deletes those cases
  * the same way it deletes the route; it is a test of the composed application,
- * not a module the layer is embedded in. This
+ * not a module the layer is embedded in. `tests/proxy.test.ts` picked the same
+ * route as its example of a nested API path the locale matcher leaves alone —
+ * a case named `"a nested API route"` with `/api/ask` as the literal — and a
+ * matcher test choosing a path that no longer exists needs a different
+ * example, even though the matcher's own behaviour does not change. This
  * half is where the separability property lives: it is the one that has to stay
  * near-empty, and an entry joining it means an application module now has to
  * be edited by the removal — the moment the layer has stopped coming out in
@@ -159,6 +173,7 @@ const EDITED_CODE_FILES = [
   "package.json",
   "src/server/env.ts",
   "tests/boundaries.test.ts",
+  "tests/proxy.test.ts",
   "tests/server-env.test.ts",
   "tests/server-smoke.test.ts",
   "vitest.config.ts",

@@ -176,17 +176,24 @@ Delete the paths, then work through both edited lists:
   sentence, the bullet, or the section whose _subject_ is the layer. Do not write a
   replacement now: you are here before your own code exists, and a rule with no example
   is still a rule. Add one when you have code worth pointing at.
-- Grep for the sites rather than trusting a reading of each file: they are the needles
+- Grep to find the sites, then read the file: the needles
   `tests/ai-layer-removal.test.ts` lists — `REMOVED_PATHS`, `AI_LAYER_TOKENS`,
-  `AI_LAYER_SYMBOLS` and `REMOVED_SKILL_NAMES`. A skill's frontmatter `description` is a
-  site like any other: it is that skill's one trigger surface, and a trigger naming a
-  file that is gone is dead weight nothing reports once this suite is deleted. Several
-  descriptions name a removed path today, this skill's own among them.
+  `AI_LAYER_SYMBOLS` and `REMOVED_SKILL_NAMES` — are a lower bound, not a substitute for
+  reading it. The skills on `EDITED_DOCUMENT_FILES` were written before
+  `authoring-skills` required a new mention to carry a needle, so a paragraph can name
+  the layer with none: `building-app-routes`' "The zero-credential quick start is
+  untouched by all of this" paragraph names no path, token, symbol or skill, and a grep
+  alone walks past it. A skill's frontmatter `description` is a site like any other: it
+  is that skill's one trigger surface, and a trigger naming a file that is gone is dead
+  weight nothing reports once this suite is deleted. Several descriptions name a removed
+  path today, this skill's own among them.
 - Two are not sentence surgery. `integrating-llm` is deleted rather than edited, its
   whole subject being the layer; and `localizing-ui` loses its `outputLanguage` section
   whole, heading included — that seam is the port's, and the UI locale it maps from has
-  nowhere left to reach. Everything else in `localizing-ui`, the catalogs and the locale
-  routing, is untouched.
+  nowhere left to reach. The catalogs and the locale routing are untouched, but the
+  section is not the only place `outputLanguage` appears: the skill's frontmatter
+  `description` and its **Owns:** sentence both name the same seam and both need the
+  same edit.
 - This skill loses its "Removing the AI layer" section — it is on
   `EDITED_DOCUMENT_FILES` because a procedure for deleting something already gone is
   stale prose. Edit the `.agents/` copy and run `pnpm agents:sync`; never hand-edit the
