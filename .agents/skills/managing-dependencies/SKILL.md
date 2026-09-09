@@ -107,6 +107,38 @@ ships, not noise.
 - Dev dependencies are kept current by bot PRs plus the lockfile, not by hand.
   **REQUIRED:** `merge-dependabot` to land one.
 
+## The one dependency outside pnpm's graph
+
+`.mcp.json` runs `next-devtools-mcp` through `npx`, straight from the npm registry, with
+no `package.json` entry and no `pnpm-lock.yaml` line. Every protection above is a
+`pnpm`-install-time mechanism, so none of it reaches this file: no lockfile pins the
+resolved version, `minimumReleaseAge` never sees an `npx` fetch, and `pnpm audit` never
+walks a graph this file is not part of. Left unpinned (`next-devtools-mcp@latest`), the
+same commit runs a different tool depending on when it happens to be fetched — no
+lockfile, no cooldown, no review record, for a server that runs inside real development
+sessions.
+
+The fix is a manual substitute for what the lockfile does automatically elsewhere:
+
+- Pin an exact version in the `args` array (`next-devtools-mcp@<version>`) — never
+  `@latest` and never a `^`/`~` range. A range here has no lockfile to freeze its
+  resolution, so it would still float to whatever is newest each time `npx` runs; only
+  an exact string is reproducible outside pnpm's graph.
+- Resolve the version by hand with `npm view next-devtools-mcp version`, and check how
+  recently it was published with `npm view next-devtools-mcp time --json` before
+  adopting it — the cooldown above exists for exactly this reason (a freshly published
+  version installed unreviewed), and nothing enforces it here, so apply it by eye:
+  prefer a version that has been out for at least the `minimumReleaseAge` window over
+  the newest one.
+- Verify the pinned version actually starts before committing: run it and send it an
+  `initialize` request over stdio (or otherwise confirm the MCP client connects to it) —
+  a crash or a malformed response is the whole of what "starts" means for a version with
+  no test suite of its own here.
+- Bumping is a manual PR by whoever notices the pin is stale or hits a bug fixed
+  upstream — there is no bot PR for this one, unlike every dependency `package.json`
+  declares. The PR that bumps it repeats the two steps above: resolve and age-check the
+  new version, then verify it starts.
+
 ## The release-age cooldown
 
 `pnpm-workspace.yaml` sets a `minimumReleaseAge` cooldown: a version published too
