@@ -30,6 +30,11 @@ next-env.d.ts
 # Environment variables, dotenv and direnv alike (example files are tracked on
 # purpose). direnv keeps its real values in .envrc.local / .envrc.private, so
 # the .envrc.* variants are ignored too, not just the bare name.
+#
+# The bare .envrc is ignored as a default, not as a prohibition: a project that
+# follows direnv's convention of tracking the shared script deletes the .envrc
+# line below and keeps the .envrc.* one. The pre-commit guard permits that --
+# see checkCommit in scripts/lib/guard/paths.mjs -- so the two layers agree.
 .env
 .env.*
 .envrc

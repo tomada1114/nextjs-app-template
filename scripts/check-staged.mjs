@@ -14,6 +14,12 @@
 // turns off the secret check along with everything else. This one should never
 // have a reason to fire on work someone meant to do.
 //
+// That is why this layer is narrower than the agent-read rule it shares a body
+// with, in exactly one place: direnv's bare `.envrc` is a shared script a
+// direnv project tracks on purpose, so it is judged on its content here rather
+// than refused on its name, while `.envrc.local`, `.envrc.private` and every
+// other `.env*` shape stay refused. See `checkCommit` in lib/guard/paths.mjs.
+//
 // This script sees what actually reaches `git commit`, from any author — a
 // human, Codex, or any other tool. Two rules are deliberately not folded in
 // here, because a git diff cannot express them:
@@ -36,7 +42,7 @@ import console from "node:console";
 import process from "node:process";
 
 import { checkCredentials } from "./lib/guard/credentials.mjs";
-import { checkRead, describePath } from "./lib/guard/paths.mjs";
+import { checkCommit, describePath } from "./lib/guard/paths.mjs";
 import { isMain } from "./lib/is-main.mjs";
 import { repoRoot } from "./lib/node-tools.mjs";
 
@@ -178,13 +184,15 @@ export function checkStagedChange(change, cwd = repoRoot) {
     return null;
   }
 
-  // Reuses the same classification checkRead applies to an agent's Read call
-  // (.env*, secrets/**, and the personal .claude/settings.local.json) — the
-  // rule is "this path is secret-shaped", independent of who or what is about
-  // to expose it. Decided before the blob is read, so a secret file's content
-  // is never pulled into this process to reach a verdict the path alone
-  // already gives.
-  if (checkRead(change.path) !== null) {
+  // The rule body is shared with the agent-read rule and still covers .env*,
+  // secrets/**, and the personal .claude/settings.local.json. checkCommit is
+  // the entry point here because the two layers diverge on exactly one path: a
+  // bare `.envrc`, which a direnv project tracks on purpose and which
+  // therefore reaches the content scan below instead of being refused on its
+  // name. For every path that is refused the verdict is still reached before
+  // the blob is read, so a secret file's content is never pulled into this
+  // process to reach a verdict the path alone already gives.
+  if (checkCommit(change.path) !== null) {
     return `${change.path} looks like it holds secrets and must not be committed. Add it to .gitignore instead, or commit a .example/.sample/.template variant.`;
   }
 

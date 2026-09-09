@@ -36,6 +36,12 @@ function makeRepo(): string {
   execFileSync("git", ["init", "-q"], { cwd: dir });
   execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
   execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+  // A fixture repository ships no .gitignore of its own, but git still reads
+  // the developer's global excludes file, which on a machine that runs agents
+  // lists `.claude/settings.local.json`. Left in place, `stage()` would fail
+  // to add exactly the paths these tests exist to hand the guard, and only on
+  // some machines. Point it at nothing so the fixture is the whole world.
+  execFileSync("git", ["config", "core.excludesFile", "/dev/null"], { cwd: dir });
   return dir;
 }
 
@@ -97,6 +103,62 @@ describe("checkStagedChange", () => {
     const dir = makeRepo();
     const change = { status: "A", path: stage(dir, ".env.example", "API_TOKEN=\n") };
     expect(checkStagedChange(change, dir)).toBeNull();
+  });
+
+  it("allows staging direnv's bare .envrc", () => {
+    // The file this issue is about: in direnv's convention `.envrc` is the
+    // shared script, and the values live in the `.envrc.local` it sources.
+    const dir = makeRepo();
+    const change = {
+      status: "A",
+      path: stage(
+        dir,
+        ".envrc",
+        "use flake\nlayout node\nsource_env_if_exists .envrc.local\n",
+      ),
+    };
+    expect(checkStagedChange(change, dir)).toBeNull();
+  });
+
+  it("blocks a .envrc that exports a real key", () => {
+    // Asserted on the credential message rather than the path one: if the
+    // path rule silently came back it would short-circuit the content scan,
+    // and this row is what notices. The variable is named generically because
+    // the suite that keeps the AI layer removable tracks the provider's own
+    // env name, and this file has no business joining that removal.
+    const dir = makeRepo();
+    const key = ["export LLM_API_KEY=", "sk-ant-", "a".repeat(25)].join("");
+    const change = { status: "A", path: stage(dir, ".envrc", `${key}\n`) };
+    expect(checkStagedChange(change, dir)).toMatch(/Anthropic/);
+  });
+
+  it("blocks staging a .envrc.local", () => {
+    const dir = makeRepo();
+    const change = {
+      status: "A",
+      path: stage(dir, ".envrc.local", "export API_TOKEN=live\n"),
+    };
+    expect(checkStagedChange(change, dir)).toMatch(/must not be committed/);
+  });
+
+  it("blocks staging a .envrc under secrets/", () => {
+    // The carve-out is scoped to the dotenv branch, so the `secrets/` rule
+    // still refuses this one.
+    const dir = makeRepo();
+    const change = {
+      status: "A",
+      path: stage(dir, "secrets/.envrc", "use flake\n"),
+    };
+    expect(checkStagedChange(change, dir)).toMatch(/must not be committed/);
+  });
+
+  it("blocks staging the personal .claude/settings.local.json", () => {
+    const dir = makeRepo();
+    const change = {
+      status: "A",
+      path: stage(dir, ".claude/settings.local.json", "{}\n"),
+    };
+    expect(checkStagedChange(change, dir)).toMatch(/must not be committed/);
   });
 
   it("blocks a staged file that embeds a credential", () => {
@@ -222,6 +284,12 @@ describe("main", () => {
   it("returns 0 when nothing staged is unsafe", () => {
     const dir = makeRepo();
     stage(dir, "src/example.ts", "export const value = 1;\n");
+    expect(main(dir)).toBe(0);
+  });
+
+  it("returns 0 when only a clean direnv .envrc is staged", () => {
+    const dir = makeRepo();
+    stage(dir, ".envrc", "use flake\nsource_env_if_exists .envrc.local\n");
     expect(main(dir)).toBe(0);
   });
 
