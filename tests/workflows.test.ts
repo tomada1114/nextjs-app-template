@@ -161,21 +161,34 @@ function flowEntries(value: string): string[] {
 }
 
 /**
- * Whether an inline value opens a flow collection that does not close again on
- * the same physical line.
+ * Whether an inline value is written in a shape this lint cannot take at face
+ * value.
  *
  * @remarks
- * The arithmetic is deliberately the same naive brace/bracket count {@link
- * flowEntries} splits on, and deliberately not quote-aware. A quote-aware count
- * would call `{ group: "a}b", … }` readable while `flowEntries`, still counting
- * naively, splits it wrongly — a detector more permissive than the splitter
- * it guards is how a silent misreading gets back in. So a value whose depth does not
- * return to zero on this line, negative as well as positive, is one this lint
- * refuses rather than half-reads.
+ * Exactly two shapes are readable: a flow collection whose naive brace/bracket
+ * depth returns to zero on this physical line, and a scalar read as itself.
+ * Everything else is refused rather than half-read.
+ *
+ * The arithmetic is deliberately the same naive count {@link flowEntries}
+ * splits on, and deliberately not quote-aware. A quote-aware count would call
+ * `{ group: "a}b", … }` readable while `flowEntries`, still counting naively,
+ * splits it wrongly — a detector more permissive than the splitter it guards is
+ * how a silent misreading gets back in. So a value whose depth does not return
+ * to zero on this line, negative as well as positive, is refused wherever the
+ * collection opens: at the very first character or part-way along.
+ *
+ * A leading `&`, `*` or `!` is refused one step earlier, for the same reason. A
+ * plain scalar cannot begin with a YAML indicator, so an anchored node, an alias
+ * or a tagged node is never the scalar the callers below would otherwise take it
+ * for — {@link namesGroup} counts the whole of `&c {` as a group name it never
+ * looked inside, and {@link eventName} matches nothing at all, which is a
+ * workflow declaring no triggers. Reading past the indicator to the node behind
+ * it is the flow-scalar parser this repository has decided not to write, so the
+ * class is refused whole: what this admits, the rules behind it can read.
  */
-function opensUnterminatedFlow(inline: string): boolean {
-  if (!/^[[{]/.test(inline)) {
-    return false;
+function unreadableInline(inline: string): boolean {
+  if (/^[&*!]/.test(inline)) {
+    return true;
   }
   let depth = 0;
   for (const character of inline) {
@@ -248,8 +261,8 @@ function pullRequestTargetLine(lines: Line[]): Line | undefined {
 }
 
 /**
- * The top-level `on:` line, when its inline value opens a flow collection
- * (`[` or `{`) that never closes again on that same physical line.
+ * The top-level `on:` line, when its inline value is a shape {@link
+ * unreadableInline} refuses.
  *
  * @remarks
  * A flow collection is legal YAML spread across several physical lines
@@ -257,19 +270,23 @@ function pullRequestTargetLine(lines: Line[]): Line | undefined {
  * nothing rejoins them into a single value. Fed a lone `[`, {@link
  * flowEntries} slices it to `""`, {@link eventName} reports no event for
  * that, and {@link triggerNames} comes back empty — silently, with no
- * problem reported. That would let a workflow declare `pull_request_target`
+ * problem reported. An anchored or tagged value (`on: &t [push]`) arrives at
+ * the same place by a different route: {@link eventName}'s pattern does not
+ * match a leading indicator, so the whole value names no event either.
+ *
+ * Either way that would let a workflow declare `pull_request_target`
  * past `ERR_WORKFLOW_PULL_REQUEST_TARGET` and skip
  * `ERR_WORKFLOW_CONCURRENCY_MISSING` too, so this is read for and reported on
  * directly rather than parsed: failing closed on an `on:` this lint cannot
  * finish reading is cheaper, and strictly safer, than teaching the scanner to
- * rejoin physical lines into one flow value.
+ * rejoin physical lines into one flow value or to resolve a YAML node property.
  */
-function unterminatedFlowOn(lines: Line[]): Line | undefined {
+function unreadableOnLine(lines: Line[]): Line | undefined {
   const on = triggerLine(lines);
   if (on === undefined) {
     return undefined;
   }
-  return opensUnterminatedFlow(inlineValue(on)) ? on : undefined;
+  return unreadableInline(inlineValue(on)) ? on : undefined;
 }
 
 interface Job {
@@ -345,9 +362,11 @@ interface ConcurrencyBlock {
   /** Whether the declaration names a group, which is what a run is queued against. */
   groups: boolean;
   /**
-   * Whether the declaration closes on its own line — false when its inline flow
-   * collection is continued onto later physical lines, or is unbalanced. A false
-   * here means the two rules below are reading a fragment, not a declaration.
+   * Whether the inline value is a shape this lint can read — false when its flow
+   * collection is continued onto later physical lines or is otherwise unbalanced,
+   * and false when a YAML anchor, alias or tag leads the value. A false here means
+   * the two rules below would be reading a fragment, or a node property nothing
+   * resolved, rather than a declaration.
    */
   readable: boolean;
 }
@@ -410,7 +429,7 @@ function concurrencyBlocks(lines: Line[], jobs: Job[]): ConcurrencyBlock[] {
         header,
         body,
         groups: namesGroup(header, body),
-        readable: !opensUnterminatedFlow(inlineValue(header)),
+        readable: !unreadableInline(inlineValue(header)),
       },
     ];
   };
@@ -639,12 +658,12 @@ function lintWorkflow(source: string): Problem[] {
 
   // An `on:` this lint cannot finish reading must not silently pass as "no
   // triggers": that is exactly the shape a pull_request_target could hide in.
-  const unreadableOn = unterminatedFlowOn(lines);
+  const unreadableOn = unreadableOnLine(lines);
   if (unreadableOn !== undefined) {
     report(
       "ERR_WORKFLOW_ON_UNREADABLE",
       unreadableOn.number,
-      "on: opens a flow collection ([ or {) that continues onto later lines. This lint cannot read a flow collection split across physical lines — rewrite it as a block sequence/mapping, or keep it on one line.",
+      "on: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and resolves no node properties — rewrite it as a block sequence/mapping, or keep it on one line as a plain value.",
     );
   }
 
@@ -796,8 +815,9 @@ function lintWorkflow(source: string): Problem[] {
 
   // A `concurrency:` this lint cannot finish reading must not pass either rule
   // below by accident, for the same reason ERR_WORKFLOW_ON_UNREADABLE exists:
-  // rejoining physical lines into one flow value is a flow-scalar parser, and a
-  // nearly-right one fails open exactly where this rule is load-bearing.
+  // rejoining physical lines into one flow value — or reading past an anchor to
+  // the mapping behind it — is a flow-scalar parser, and a nearly-right one
+  // fails open exactly where this rule is load-bearing.
   for (const block of concurrency) {
     if (block.readable) {
       continue;
@@ -806,8 +826,8 @@ function lintWorkflow(source: string): Problem[] {
       "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
       block.header.number,
       block.job === undefined
-        ? 'concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.'
-        : `Job "${block.job.name}"'s concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.`,
+        ? 'concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.'
+        : `Job "${block.job.name}"'s concurrency: is written in a shape this lint cannot read: either it opens a flow collection ([ or {) that does not close on this line, or it leads with a YAML anchor, alias or tag (&, * or !), which is not the plain value this lint would otherwise read it as. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line, braces balanced and no anchor, alias or tag in front of it.`,
     );
   }
 
@@ -2172,7 +2192,7 @@ describe("lintWorkflow", () => {
   it("reports the ' #'-in-a-quoted-value truncation, not a bogus multi-line diagnosis", () => {
     // #141's own follow-up: scan() strips /\s+#.*$/ before inlineValue runs, so
     // a *valid* one-line mapping whose quoted group contains " # " reaches
-    // opensUnterminatedFlow already truncated to `concurrency: { group: "a`
+    // unreadableInline already truncated to `concurrency: { group: "a`
     // (depth 1) and is reported unreadable even though the braces balance.
     // Failing closed is still right; the message must name the real cause
     // instead of sending the author to rebalance braces that are already fine.
@@ -2236,6 +2256,176 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
     ]);
+  });
+
+  it("refuses a flow mapping introduced by a YAML anchor", () => {
+    // #152: the detector used to require the brace at the value's first
+    // character, so an anchor in front of it slipped every rule at once — no
+    // unreadable (the value does not start with `{`), no missing (namesGroup's
+    // non-empty-inline branch reads the whole header as a group name), and no
+    // cancels-push (unconditionalCancel finds `true,` with its trailing comma).
+    // On HEAD lintWorkflow returned [] for this, so a workflow cancelling its
+    // push runs unconditionally passed the gate clean.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: &c {",
+        "  group: ci-${{ github.ref }},",
+        "  cancel-in-progress: true,",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("refuses a concurrency written as a bare YAML alias", () => {
+    // The same hole one spelling over, and the one a brace-anywhere detector
+    // would still have missed: an alias carries no brace at all. Whatever the
+    // anchor it points at declares — `cancel-in-progress: true` included — is
+    // in another part of the file this reader never joins up, so taking the
+    // alias for a group name is a claim it cannot support.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: *ci\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("refuses a flow mapping introduced by a YAML tag", () => {
+    // Balanced braces and a group this reader could otherwise have parsed: the
+    // refusal is about the `!!map` in front of them, which makes the value a
+    // tagged node rather than the flow mapping namesGroup and
+    // unconditionalCancel both key on with startsWith("{").
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: !!map { group: ci, cancel-in-progress: true }\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("still reads the same mapping once the anchor is taken off it", () => {
+    // The falsifier for the three above: identical braces, identical entries,
+    // no indicator in front. Together they prove the refusal keys on the node
+    // property, not on the flow spelling — and that dropping the anchor gets
+    // the author back to a real diagnosis rather than to silence.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("refuses a flow mapping that opens part-way along the inline value", () => {
+    // Nothing in YAML puts a mapping there, which is the point: the depth count
+    // now runs over the whole value rather than only over one anchored at its
+    // first character, so a shape nobody anticipated is refused by the same
+    // arithmetic instead of needing its own clause.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: ci {\n  group: x,\n}\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("still reads the plain scalar shorthand as the group it is", () => {
+    // The shape the widened count must not start refusing: `${{ … }}` is
+    // balanced and leads with `$`, so every concurrency in .github/workflows/
+    // stays exactly as readable as it was.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: ci-${{ github.ref }}\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("reports an anchored on: rather than reading it as no triggers at all", () => {
+    // The same defect on the other rule reading through the same helper, and
+    // the reason the fix landed there rather than in the concurrency path
+    // alone: eventName's pattern does not match a leading `&`, so on HEAD
+    // triggerNames came back empty and this workflow declared
+    // pull_request_target past ERR_WORKFLOW_PULL_REQUEST_TARGET — silently.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: &t [pull_request_target]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_ON_UNREADABLE"]);
+  });
+
+  it("still reads the same trigger list once the anchor is taken off it", () => {
+    // The falsifier: without the indicator the flow sequence is read, and the
+    // pull_request_target the anchor was hiding is named.
+    const source = CLEAN_WORKFLOW.replace(
+      "on:\n  pull_request:\n",
+      "on: [pull_request_target]\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual(["ERR_WORKFLOW_PULL_REQUEST_TARGET"]);
   });
 
   it("refuses a flow mapping left unterminated to the end of the file", () => {

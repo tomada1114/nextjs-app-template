@@ -80,21 +80,29 @@ own `ERR_WORKFLOW_*` code:
   has no pull-request run to fall back on. Both rules read every declaration GitHub
   Actions accepts, the workflow's own and each job's, in the block spelling and in the
   flow mapping alike. The flow mapping has to be one physical line with balanced braces.
-  A `concurrency:` whose flow collection does not close on its own line — continued onto
-  the next, or unbalanced because a quoted value carries a brace — is refused as
+  Only two inline shapes are read at all — a flow collection whose braces balance on its
+  own line, and a plain scalar taken at face value — and anything else is refused as
   `ERR_WORKFLOW_CONCURRENCY_UNREADABLE`, the same way an `on:` in that shape is refused
-  as `ERR_WORKFLOW_ON_UNREADABLE`. That refusal does not silence the cancel rule: the
-  cancel-on-push loop still reads an unreadable block's body, so a spelling it happens
-  to catch — an unconditional `cancel-in-progress: true` sitting on its own line — is
-  reported alongside it as `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the
-  same block rather than one hiding the other. Rejoining physical lines into one flow
-  value is a flow-scalar parser this repository has decided not to write. A
-  workflow-level block covers every job and a job-level one covers only its own, so
-  declaring it per job answers the first rule only when every job does, and only when
-  the block names a `group:` — a bare `concurrency:` key queues nothing. Any block
-  cancelling unconditionally trips the second, except on a job whose own `if:` pins it
-  to a pull request: that job never runs on push, so no push record is what its
-  cancellation discards.
+  as `ERR_WORKFLOW_ON_UNREADABLE`. That covers a flow collection continued onto the next
+  line or unbalanced because a quoted value carries a brace, one left unbalanced by a
+  collection that opens part-way along the value rather than at its first character, and
+  a value led by a YAML anchor, alias or tag (`&`, `*`, `!`) — none of which is the
+  scalar the rules behind the check would otherwise take it for. Refusing the class
+  rather than widening the detector is deliberate: an alias carries no brace at all, so
+  a detector hunting for one would still pass it, and teaching the group and cancel
+  readers to look past an indicator is the same flow-scalar parser this bullet ends by
+  ruling out. That refusal does not silence the cancel rule: the cancel-on-push loop
+  still reads an unreadable block's body, so a spelling it happens to catch — an
+  unconditional `cancel-in-progress: true` sitting on its own line — is reported
+  alongside it as `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the same block
+  rather than one hiding the other. Rejoining physical lines into one flow value is a
+  flow-scalar parser this repository has decided not to write. A workflow-level block
+  covers every job and a job-level one covers only its own, so declaring it per job
+  answers the first rule only when every job does, and only when the block names a
+  `group:` — a bare `concurrency:` key queues nothing. Any block cancelling
+  unconditionally trips the second, except on a job whose own `if:` pins it to a pull
+  request: that job never runs on push, so no push record is what its cancellation
+  discards.
 - a multi-line `run:` that neither opens with `set -euo pipefail` nor runs under a
   fail-closed `defaults.run.shell`. `shell: bash` is not enough: it leaves `-u` off.
 - a `pnpm … install` without `--frozen-lockfile`, which would make every other gate
