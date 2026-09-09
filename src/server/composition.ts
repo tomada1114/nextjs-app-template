@@ -4,6 +4,11 @@ import { createFakeLlmPort } from "../ai/index";
 import { readServerEnv } from "./env";
 import { createAskHandler } from "./handlers/ask";
 
+// The wired adapter is the fake, so the two mentions of the vendor's name
+// below live only in `@remarks` prose, never in code. That prose is
+// load-bearing: `tests/ai-vendor-swap.test.ts` asserts this file still names
+// the vendor somewhere, and a comment tidy that drops both mentions turns
+// that assertion, and the swap checklist it backs, red.
 /**
  * Whether the adapter this file wires bills a provider for every answer.
  *
