@@ -39,17 +39,29 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * data, and a bare `nextjs-app-template` would produce a duplicate row per
  * file that carries the full slug.
  *
- * The last two are the app's display name — what a browser tab and the page
- * heading read — which the package name and the slug do not cover: a project
- * that renamed everything machine-facing still greets its visitors as this
- * template. Coverage here is per known value, not per key: each entry is a
- * catalog's current title string, so a `messages/*.json` added later with its
- * own translated title contributes no row until that value is added to this
- * list. The Japanese one is a knowing exception to AGENTS.md's English-only
+ * The last three are what a reader sees, which the package name and the slug
+ * do not cover: a project that renamed everything machine-facing still greets
+ * its visitors as this template. Two are the app's display name — the browser
+ * tab and the page heading — and the third is the one-line `description`
+ * metadata, which renders into `<meta name="description">` and so into a
+ * search result and a link preview. Coverage for the display name is per known
+ * value, not per key: each entry is a catalog's current title string, so a
+ * `messages/*.json` added later with its own translated title contributes no
+ * row until that value is added to this list. The description is a single
+ * entry because `src/app/[locale]/layout.tsx` hard-codes one for every locale.
+ * The Japanese title is a knowing exception to AGENTS.md's English-only
  * convention for tests: deriving it from `messages/ja.json`'s `HomePage.title`
  * at runtime instead would make that inventory row self-fulfilling — it would
  * still appear after a correct rename, so the list could never empty. Whether
  * AGENTS.md should record this exception is filed separately.
+ *
+ * The home page's body copy — `HomePage.intro` and `HomePage.localeCount` in
+ * each catalog — is deliberately absent. It is demo copy for a demo page a
+ * project rewrites or deletes on day one, and `localizing-ui` quotes
+ * `ja.json`'s `localeCount` as its worked example of plural categories, so a
+ * needle for it would put inventory rows on a skill whose subject is ICU
+ * plurals rather than this template's identity. `starting-an-app` sends a
+ * renaming project to that copy by hand instead.
  */
 const PLACEHOLDERS = [
   "my-package",
@@ -60,6 +72,7 @@ const PLACEHOLDERS = [
   "tomada1114/nextjs-app-template",
   "Next.js App Template",
   "Next.js アプリテンプレート",
+  "An App Router skeleton.",
 ] as const;
 
 /**
@@ -70,8 +83,9 @@ const PLACEHOLDERS = [
  * These seven files *are* the template's identity, so a placeholder in them is
  * intended, not a leak: they are what a new app rewrites first. Four carry the
  * repository's identity — the package name and description, the slug, the
- * copyright holder — and three the name a visitor reads: the `<title>`
- * metadata and the `HomePage.title` key of each catalog. Everything else in
+ * copyright holder — and three the copy a visitor reads: the `<title>` and
+ * `description` metadata in the layout, and the `HomePage.title` key of each
+ * catalog. Everything else in
  * the tree — the rest of `src/`, `tests/`, `scripts/`, the skills, the
  * workflows, `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort,
  * so the rename is a bounded edit to seven files rather than a
@@ -91,6 +105,7 @@ const EXPECTED_INVENTORY = [
   "messages/ja.json: Next.js アプリテンプレート",
   "package.json: A short description.",
   "package.json: my-package",
+  "src/app/[locale]/layout.tsx: An App Router skeleton.",
   "src/app/[locale]/layout.tsx: Next.js App Template",
 ];
 
