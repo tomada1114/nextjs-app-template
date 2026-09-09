@@ -1,5 +1,6 @@
 import consoleModule from "node:console";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -215,6 +217,45 @@ describe("clean", () => {
     expect(existsSync(link)).toBe(false);
     expect(existsSync(kept)).toBe(true);
   });
+
+  // `chmod 000` only blocks a filesystem operation when the process is not
+  // root (root bypasses permission bits entirely) and on a POSIX filesystem
+  // (Windows' `chmod` only toggles the read-only attribute, not traversal).
+  // CI runs this suite on `ubuntu-latest` as an unprivileged user, so the
+  // guard is for a local run under `sudo` or on Windows, where the test would
+  // otherwise silently assert nothing rather than fail.
+  const canDenyOwnAccess = process.platform !== "win32" && process.getuid?.() !== 0;
+
+  it.skipIf(!canDenyOwnAccess)(
+    "refuses a target behind an ancestor directory it cannot search, instead of an uncaught throw",
+    () => {
+      // Before this fix, `canonicalize` treated every `realpathSync` failure
+      // (including EACCES) as "does not exist" and rejoined the unresolved
+      // suffix lexically. That let a target behind an unreadable ancestor
+      // reach `rmSync`, which then either threw an uncaught EACCES (this
+      // case) or, had the ancestor hidden an escaping symlink, removed
+      // something outside the root without ever being caught by the escape
+      // check.
+      const root = makeRoot();
+      const blocked = path.join(root, "blocked");
+      mkdirSync(blocked);
+      chmodSync(blocked, 0o000);
+      const errorSpy = vi
+        .spyOn(consoleModule, "error")
+        .mockImplementation(() => undefined);
+
+      try {
+        expect(clean(["blocked/inner/escape"], root)).toBe(2);
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringMatching(/^ERR_CLEAN_UNRESOLVABLE: /),
+        );
+      } finally {
+        // Restore access before `afterEach`'s recursive `rmSync` has to walk
+        // back through `blocked`, and before the workspace is left behind.
+        chmodSync(blocked, 0o700);
+      }
+    },
+  );
 
   it("defaults to this repository's own root when none is given", () => {
     const errorSpy = vi

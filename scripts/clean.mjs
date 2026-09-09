@@ -23,6 +23,35 @@ import { isMain } from "./lib/is-main.mjs";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
+ * Raised by {@link canonicalize} when a path component fails to resolve for a
+ * reason other than not existing, so containment cannot be judged safely.
+ */
+class UnresolvablePathError extends Error {
+  /**
+   * @param {string} at - The path component `realpathSync` failed on.
+   * @param {unknown} cause - The underlying `realpathSync` failure.
+   */
+  constructor(at, cause) {
+    super(`could not resolve ${at}`, { cause });
+    this.name = "UnresolvablePathError";
+    /** The path component that could not be resolved. */
+    this.at = at;
+  }
+}
+
+/**
+ * Read a Node.js errno `code` off an unknown failure, if it has one.
+ *
+ * @param {unknown} error - A value caught from a filesystem call.
+ * @returns {string | undefined} The `code`, when `error` carries a string one.
+ */
+function errnoCode(error) {
+  return error instanceof Error && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+/**
  * Canonicalize a path that need not exist yet.
  *
  * @remarks
@@ -30,12 +59,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * pointed at targets that are already gone — that is what `force: true` is
  * for — so a plain `realpathSync` would refuse the ordinary case. This walks
  * up to the nearest ancestor that does resolve and rejoins the rest by name.
- * A component that could not be resolved is one the filesystem has nothing
- * behind (or nothing readable), so rejoining it lexically cannot hide a
- * symlink: every component that exists is already canonical in the result.
+ * A component that genuinely does not exist (`ENOENT`) or that turned out
+ * not to be a directory partway through resolving a longer path (`ENOTDIR`)
+ * is one the filesystem has nothing behind, so rejoining it lexically cannot
+ * hide a symlink: every component that exists is already canonical in the
+ * result. Any other failure — most importantly `EACCES`/`EPERM` from an
+ * ancestor directory the process cannot search — means the walk cannot tell
+ * whether that component is a symlink or not, so it fails closed instead of
+ * rejoining lexically and risking exactly the escape this check exists to
+ * catch.
  *
  * @param {string} target - Path to canonicalize; may be absent.
  * @returns {string} The canonical path, with any unresolvable suffix appended.
+ * @throws {UnresolvablePathError} When a component fails to resolve for a
+ * reason other than not existing.
  */
 function canonicalize(target) {
   /** @type {string[]} */
@@ -44,7 +81,11 @@ function canonicalize(target) {
   for (;;) {
     try {
       return path.join(realpathSync(current), ...suffix);
-    } catch {
+    } catch (error) {
+      const code = errnoCode(error);
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        throw new UnresolvablePathError(current, error);
+      }
       const parent = path.dirname(current);
       if (parent === current) {
         // Reached the filesystem root without resolving anything.
@@ -88,6 +129,28 @@ function reportRefusal(code, target, expected, actual) {
 }
 
 /**
+ * Print the stderr report for a target whose containment could not be
+ * verified because a `realpathSync` call along the way to it failed for a
+ * reason other than the path not existing.
+ *
+ * @param {string} target - The path as it was given on the command line.
+ * @param {UnresolvablePathError} error - The failure `canonicalize` raised.
+ * @returns {void}
+ */
+function reportUnresolvable(target, error) {
+  const code = errnoCode(error.cause);
+  console.error(
+    `ERR_CLEAN_UNRESOLVABLE: could not verify whether a path is inside the repository: ${target}\n` +
+      "Expected: every directory on the way to the target can be resolved with " +
+      "`realpath`, or is confirmed absent.\n" +
+      `Actual: resolving ${error.at} failed${code === undefined ? "" : ` (${code})`}, ` +
+      "which could be hiding a symlink.\n" +
+      "Next: make every ancestor directory readable and searchable, then retry; " +
+      "do not remove the target until containment can be verified.",
+  );
+}
+
+/**
  * Remove each target path, refusing anything outside the repository.
  *
  * @remarks
@@ -119,7 +182,17 @@ export function clean(targets, root = repoRoot) {
     return 2;
   }
 
-  const realRoot = canonicalize(root);
+  /** @type {string} */
+  let realRoot;
+  try {
+    realRoot = canonicalize(root);
+  } catch (error) {
+    if (!(error instanceof UnresolvablePathError)) {
+      throw error;
+    }
+    reportUnresolvable(root, error);
+    return 2;
+  }
   /** @type {string[]} */
   const approved = [];
 
@@ -138,10 +211,17 @@ export function clean(targets, root = repoRoot) {
     // Only the parent is canonicalized: resolving the final component too
     // would refuse a symlink that a caller legitimately means to unlink,
     // which `rmSync` does without following it.
-    const real = path.join(
-      canonicalize(path.dirname(resolved)),
-      path.basename(resolved),
-    );
+    /** @type {string} */
+    let real;
+    try {
+      real = path.join(canonicalize(path.dirname(resolved)), path.basename(resolved));
+    } catch (error) {
+      if (!(error instanceof UnresolvablePathError)) {
+        throw error;
+      }
+      reportUnresolvable(target, error);
+      return 2;
+    }
     if (escapes(realRoot, real)) {
       reportRefusal(
         "ERR_CLEAN_SYMLINK_ESCAPE",
