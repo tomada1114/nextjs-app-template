@@ -305,7 +305,11 @@ while its declared task is something else.
   `messages/*.json`: those are the UI message catalogs the application renders to a
   reader, so `messages/ja.json` is Japanese by definition. The exception covers the
   catalogs' string values and nothing else — their keys, and every comment, test, and
-  document about them, stay English.
+  document about them, stay English. A test may quote such a value verbatim in the one
+  case where the value is what the test searches for and reading it from the catalog
+  would defeat the search — as `tests/placeholders.test.ts`'s `PLACEHOLDERS` does, for
+  the reason recorded there. Nothing wider: a test's own prose — its `describe` and `it`
+  names, its assertion messages, its comments — stays English.
 
 - **A comment carries only what the code cannot** — a non-obvious why, a trap the next
   edit would spring, an external constraint. Default to none and keep the rest to a line

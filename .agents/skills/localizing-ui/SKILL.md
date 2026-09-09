@@ -27,7 +27,8 @@ into an app (`starting-an-app`).
 AGENTS.md's Conventions makes `messages/*.json` the one exception to the English-only
 rule, and states the exception's own limit: it covers the catalogs' string values and
 nothing else. Keys stay English, and so does every comment, test, and document about
-them. That rule lives in AGENTS.md; this skill only points at it.
+them, bar the single needle case AGENTS.md spells out for a test that has to match a
+catalog value byte for byte. That rule lives in AGENTS.md; this skill only points at it.
 
 The place it is easiest to break is a skill's own frontmatter. Enforced by:
 `tests/skills-frontmatter.test.ts`, which rejects CJK in a `description`. A Japanese
