@@ -160,6 +160,34 @@ function flowEntries(value: string): string[] {
   return entries;
 }
 
+/**
+ * Whether an inline value opens a flow collection that does not close again on
+ * the same physical line.
+ *
+ * @remarks
+ * The arithmetic is deliberately the same naive brace/bracket count {@link
+ * flowEntries} splits on, and deliberately not quote-aware. A quote-aware count
+ * would call `{ group: "a}b", … }` readable while `flowEntries`, still counting
+ * naively, splits it wrongly — a detector more permissive than the splitter
+ * it guards is how a silent misreading gets back in. So a value whose depth does not
+ * return to zero on this line, negative as well as positive, is one this lint
+ * refuses rather than half-reads.
+ */
+function opensUnterminatedFlow(inline: string): boolean {
+  if (!/^[[{]/.test(inline)) {
+    return false;
+  }
+  let depth = 0;
+  for (const character of inline) {
+    if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      depth -= 1;
+    }
+  }
+  return depth !== 0;
+}
+
 /** The event an entry names, or `undefined` when it names none. */
 function eventName(entry: string): string | undefined {
   return /^["']?([A-Za-z_][A-Za-z0-9_-]*)/.exec(entry.trim().replace(/^-\s+/, ""))?.[1];
@@ -241,19 +269,7 @@ function unterminatedFlowOn(lines: Line[]): Line | undefined {
   if (on === undefined) {
     return undefined;
   }
-  const inline = inlineValue(on);
-  if (!/^[[{]/.test(inline)) {
-    return undefined;
-  }
-  let depth = 0;
-  for (const character of inline) {
-    if (character === "[" || character === "{") {
-      depth += 1;
-    } else if (character === "]" || character === "}") {
-      depth -= 1;
-    }
-  }
-  return depth !== 0 ? on : undefined;
+  return opensUnterminatedFlow(inlineValue(on)) ? on : undefined;
 }
 
 interface Job {
@@ -328,6 +344,12 @@ interface ConcurrencyBlock {
   body: Line[];
   /** Whether the declaration names a group, which is what a run is queued against. */
   groups: boolean;
+  /**
+   * Whether the declaration closes on its own line — false when its inline flow
+   * collection is continued onto later physical lines, or is unbalanced. A false
+   * here means the two rules below are reading a fragment, not a declaration.
+   */
+  readable: boolean;
 }
 
 /** The key and value of one entry of a flow mapping, when it is written as a pair. */
@@ -382,7 +404,15 @@ function concurrencyBlocks(lines: Line[], jobs: Job[]): ConcurrencyBlock[] {
       return [];
     }
     const body = blockOf(scope, scope.indexOf(header));
-    return [{ job, header, body, groups: namesGroup(header, body) }];
+    return [
+      {
+        job,
+        header,
+        body,
+        groups: namesGroup(header, body),
+        readable: !opensUnterminatedFlow(inlineValue(header)),
+      },
+    ];
   };
 
   return [
@@ -763,17 +793,40 @@ function lintWorkflow(source: string): Problem[] {
   const onPullRequest = triggers.some(({ name }) => name.startsWith("pull_request"));
   const onPush = triggers.some(({ name }) => name === "push");
   const concurrency = concurrencyBlocks(lines, jobs);
+
+  // A `concurrency:` this lint cannot finish reading must not pass either rule
+  // below by accident, for the same reason ERR_WORKFLOW_ON_UNREADABLE exists:
+  // rejoining physical lines into one flow value is a flow-scalar parser, and a
+  // nearly-right one fails open exactly where this rule is load-bearing.
+  for (const block of concurrency) {
+    if (block.readable) {
+      continue;
+    }
+    report(
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+      block.header.number,
+      block.job === undefined
+        ? 'concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.'
+        : `Job "${block.job.name}"'s concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.`,
+    );
+  }
+
   // A workflow-level block covers every job; a job-level one covers its own job
   // and nothing else. So declaring it per job satisfies this rule only when
   // every job does — otherwise one block on a trivial job would switch the rule
   // off for the jobs that still leave a superseded run alive.
   // A block that names no group is not one of these: it queues nothing, so it
   // cannot cancel the superseded run this rule exists to ask for.
+  // A declaration already reported unreadable is not also reported missing: the
+  // workflow plainly declares one, and the reader has been handed the real
+  // defect. The file still fails — under the unreadable code.
+  const accountedFor = (block: ConcurrencyBlock): boolean =>
+    !block.readable || block.groups;
   const covered =
-    concurrency.some(({ job, groups }) => job === undefined && groups) ||
+    concurrency.some((block) => block.job === undefined && accountedFor(block)) ||
     (jobs.length > 0 &&
       jobs.every((job) =>
-        concurrency.some((block) => block.job === job && block.groups),
+        concurrency.some((block) => block.job === job && accountedFor(block)),
       ));
   if (onPullRequest && !covered) {
     report(
@@ -1877,6 +1930,353 @@ describe("lintWorkflow", () => {
     );
 
     expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("reports a multi-line flow-mapping concurrency as unreadable rather than missing", () => {
+    // #141, the issue's own case: a flow mapping GitHub accepts split over
+    // physical lines. On HEAD this silently trips ERR_WORKFLOW_CONCURRENCY_MISSING
+    // instead, because namesGroup and unconditionalCancel both read past it.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: {",
+        "  group: ${{ github.workflow }}-${{ github.ref }},",
+        "  cancel-in-progress: true,",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("does not report the same mapping collapsed onto one line as unreadable", () => {
+    // The falsifier for the case above: identical mapping, one line. Together
+    // these prove the rule keys on the physical-line split, not on the flow
+    // spelling itself.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true }\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("still reports the accidental cancel catch alongside the new unreadable code", () => {
+    // Without a trailing comma, the last entry's line reads as exactly
+    // `cancel-in-progress: true`, and blockOf still claims it as the header's
+    // body, so unconditionalCancel catches it by accident. Skipping the cancel
+    // loop on an unreadable block would delete that catch, which "no existing
+    // case loosened" forbids — so both codes are reported, in this order.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: {",
+        "  group: ${{ github.workflow }}-${{ github.ref }},",
+        "  cancel-in-progress: true",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("does not report concurrency missing for a declaration it cannot finish reading", () => {
+    // CLEAN_WORKFLOW runs on pull_request alone, so onPush is false and only
+    // the missing-concurrency rule is in play here. The workflow plainly
+    // declares a concurrency block; reporting it missing would say something
+    // false, which is why an unreadable block now counts as accounted for.
+    const source = CLEAN_WORKFLOW.replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: {",
+        "  group: ${{ github.workflow }}-${{ github.ref }},",
+        "  cancel-in-progress: true,",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("reports a multi-line flow-mapping job-level concurrency as unreadable, naming the job", () => {
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      [
+        "    concurrency:",
+        "      group: ${{ github.workflow }}-${{ github.ref }}",
+        "      cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "    concurrency: {",
+        "      group: ${{ github.workflow }}-${{ github.ref }},",
+        "      cancel-in-progress: true,",
+        "    }",
+        "",
+      ].join("\n"),
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+    expect(problems[0]?.message).toContain('Job "build"');
+  });
+
+  it("does not report the same job-level mapping as unreadable when it is one line and conditional", () => {
+    const source = JOB_LEVEL_CONCURRENCY_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "    concurrency:",
+        "      group: ${{ github.workflow }}-${{ github.ref }}",
+        "      cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "    concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: \"${{ github.event_name == 'pull_request' }}\" }\n",
+    );
+
+    expect(lintWorkflow(source)).toEqual([]);
+  });
+
+  it("still reads a flow mapping nested and balanced on one line", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: { group: ci, cancel-in-progress: true, extra: { a: b } }\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("refuses the same nested mapping once it is split across lines", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: {",
+        "  group: ci,",
+        "  cancel-in-progress: true,",
+        "  extra: { a: b },",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("a trailing comment after the closing brace does not make the mapping unreadable", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      "concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true } # keep one run per ref\n",
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("a comment after the opening brace does not rescue a mapping that genuinely continues", () => {
+    // scan() strips the trailing comment before inlineValue sees the line, so
+    // the header still reads as a bare, unterminated "concurrency: {".
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: { # start of grouping",
+        "  group: ${{ github.workflow }}-${{ github.ref }},",
+        "  cancel-in-progress: true,",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("reports the ' #'-in-a-quoted-value truncation, not a bogus multi-line diagnosis", () => {
+    // #141's own follow-up: scan() strips /\s+#.*$/ before inlineValue runs, so
+    // a *valid* one-line mapping whose quoted group contains " # " reaches
+    // opensUnterminatedFlow already truncated to `concurrency: { group: "a`
+    // (depth 1) and is reported unreadable even though the braces balance.
+    // Failing closed is still right; the message must name the real cause
+    // instead of sending the author to rebalance braces that are already fine.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      'concurrency: { group: "a # b", cancel-in-progress: false }\n',
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+    expect(problems[0]?.message).toContain(
+      'strips anything after " #" as a trailing comment before counting braces',
+    );
+  });
+
+  it("refuses a one-line mapping whose quoted group value hides an unbalanced brace", () => {
+    // A silent pass on HEAD: flowEntries splits `"a}b"` wrongly and the cancel rule
+    // never sees the entry it needs. depth < 0 refuses it instead of half-reading.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      'concurrency: { group: "a}b", cancel-in-progress: true }\n',
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("still reads a one-line mapping whose quoted group value has no brace", () => {
+    // Same shape without the stray brace: proves the refusal above is about
+    // the unbalanced brace, not about quoting the group value.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      'concurrency: { group: "a-b", cancel-in-progress: true }\n',
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH",
+    ]);
+  });
+
+  it("refuses a flow mapping left unterminated to the end of the file", () => {
+    const source =
+      CLEAN_WORKFLOW.replace(
+        [
+          "concurrency:",
+          "  group: ${{ github.workflow }}-${{ github.ref }}",
+          "  cancel-in-progress: true",
+          "",
+        ].join("\n"),
+        "",
+      ) + "\nconcurrency: {\n";
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
+  });
+
+  it("does not corrupt the key that follows a mapping whose closing brace shares the last entry's line", () => {
+    const source = CLEAN_WORKFLOW.replace(
+      [
+        "permissions: {}",
+        "",
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      [
+        "concurrency: {",
+        "  group: ${{ github.workflow }}-${{ github.ref }},",
+        "  cancel-in-progress: true }",
+        "permissions: {}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(codesOf(lintWorkflow(source))).toEqual([
+      "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
+    ]);
   });
 });
 
