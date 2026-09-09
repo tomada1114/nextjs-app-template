@@ -3,10 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createTranslator } from "next-intl";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { LOCALES } from "../src/i18n/locales";
-import { MESSAGE_KEYS, type Messages } from "../src/i18n/messages";
+import { MESSAGES, type MessageKey, type Messages } from "../src/i18n/messages";
 
 // A message catalog is the one place in this repository where a missing entry
 // is invisible: `next-intl` renders an absent key as the key itself, in
@@ -276,6 +276,28 @@ const catalogs = new Map(LOCALES.map((locale) => [locale, readCatalog(locale)]))
 /** The reference catalog: the one every other locale is a translation of. */
 const referenceKeys = dottedKeys(catalogs.get("en")).sort();
 
+/**
+ * Every key the catalogs are expected to hold, written out by hand.
+ *
+ * @remarks
+ * This is the one thing here that is *not* derived from `messages/en.json`.
+ * `MessageKey` is (`DottedKeys<typeof en>`), so it agrees with the catalog by
+ * construction and can never report a key that was never added; only a list a
+ * human maintains as the fourth edit of `localizing-ui`'s "adding a string" can.
+ * `as const satisfies` rather than an annotation of `readonly MessageKey[]`,
+ * which would discard the literal tuple type and let a new key land with no
+ * entry here — the same reasoning `type-testing` names for a literal list
+ * that has to stay in step with a union.
+ */
+const MESSAGE_KEYS = [
+  "HomePage.title",
+  "HomePage.intro",
+  "HomePage.localeCount",
+  "LocaleSwitcher.label",
+  "LocaleSwitcher.en",
+  "LocaleSwitcher.ja",
+] as const satisfies readonly MessageKey[];
+
 describe("the message catalogs", () => {
   it("has a catalog for every locale the application ships", () => {
     expect([...catalogs.keys()]).toStrictEqual([...LOCALES]);
@@ -287,6 +309,19 @@ describe("the message catalogs", () => {
 
   it.each([...LOCALES])("gives %s exactly the keys en has", (locale) => {
     expect(dottedKeys(catalogs.get(locale)).sort()).toStrictEqual(referenceKeys);
+  });
+
+  // MESSAGES is annotated Readonly<Record<Locale, Messages>>, and every
+  // catalog is assignable to Messages — so `{ en, ja: en }` type-checks and
+  // ships a copy-paste that serves English under /ja. This is also what keeps
+  // MESSAGES a value import: `vitest related` only sees this suite depend on
+  // messages/en.json through the value chain messages.test.ts ->
+  // src/i18n/messages.ts -> messages/en.json, since every other case here
+  // reads the catalogs with readFileSync, which Vite's module graph cannot
+  // see. A type-only import would silently stop lefthook's test:related job
+  // from selecting this suite when a translator edits a catalog.
+  it.each([...LOCALES])("serves %s the catalog on disk", (locale) => {
+    expect(MESSAGES[locale]).toStrictEqual(catalogs.get(locale));
   });
 
   it.each([...LOCALES])("leaves no blank message in %s", (locale) => {
@@ -455,11 +490,23 @@ describe("the message catalogs", () => {
 });
 
 describe("the typed message keys", () => {
-  // `src/i18n/messages.ts` declares MESSAGE_KEYS as `satisfies readonly
-  // MessageKey[]`, so a key listed there that the catalog does not hold fails
-  // to compile. This is the other direction: a key added to the catalog and
-  // never listed.
-  it("names every key in the catalog and no others", () => {
+  // Three checks hold the catalog, the hand-written list above and MessageKey
+  // together, and no two of them fail on the same mistake:
+  //  - `MESSAGE_KEYS` is `as const satisfies readonly MessageKey[]` (above),
+  //    so an entry the catalog does not hold — a typo, a key renamed or
+  //    deleted in en.json — fails `pnpm typecheck`.
+  //  - the `expectTypeOf` below fails `pnpm typecheck` when en.json gained a
+  //    key nobody listed.
+  //  - `names every key the catalog on disk holds, and no others` (below)
+  //    catches the same omission but reads from the file on disk rather than
+  //    from what the bundler resolved, so it *names* the offending key, and
+  //    it is the only one that would notice DottedKeys and this file's own
+  //    dottedKeys walk disagreeing.
+  it("covers every MessageKey", () => {
+    expectTypeOf<(typeof MESSAGE_KEYS)[number]>().toEqualTypeOf<MessageKey>();
+  });
+
+  it("names every key the catalog on disk holds, and no others", () => {
     expect([...MESSAGE_KEYS].sort()).toStrictEqual(referenceKeys);
   });
 });
