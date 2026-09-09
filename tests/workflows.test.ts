@@ -806,8 +806,8 @@ function lintWorkflow(source: string): Problem[] {
       "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
       block.header.number,
       block.job === undefined
-        ? "concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time — write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced."
-        : `Job "${block.job.name}"'s concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time — write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.`,
+        ? 'concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.'
+        : `Job "${block.job.name}"'s concurrency: opens a flow collection ([ or {) that does not close on this line. This lint reads one physical line at a time and strips anything after " #" as a trailing comment before counting braces, so a quoted value containing " #" can look unterminated even though the mapping is already balanced — check for that first. Otherwise write it as a block mapping, or keep the whole flow mapping on one line with its braces balanced.`,
     );
   }
 
@@ -2167,6 +2167,33 @@ describe("lintWorkflow", () => {
     expect(codesOf(lintWorkflow(source))).toEqual([
       "ERR_WORKFLOW_CONCURRENCY_UNREADABLE",
     ]);
+  });
+
+  it("reports the ' #'-in-a-quoted-value truncation, not a bogus multi-line diagnosis", () => {
+    // #141's own follow-up: scan() strips /\s+#.*$/ before inlineValue runs, so
+    // a *valid* one-line mapping whose quoted group contains " # " reaches
+    // opensUnterminatedFlow already truncated to `concurrency: { group: "a`
+    // (depth 1) and is reported unreadable even though the braces balance.
+    // Failing closed is still right; the message must name the real cause
+    // instead of sending the author to rebalance braces that are already fine.
+    const source = CLEAN_WORKFLOW.replace(
+      "  pull_request:",
+      "  push:\n    branches: [main]\n  pull_request:",
+    ).replace(
+      [
+        "concurrency:",
+        "  group: ${{ github.workflow }}-${{ github.ref }}",
+        "  cancel-in-progress: true",
+        "",
+      ].join("\n"),
+      'concurrency: { group: "a # b", cancel-in-progress: false }\n',
+    );
+
+    const problems = lintWorkflow(source);
+    expect(codesOf(problems)).toEqual(["ERR_WORKFLOW_CONCURRENCY_UNREADABLE"]);
+    expect(problems[0]?.message).toContain(
+      'strips anything after " #" as a trailing comment before counting braces',
+    );
   });
 
   it("refuses a one-line mapping whose quoted group value hides an unbalanced brace", () => {

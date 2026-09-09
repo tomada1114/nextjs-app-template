@@ -82,9 +82,13 @@ own `ERR_WORKFLOW_*` code:
   flow mapping alike. The flow mapping has to be one physical line with balanced braces.
   A `concurrency:` whose flow collection does not close on its own line — continued onto
   the next, or unbalanced because a quoted value carries a brace — is refused as
-  `ERR_WORKFLOW_CONCURRENCY_UNREADABLE` rather than half-read, the same way an `on:` in
-  that shape is refused as `ERR_WORKFLOW_ON_UNREADABLE`. Rejoining physical lines into
-  one flow value is a flow-scalar parser this repository has decided not to write. A
+  `ERR_WORKFLOW_CONCURRENCY_UNREADABLE`, the same way an `on:` in that shape is refused
+  as `ERR_WORKFLOW_ON_UNREADABLE`. That refusal does not silence the cancel rule: the
+  cancel-on-push loop still reads an unreadable block's body, so a spelling it happens
+  to catch — an unconditional `cancel-in-progress: true` sitting on its own line — is
+  reported alongside it as `ERR_WORKFLOW_CONCURRENCY_CANCELS_PUSH`, both codes on the
+  same block rather than one hiding the other. Rejoining physical lines into one flow
+  value is a flow-scalar parser this repository has decided not to write. A
   workflow-level block covers every job and a job-level one covers only its own, so
   declaring it per job answers the first rule only when every job does, and only when
   the block names a `group:` — a bare `concurrency:` key queues nothing. Any block
