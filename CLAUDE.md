@@ -20,13 +20,12 @@ only records what Claude Code adds on top of them.
   committed; drift fails `pnpm agents:check`, `tests/sync-agents.test.ts`, and
   lefthook's pre-commit hook. The `authoring-skills` skill holds the rest, including why
   both copies are real files rather than a symlink.
-- The committed `.claude/settings.json` declares plugins only, and `.mcp.json` MCP
-  servers only, so no Claude Code permission entry is committed here or carried into a
-  generated project — AGENTS.md's "Security and human approval" and "Enforcement layers"
-  hold the rules that would otherwise live there as instructions instead. A personal
-  permission allowlist (model choice, extra permissions, a deny list you configure for
-  yourself) belongs in your own `~/.claude/settings.json` or the gitignored
-  `.claude/settings.local.json`, never committed to this repository.
+- AGENTS.md's "Security and human approval" records what the committed configuration
+  does declare; for Claude Code that means no permission entry is committed here or
+  carried into a generated project. A personal permission allowlist (model choice, extra
+  permissions, a deny list you configure for yourself) belongs in your own
+  `~/.claude/settings.json` or the gitignored `.claude/settings.local.json`, never
+  committed to this repository.
 
 When an instruction in AGENTS.md would block something that looks necessary, the answer
 is to fix what made the bypass look necessary, or to ask. It is not to find another

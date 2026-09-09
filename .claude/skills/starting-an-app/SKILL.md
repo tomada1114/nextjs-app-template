@@ -179,6 +179,12 @@ Delete the paths, then work through both edited lists:
 - `localizing-ui` loses its `outputLanguage` section — that seam is the port's, and the
   UI locale it maps from has nowhere left to reach. Everything else in it, the catalogs
   and the locale routing, is untouched by this removal.
+- `managing-dependencies` loses the whole paragraph describing how an
+  `@anthropic-ai/sdk` bump is verified: the `tests/fixtures/llm/` path,
+  `tests/llm-replay.ts`, the `LLM_RECORD` variable, and the cross-reference to
+  `integrating-llm` all leave with the layer. What survives is the fact that no suite
+  reaches a live service, now true of every suite rather than split between a fake
+  adapter and one replayed from fixtures.
 - `integrating-llm` is deleted rather than edited: its whole subject is the layer.
 - `writing-tests` loses the two seams that are going away — the port contract suite and
   the handler driven with `new Request()` — and `type-testing` the port's generic

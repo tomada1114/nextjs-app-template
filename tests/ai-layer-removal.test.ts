@@ -144,7 +144,9 @@ const EDITED_CODE_FILES = [
  * names the removal set in prose, `building-app-routes`, which teaches the
  * Route Handler pattern through the one endpoint this template ships,
  * `localizing-ui`, which owns the one mapping from a UI locale to the port's
- * `outputLanguage`, and `writing-typescript`, `designing-errors`,
+ * `outputLanguage`, `managing-dependencies`, which points a vendor-SDK bump at
+ * the recorded fixtures that verify it offline, and `writing-typescript`,
+ * `designing-errors`,
  * `writing-tests` and `type-testing`, which illustrate rules that outlive the
  * layer with worked examples drawn from it — the port contract suite and the
  * handler test as the seams a test is written through, and the port's generic
@@ -164,6 +166,7 @@ const EDITED_DOCUMENT_FILES = [
   ".agents/skills/changing-gates/SKILL.md",
   ".agents/skills/designing-errors/SKILL.md",
   ".agents/skills/localizing-ui/SKILL.md",
+  ".agents/skills/managing-dependencies/SKILL.md",
   ".agents/skills/starting-an-app/SKILL.md",
   ".agents/skills/type-testing/SKILL.md",
   ".agents/skills/writing-tests/SKILL.md",
