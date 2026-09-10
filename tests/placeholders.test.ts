@@ -100,10 +100,10 @@ const EXPECTED_INVENTORY = [
   "README.md: Your Name",
   "README.md: my-package",
   "README.md: tomada1114/nextjs-app-template",
-  "messages/en.json: Next.js App Template",
   "messages/en.json: An App Router skeleton.",
-  "messages/ja.json: Next.js アプリテンプレート",
+  "messages/en.json: Next.js App Template",
   "messages/ja.json: App Router のひな形です。",
+  "messages/ja.json: Next.js アプリテンプレート",
   "package.json: A short description.",
   "package.json: my-package",
 ];
