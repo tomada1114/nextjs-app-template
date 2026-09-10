@@ -136,6 +136,18 @@ three seams:
 an adapter and a handler are joined, and the single line in this repository that names a
 vendor. That choice made anywhere else is the leak these boundaries exist to prevent.
 
+### Rate limiting
+
+This template deliberately implements neither rate limiting nor concurrency limiting for
+`POST /api/ask`. It owns no limiter state, store, algorithm, or rate-limit environment
+variable. A deployment that wires a billed adapter must enforce its caller-throughput
+policy at an edge or gateway before the request reaches the app, with enforcement shared
+across instances; a per-process limiter is not equivalent across instances.
+`API_ACCESS_KEY` is authentication only, not a rate-limit declaration.
+
+The app still owns its existing per-request request-body and prompt ceilings and rejects
+those before `llm.generate`.
+
 ### What is contract and what is private
 
 Nothing here is published, so the contract is not an export map. It is what a caller
@@ -161,18 +173,6 @@ a per-file size budget, and `tests/boundaries.test.ts` asserts the same edges fr
 module graph, so a rule deleted from that config still fails the suite. Read the numbers
 and the patterns there — a summary that restated them is the copy that goes stale. How
 to work inside a zone is a skill's subject, not this section's.
-
-### Rate limiting
-
-This template deliberately implements neither rate limiting nor concurrency limiting for
-`POST /api/ask`. It owns no limiter state, store, algorithm, or rate-limit environment
-variable. A deployment that wires a billed adapter must enforce its caller-throughput
-policy at an edge or gateway before the request reaches the app, with enforcement shared
-across instances; a per-process limiter is not equivalent across instances.
-`API_ACCESS_KEY` is authentication only, not a rate-limit declaration.
-
-The app still owns its existing per-request request-body and prompt ceilings and rejects
-those before `llm.generate`.
 
 ## Skills
 
