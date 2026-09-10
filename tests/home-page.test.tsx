@@ -1,9 +1,13 @@
 import { NextIntlClientProvider } from "next-intl";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import HomePage from "../src/app/[locale]/page";
 import en from "../messages/en.json";
+
+vi.mock("next-intl/server", () => ({
+  setRequestLocale: () => undefined,
+}));
 
 // The home page, rendered the way `writing-tests`/`placing-tests` settle it
 // for issue #12: under jsdom, through Testing Library, with
@@ -17,12 +21,15 @@ import en from "../messages/en.json";
 // `LocaleLayout` itself — is explicitly out of scope; this test never renders
 // it.
 
-function renderHomePage(): void {
-  render(
-    <NextIntlClientProvider locale="en" messages={en}>
-      <HomePage />
-    </NextIntlClientProvider>,
-  );
+async function renderHomePage(): Promise<void> {
+  await act(async () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <HomePage params={Promise.resolve({ locale: "en" })} />
+      </NextIntlClientProvider>,
+    );
+    await Promise.resolve();
+  });
 }
 
 describe("HomePage", () => {
@@ -34,8 +41,8 @@ describe("HomePage", () => {
     expect(typeof document).not.toBe("undefined");
   });
 
-  it("renders the translated title and intro", () => {
-    renderHomePage();
+  it("renders the translated title and intro", async () => {
+    await renderHomePage();
 
     expect(
       screen.getByRole("heading", { name: en.HomePage.title }),
@@ -45,8 +52,8 @@ describe("HomePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a locale link for every shipped locale", () => {
-    renderHomePage();
+  it("renders a locale link for every shipped locale", async () => {
+    await renderHomePage();
 
     const nav = screen.getByRole("navigation", { name: en.LocaleSwitcher.label });
     expect(nav).toBeInTheDocument();
