@@ -6,8 +6,6 @@ import type { ReactElement, ReactNode } from "react";
 
 import { LOCALES } from "../../i18n/locales";
 
-import "../globals.css";
-
 export async function generateMetadata({
   params,
 }: Readonly<{
@@ -38,7 +36,8 @@ export async function generateMetadata({
  * @remarks
  * This is where `<html lang>` lives rather than the root layout above it: the
  * language of the document is a property of the locale segment, and a root
- * layout renders for paths that have not got one yet.
+ * layout renders for paths that have not got one yet. The root layout owns the
+ * global stylesheet so a framework-level boundary gets the same app CSS.
  *
  * The `[locale]` segment is a catch-all, so an unknown value reaches here as a
  * locale. Answering that with a 404 is what stops `/nonsense` from rendering
