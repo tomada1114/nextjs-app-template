@@ -1,4 +1,8 @@
 {
+  "Metadata": {
+    "title": "Next.js アプリテンプレート",
+    "description": "App Router のひな形です。"
+  },
   "HomePage": {
     "title": "Next.js アプリテンプレート",
     "intro": "App Router のひな形を{language}で表示しています。",

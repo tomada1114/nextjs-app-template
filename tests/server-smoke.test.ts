@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LOCALES } from "../src/i18n/locales";
+import { MESSAGES } from "../src/i18n/messages";
 
 // The only suite that asks the application a question over HTTP. Every other
 // test here drives one layer through its own surface — a handler with
@@ -373,7 +374,7 @@ describe("the built application, served by `next start`", () => {
   });
 
   it.each(LOCALES)(
-    "serves /%s as a document declaring that language",
+    "serves /%s as a document with localized metadata and language alternates",
     async (locale) => {
       const response = await fetch(`${baseUrl}/${locale}`);
 
@@ -381,11 +382,37 @@ describe("the built application, served by `next start`", () => {
       expect(response.headers.get("content-type")).toContain("text/html");
       // `<html lang>` is rendered by `src/app/[locale]/layout.tsx`, an async
       // Server Component no other test in this repository renders.
-      await expect(response.text()).resolves.toMatch(
-        new RegExp(`<html[^>]*\\slang="${locale}"`),
+      const document = await response.text();
+      expect(document).toMatch(new RegExp(`<html[^>]*\\slang="${locale}"`));
+      expect(document).toContain(`<title>${MESSAGES[locale].Metadata.title}</title>`);
+      expect(document).toContain(
+        `<meta name="description" content="${MESSAGES[locale].Metadata.description}"`,
       );
+      expect(document).toMatch(
+        new RegExp(
+          `<link(?=[^>]*rel="canonical")(?=[^>]*href="[^"]*/${locale}")[^>]*>`,
+        ),
+      );
+      for (const alternateLocale of LOCALES) {
+        expect(document).toMatch(
+          new RegExp(
+            `<link(?=[^>]*rel="alternate")(?=[^>]*hrefLang="${alternateLocale}")(?=[^>]*href="[^"]*/${alternateLocale}")[^>]*>`,
+          ),
+        );
+      }
     },
   );
+
+  it("serves distinct metadata for English and Japanese", async () => {
+    const documents = await Promise.all(
+      LOCALES.map(async (locale) => (await fetch(`${baseUrl}/${locale}`)).text()),
+    );
+
+    expect(documents[0]).not.toContain(`<title>${MESSAGES.ja.Metadata.title}</title>`);
+    expect(documents[0]).not.toContain(
+      `<meta name="description" content="${MESSAGES.ja.Metadata.description}"`,
+    );
+  });
 
   // The two halves of "an unknown route 404s" are asserted apart, and both with
   // `redirect: "manual"`, because following the redirect merges them: a single

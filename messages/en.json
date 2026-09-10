@@ -1,4 +1,8 @@
 {
+  "Metadata": {
+    "title": "Next.js App Template",
+    "description": "An App Router skeleton."
+  },
   "HomePage": {
     "title": "Next.js App Template",
     "intro": "The App Router skeleton renders in {language}.",
