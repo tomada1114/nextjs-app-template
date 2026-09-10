@@ -396,7 +396,7 @@ describe("the built application, served by `next start`", () => {
       for (const alternateLocale of LOCALES) {
         expect(document).toMatch(
           new RegExp(
-            `<link(?=[^>]*rel="alternate")(?=[^>]*hreflang="${alternateLocale}")(?=[^>]*href="[^"]*/${alternateLocale}")[^>]*>`,
+            `<link(?=[^>]*rel="alternate")(?=[^>]*hrefLang="${alternateLocale}")(?=[^>]*href="[^"]*/${alternateLocale}")[^>]*>`,
           ),
         );
       }
