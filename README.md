@@ -64,8 +64,7 @@ new app is finished renaming when that list is empty and the test is green.
 
 ## Development
 
-This repository is private and publishes nothing — no npm package, no generated API
-documentation.
+This package is private: nothing here is packed, published, or consumed as a tarball.
 
 ```sh
 corepack pnpm@11.18.0 install --frozen-lockfile
