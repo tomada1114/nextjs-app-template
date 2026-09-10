@@ -10,6 +10,20 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LOCALES } from "../src/i18n/locales";
 
+const EXPECTED_METADATA = {
+  en: {
+    title: "Next.js App Template",
+    description: "An App Router skeleton.",
+  },
+  ja: {
+    title: "Next.js アプリテンプレート",
+    description: "App Router のひな形です。",
+  },
+} as const satisfies Record<
+  (typeof LOCALES)[number],
+  { title: string; description: string }
+>;
+
 // The only suite that asks the application a question over HTTP. Every other
 // test here drives one layer through its own surface — a handler with
 // `new Request()`, `src/proxy.ts` as a bare function, a page under jsdom — so
@@ -373,7 +387,7 @@ describe("the built application, served by `next start`", () => {
   });
 
   it.each(LOCALES)(
-    "serves /%s as a document declaring that language",
+    "serves /%s as a document with localized metadata and language alternates",
     async (locale) => {
       const response = await fetch(`${baseUrl}/${locale}`);
 
@@ -381,9 +395,24 @@ describe("the built application, served by `next start`", () => {
       expect(response.headers.get("content-type")).toContain("text/html");
       // `<html lang>` is rendered by `src/app/[locale]/layout.tsx`, an async
       // Server Component no other test in this repository renders.
-      await expect(response.text()).resolves.toMatch(
-        new RegExp(`<html[^>]*\\slang="${locale}"`),
+      const document = await response.text();
+      expect(document).toMatch(new RegExp(`<html[^>]*\\slang="${locale}"`));
+      expect(document).toContain(`<title>${EXPECTED_METADATA[locale].title}</title>`);
+      expect(document).toContain(
+        `<meta name="description" content="${EXPECTED_METADATA[locale].description}"`,
       );
+      expect(document).toMatch(
+        new RegExp(
+          `<link(?=[^>]*rel="canonical")(?=[^>]*href="[^"]*/${locale}")[^>]*>`,
+        ),
+      );
+      for (const alternateLocale of LOCALES) {
+        expect(document).toMatch(
+          new RegExp(
+            `<link(?=[^>]*rel="alternate")(?=[^>]*hreflang="${alternateLocale}")(?=[^>]*href="[^"]*/${alternateLocale}")[^>]*>`,
+          ),
+        );
+      }
     },
   );
 

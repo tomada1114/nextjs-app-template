@@ -291,6 +291,8 @@ const referenceKeys = dottedKeys(catalogs.get("en")).sort();
  * that has to stay in step with a union.
  */
 const MESSAGE_KEYS = [
+  "Metadata.title",
+  "Metadata.description",
   "HomePage.title",
   "HomePage.intro",
   "HomePage.localeCount",
