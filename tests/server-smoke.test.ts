@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -26,6 +26,9 @@ import { MESSAGES } from "../src/i18n/messages";
 
 /** The repository root, whose `.next` build `next start` serves. */
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+/** The manifest that records the routes Next.js rendered during the build. */
+const prerenderManifestPath = path.join(repoRoot, ".next", "prerender-manifest.json");
 
 /** The `next` CLI, run through this process's own Node rather than a shell. */
 const nextCli = createRequire(import.meta.url).resolve("next/dist/bin/next");
@@ -124,6 +127,21 @@ function assertFreshBuild(): void {
       `This suite serves the output of \`pnpm build\`, and ${changed.join(", ")} changed after that build was written. Run \`pnpm build\` again: a build of code that is no longer here would pass these assertions without asserting anything about the change.`,
     );
   }
+}
+
+/** Read the build's static route table without trusting its JSON shape. */
+function readPrerenderedRoutes(): object {
+  const manifest: unknown = JSON.parse(readFileSync(prerenderManifestPath, "utf8"));
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    !("routes" in manifest) ||
+    typeof manifest.routes !== "object" ||
+    manifest.routes === null
+  ) {
+    throw new TypeError("`.next/prerender-manifest.json` must contain a routes object");
+  }
+  return manifest.routes;
 }
 
 /**
@@ -361,6 +379,14 @@ afterAll(async () => {
 });
 
 describe("the built application, served by `next start`", () => {
+  it("prerenders every shipped locale", () => {
+    const routes = readPrerenderedRoutes();
+
+    for (const locale of LOCALES) {
+      expect(routes).toHaveProperty(`/${locale}`);
+    }
+  });
+
   it("redirects a path with no locale prefix to one that has it", async () => {
     const response = await fetch(baseUrl, {
       redirect: "manual",

@@ -1,10 +1,17 @@
 import { hasLocale, NextIntlClientProvider } from "next-intl";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactElement, ReactNode } from "react";
 
-import { LOCALES } from "../../i18n/locales";
+import { LOCALES, type Locale } from "../../i18n/locales";
+
+/** Keep locale pages static while the root 404 can localize unmatched paths. */
+export const dynamic = "force-static";
+
+export function generateStaticParams(): { locale: Locale }[] {
+  return LOCALES.map((locale) => ({ locale }));
+}
 
 export async function generateMetadata({
   params,
@@ -54,6 +61,8 @@ export default async function LocaleLayout({
   if (!hasLocale(LOCALES, locale)) {
     notFound();
   }
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- required by next-intl's legacy static-rendering API
+  setRequestLocale(locale);
 
   return (
     <html lang={locale}>
