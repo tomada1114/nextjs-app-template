@@ -431,13 +431,28 @@ describe("the built application, served by `next start`", () => {
     expect(new URL(location ?? "", baseUrl).pathname).toBe("/en/no-such-page");
   });
 
-  it("answers an unknown locale-prefixed route with 404", async () => {
-    const response = await fetch(`${baseUrl}/en/no-such-page`, {
-      redirect: "manual",
-    });
+  it.each(LOCALES)(
+    "serves /%s/no-such-page as a localized 404 document",
+    async (locale) => {
+      const response = await fetch(`${baseUrl}/${locale}/no-such-page`, {
+        redirect: "manual",
+      });
 
-    expect(response.status).toBe(404);
-  });
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).toContain("text/html");
+
+      const document = await response.text();
+      expect(document.match(/<html\b/g)).toHaveLength(1);
+      expect(document.match(/<body\b/g)).toHaveLength(1);
+      expect(document).toMatch(new RegExp(`<html[^>]*\\slang="${locale}"`));
+      expect(document).toContain(MESSAGES[locale].NotFound.title);
+      expect(document).toContain(MESSAGES[locale].NotFound.description);
+      expect(document).toContain(MESSAGES[locale].NotFound.homeLink);
+
+      const otherLocale = locale === "en" ? "ja" : "en";
+      expect(document).not.toContain(MESSAGES[otherLocale].NotFound.title);
+    },
+  );
 
   it("refuses POST /api/ask without the access key", async () => {
     const response = await fetch(`${baseUrl}/api/ask`, {
