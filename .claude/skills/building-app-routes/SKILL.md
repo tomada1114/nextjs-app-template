@@ -136,14 +136,13 @@ wired, nothing is required and the endpoint answers anyone, which is the promise
 `pnpm dev` makes.
 
 **This template ships no rate limit and no concurrency limit, and that is deliberate.**
-Doing it properly needs a store shared across every instance — a Redis, a database row,
-a platform primitive — and which one is a deployment decision this template cannot make
-for you. So an access key holder can still spend without bound, and a key that leaks is
-a bill. When you add one, it goes in the same place the access-key check does: at the
-top of the handler in `src/server/handlers/ask.ts`, ahead of `llm.generate`, with the
-store injected through `AskHandlerDependencies` like every other dependency — never read
-from `process.env` in the handler, and never in `src/proxy.ts`, which does not run for
-`api` paths at all.
+A paid-adapter deployment must enforce its caller-throughput policy in an edge or
+gateway layer before `POST /api/ask` reaches the app. That enforcement point must be
+shared across instances; its exact store, algorithm, caller key, quota, window, and
+concurrency policy belong to the deployment rather than this template. `src/proxy.ts` is
+not the limiter because its matcher excludes `api` paths, so it does not run there. A
+consuming application may add a handler-local limiter for defense in depth, but that is
+not the deployment-wide safeguard and is not part of this issue.
 
 **What the endpoint does bound is the size of one request.** `src/server/http.ts` reads
 a JSON body through a wrapper that abandons it once it crosses `MAX_REQUEST_BODY_BYTES`,

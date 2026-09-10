@@ -162,6 +162,18 @@ module graph, so a rule deleted from that config still fails the suite. Read the
 and the patterns there — a summary that restated them is the copy that goes stale. How
 to work inside a zone is a skill's subject, not this section's.
 
+### Rate limiting
+
+This template deliberately implements neither rate limiting nor concurrency limiting for
+`POST /api/ask`. It owns no limiter state, store, algorithm, or rate-limit environment
+variable. A deployment that wires a billed adapter must enforce its caller-throughput
+policy at an edge or gateway before the request reaches the app, with enforcement shared
+across instances; a per-process limiter is not equivalent across instances.
+`API_ACCESS_KEY` is authentication only, not a rate-limit declaration.
+
+The app still owns its existing per-request request-body and prompt ceilings and rejects
+those before `llm.generate`.
+
 ## Skills
 
 Each skill owns one kind of change. Load the one whose subject you are working on; each
