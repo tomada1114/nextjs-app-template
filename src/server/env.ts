@@ -69,10 +69,12 @@ const serverEnvShape = z.object({
    * it says by passing {@link ServerEnvRequirements.requiresAccessKey}.
    *
    * `src/server/composition.ts` hands the value to the handler, which
-   * compares it against the caller's `Authorization: Bearer` credential. It
-   * is authentication and nothing more: this template ships no rate limit and
-   * no concurrency limit, so a holder of this key can still spend without
-   * bound.
+   * compares it against the caller's `Authorization: Bearer` credential.
+   * `API_ACCESS_KEY` is authentication only. This template deliberately ships
+   * neither a rate limit nor a concurrency limit; deployments using a billed
+   * adapter must apply their deployment-wide caller-throughput policy at an edge
+   * or gateway before `POST /api/ask` reaches the app. See
+   * `building-app-routes` for that guidance.
    */
   API_ACCESS_KEY: optionalSetting,
 });
