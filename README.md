@@ -7,8 +7,9 @@ A short description.
 ## What this is
 
 A starting point for a Next.js application on the App Router: a locale-prefixed page
-tree, one JSON endpoint, and one language-model call kept behind an interface rather
-than called directly. ESM-only TypeScript throughout.
+tree styled with Tailwind v4 and shadcn/ui, one JSON endpoint, and one language-model
+call kept behind an interface rather than called directly. ESM-only TypeScript
+throughout.
 
 Two things follow from that last part, and they are most of why this template exists. A
 fake adapter is wired in by default, so `pnpm dev` answers a request before any
@@ -55,12 +56,21 @@ is being read — before the model is asked, on either path. Both ceilings are c
 Copy the tree, then work through
 [`starting-an-app`](.agents/skills/starting-an-app/SKILL.md), which owns the procedure
 and the order it runs in: rename first, then decide whether to keep the language-model
-layer or remove it whole, then decide the locales, then run `pnpm check:source` once.
+layer or remove it whole, then decide the locales, then settle the design direction
+before the first screen of your own, then run `pnpm check:source` once.
+
+The template ships shadcn/ui's stock neutral tokens so a copied component renders, not a
+design anyone chose — `src/app/globals.css` and the
+[`designing-ui`](.agents/skills/designing-ui/SKILL.md) skill both say so, and the same
+placeholder inventory below reports it until the direction is settled.
 
 The rename is what the title, the description and the author above are waiting for —
 they are this template's own identity strings, deliberately left as placeholders.
 `tests/placeholders.test.ts` holds the complete list of where one still stands, and a
 new app is finished renaming when that list is empty and the test is green.
+
+`pnpm dlx shadcn@latest add <name>` cannot run from this repository's root under its
+supply-chain policy; `designing-ui` holds the workaround.
 
 ## Development
 

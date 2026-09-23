@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
@@ -79,7 +80,16 @@ const serverOnlyEmptyModule = path.join(
   "empty.js",
 );
 
+// `tsconfig.json` declares `paths: { "@/*": ["./src/*"] }`, and Vite reads
+// none of it — `paths` is a type-checker instruction, not a resolver one. A
+// test importing `@/components/ui/button` would fail to resolve without this,
+// so the mapping is restated here against this file's own directory rather
+// than against the process cwd, which `pnpm exec vitest` does not guarantee.
+// `extends: true` on every project below is what carries it into all four.
+const srcDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "src");
+
 export default defineConfig({
+  resolve: { alias: { "@": srcDirectory } },
   test: {
     environment: "node",
     alias: { "server-only": serverOnlyEmptyModule },
@@ -192,19 +202,30 @@ export default defineConfig({
       // their own coverage.
       thresholds: {
         // The floor covers the zones whose code is this repository's own
-        // logic. `src/app/**` and `src/components/**` are deliberately absent:
-        // they are Next.js entry points and rendered markup, and a floor they
-        // cannot meet would only teach the next author to move the number.
-        // What exercises them instead is `tests/server-smoke.test.ts`, which
-        // serves the built application and asks it for a page over HTTP.
-        // Nothing of that shows up here: coverage stops at the process
-        // boundary, so the v8 provider reports these files at whatever the
-        // in-process tests reach and no number below moves when the smoke
-        // suite passes. They stay inside `include` above, so they still
-        // report as a percentage — they simply have no floor to trip. This is
-        // a narrower threshold glob, not a `coverage.exclude` entry, which
-        // AGENTS.md forbids by name.
+        // logic. `src/app/**` and the `.tsx` half of `src/components/**` are
+        // deliberately absent: they are Next.js entry points and rendered
+        // markup, and a floor they cannot meet would only teach the next
+        // author to move the number. What exercises them instead is
+        // `tests/server-smoke.test.ts`, which serves the built application
+        // and asks it for a page over HTTP. Nothing of that shows up here:
+        // coverage stops at the process boundary, so the v8 provider reports
+        // these files at whatever the in-process tests reach and no number
+        // below moves when the smoke suite passes. They stay inside `include`
+        // above, so they still report as a percentage — they simply have no
+        // floor to trip. This is a narrower threshold glob, not a
+        // `coverage.exclude` entry, which AGENTS.md forbids by name.
         "src/{core,ai,server}/**": {
+          lines: 80,
+          functions: 80,
+          statements: 80,
+          branches: 80,
+        },
+        // `src/components/**` mixes rendered markup with plain logic — a
+        // hook, a formatter, a client for a JSON endpoint — and only the
+        // `.tsx` files have a rendering step to excuse them. The `.ts` files
+        // are held to the same floor as the zones above, so moving logic out
+        // of `src/server/` into a component module is not a way out of one.
+        "src/components/**/*.ts": {
           lines: 80,
           functions: 80,
           statements: 80,

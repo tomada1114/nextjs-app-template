@@ -61,6 +61,14 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * needle for it would put inventory rows on a skill whose subject is ICU
  * plurals rather than this template's identity. `starting-an-app` sends a
  * renaming project to that copy by hand instead.
+ *
+ * The last entry is not an identity string but a decision the template leaves
+ * open on purpose: the design direction. `src/app/globals.css` ships stock
+ * shadcn/ui tokens and `designing-ui` an empty lock, both carrying this
+ * marker, so a project that renamed everything still reports that its screens
+ * are being built against a direction nobody chose. It is listed here rather
+ * than in a suite of its own because this inventory is already the checklist
+ * a new app works through, and a second list is one a new app never runs.
  */
 const PLACEHOLDERS = [
   "my-package",
@@ -73,6 +81,7 @@ const PLACEHOLDERS = [
   "Next.js アプリテンプレート",
   "An App Router skeleton.",
   "App Router のひな形です。",
+  "DESIGN DIRECTION: UNSETTLED",
 ] as const;
 
 /**
@@ -92,8 +101,14 @@ const PLACEHOLDERS = [
  * real repository slug rather than a blank, deliberately: the CI badge and the
  * security-advisory link have to resolve *while this repository is the
  * template*, and a fork replaces them like any other row.
+ *
+ * The design-direction rows sit outside that count: the stylesheet and both
+ * copies of `designing-ui` carry the marker until a new app settles its
+ * direction, which `starting-an-app` sequences after the rename.
  */
 const EXPECTED_INVENTORY = [
+  ".agents/skills/designing-ui/SKILL.md: DESIGN DIRECTION: UNSETTLED",
+  ".claude/skills/designing-ui/SKILL.md: DESIGN DIRECTION: UNSETTLED",
   ".github/ISSUE_TEMPLATE/config.yml: tomada1114/nextjs-app-template",
   "LICENSE: Your Name",
   "README.md: A short description.",
@@ -106,6 +121,7 @@ const EXPECTED_INVENTORY = [
   "messages/ja.json: Next.js アプリテンプレート",
   "package.json: A short description.",
   "package.json: my-package",
+  "src/app/globals.css: DESIGN DIRECTION: UNSETTLED",
 ];
 
 /**
