@@ -51,12 +51,11 @@ const INTERNAL_IS_PRIVATE =
 const ANTHROPIC_SDK = ["@anthropic-ai/**"];
 
 /**
- * Each zone under `src/`, as every relative specifier that can reach into it.
+ * Each zone under `src/`, as every specifier that can reach into it.
  *
  * @remarks
- * This repository has no `@/*` path alias — `tsconfig.json` declares neither
- * `baseUrl` nor `paths` — so leaving your own zone always costs at least one
- * `../`, and the same module is `../ai/index` from one file and
+ * A zone is reachable two ways. Relatively, leaving your own zone costs at
+ * least one `../`, and the same module is `../ai/index` from one file and
  * `../../ai/index` from another. The globstar after the `../` absorbs the rest
  * whatever the importer's depth, so one pattern covers every caller; the bare
  * form is listed alongside the recursive one because a directory import
@@ -74,13 +73,40 @@ const ANTHROPIC_SDK = ["@anthropic-ai/**"];
  * neither the `../**\/ai/**` pattern nor the `!../**\/ai/index` exemption below
  * without its own `./../**` copy. A bare specifier still cannot start with
  * `./..`, so the twin is exactly as safe as the pattern it doubles.
+ *
+ * The other way is the `@/*` → `./src/*` alias `tsconfig.json` declares,
+ * because shadcn/ui writes `@/components/...` imports into every component it
+ * copies in. That spelling carries no `../` to anchor and needs none: it is
+ * already absolute from `src/`, so `@/ai/**` names the zone from any depth,
+ * and it is safe to match unanchored because no bare package name can start
+ * with `@/` — a scoped package is `@scope/name`, and an empty scope is not
+ * legal. A zone left without its `@/` twin would be a boundary the alias walks
+ * straight through, which is why {@link zonePatterns} generates every entry
+ * with both, rather than leaving the twin to be remembered per zone.
+ *
+ * @param {string} name
+ * @returns {string[]}
  */
-const ZONE = {
-  app: ["../**/app", "../**/app/**", "./../**/app", "./../**/app/**"],
-  server: ["../**/server", "../**/server/**", "./../**/server", "./../**/server/**"],
-  ai: ["../**/ai", "../**/ai/**", "./../**/ai", "./../**/ai/**"],
-  i18n: ["../**/i18n", "../**/i18n/**", "./../**/i18n", "./../**/i18n/**"],
-};
+function zonePatterns(name) {
+  return [
+    `../**/${name}`,
+    `../**/${name}/**`,
+    `./../**/${name}`,
+    `./../**/${name}/**`,
+    `@/${name}`,
+    `@/${name}/**`,
+  ];
+}
+
+const ZONE =
+  /** @type {Record<"app" | "server" | "ai" | "i18n" | "components", string[]>} */ (
+    Object.fromEntries(
+      ["app", "server", "ai", "i18n", "components"].map((name) => [
+        name,
+        zonePatterns(name),
+      ]),
+    )
+  );
 
 /**
  * Every module inside the AI layer except the one it publishes.
@@ -92,13 +118,16 @@ const ZONE = {
  * because the last matching entry wins. The `./../**` twin exists for the
  * same reason as {@link ZONE}'s: `./../ai/errors` and `./../ai/index` are
  * invisible to the `../**` forms, so each needs its own pattern and its own
- * exemption.
+ * exemption. The `@/` form is the third spelling, and needs its own exemption
+ * for the same reason.
  */
 const AI_LAYER_PRIVATE = [
   "../**/ai/**",
   "./../**/ai/**",
+  "@/ai/**",
   "!../**/ai/index",
   "!./../**/ai/index",
+  "!@/ai/index",
 ];
 
 /** Why everything under `src/ai/` but its surface is off limits to a caller. */
@@ -107,7 +136,11 @@ const AI_LAYER_IS_PRIVATE =
 
 /** Why the AI layer names no zone above it, stated by two blocks. */
 const AI_LAYER_LOOKS_ONLY_DOWNWARD =
-  "src/ai/ sits below src/server/ and src/app/ in the import order, and src/i18n/ is read by those two rather than by the port. A locale, a request, or a handler concern reaching in here is what stops the layer coming out in one piece — take it as an argument on the LlmPort call instead.";
+  "src/ai/ sits below src/server/, src/components/ and src/app/ in the import order, and src/i18n/ is read by those rather than by the port. A locale, a request, a rendering or a handler concern reaching in here is what stops the layer coming out in one piece — take it as an argument on the LlmPort call instead.";
+
+/** Why `src/components/` looks only at `src/core/`, `src/i18n/` and the framework. */
+const COMPONENTS_LOOK_ONLY_DOWNWARD =
+  "src/components/ is UI: it renders what it is handed. The import order is app → components → core, so a component names no page, no handler, no composition root, and nothing in the AI layer. Take the value as a prop and let src/app/ do the fetching.";
 
 /** Why a vendor SDK stops at the adapter that wraps it. */
 const VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS =
@@ -262,10 +295,11 @@ export default defineConfig([
   // --- zone boundaries -------------------------------------------------------
   //
   // AGENTS.md states one import order — `app` → `server` → `ai` → `core`, with
-  // `i18n` a leaf the page tree and the handlers read — and the six blocks below
-  // are that order, written per zone as the zones each one may not name. The
-  // leaf property is an edge like any other: `src/i18n/` may read `src/core/`
-  // and nothing above it. On top of the order, `src/app/` and `src/server/`
+  // `app` → `components` → `core` beside it and `i18n` a leaf the page tree,
+  // the components and the handlers read — and the seven blocks below are that
+  // order, written per zone as the zones each one may not name. The leaf
+  // property is an edge like any other: `src/i18n/` may read `src/core/` and
+  // nothing above it. On top of the order, `src/app/` and `src/server/`
   // reach the AI layer only through `src/ai/index.ts`.
   // `tests/boundaries.test.ts` asserts the same shape from the module graph, so
   // deleting a block here still fails the suite.
@@ -298,9 +332,15 @@ export default defineConfig([
                 "src/core/ holds the vocabulary the other zones are written in — a Result, a domain type, a pure function — and it stays free of the framework and of any vendor SDK so it survives a change of either. Put the framework-aware code in src/app/ or src/server/ and the vendor-aware code behind src/ai/.",
             },
             {
-              group: [...ZONE.ai, ...ZONE.server, ...ZONE.app, ...ZONE.i18n],
+              group: [
+                ...ZONE.ai,
+                ...ZONE.server,
+                ...ZONE.app,
+                ...ZONE.i18n,
+                ...ZONE.components,
+              ],
               message:
-                "src/core/ is the bottom of the import order app → server → ai → core, so it names no zone above it. A type only one zone needs belongs in that zone; one they share belongs here, with nothing imported to define it.",
+                "src/core/ is the bottom of the import order app → server → ai → core (and app → components → core), so it names no zone above it. A type only one zone needs belongs in that zone; one they share belongs here, with nothing imported to define it.",
             },
           ],
         },
@@ -319,7 +359,7 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n],
+              group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n, ...ZONE.components],
               message: AI_LAYER_LOOKS_ONLY_DOWNWARD,
             },
           ],
@@ -343,7 +383,7 @@ export default defineConfig([
                 "The port is the interface adapters implement, so it cannot depend on one. An import here inverts the dependency and makes the fake — or the next vendor — impossible to remove.",
             },
             {
-              group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n],
+              group: [...ZONE.app, ...ZONE.server, ...ZONE.i18n, ...ZONE.components],
               message: AI_LAYER_LOOKS_ONLY_DOWNWARD,
             },
           ],
@@ -360,9 +400,9 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: [...ZONE.app, ...ZONE.server, ...ZONE.ai],
+              group: [...ZONE.app, ...ZONE.server, ...ZONE.ai, ...ZONE.components],
               message:
-                "src/i18n/ is a leaf: the page tree and the handlers read it, and it reads nothing but src/core/ and its own catalogs. An import here inverts that and makes the locale list depend on the code that renders it.",
+                "src/i18n/ is a leaf: the page tree, the components and the handlers read it, and it reads nothing but src/core/ and its own catalogs. An import here inverts that and makes the locale list depend on the code that renders it.",
             },
           ],
         },
@@ -407,9 +447,43 @@ export default defineConfig([
               message: VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS,
             },
             {
-              group: [...ZONE.app],
+              group: [...ZONE.app, ...ZONE.components],
               message:
-                "src/server/ sits below src/app/ in the import order app → server → ai → core. A handler or the composition root naming a page, a layout or a route module inverts that: the App Router tree imports the server layer, never the other way round.",
+                "src/server/ sits below src/app/ in the import order app → server → ai → core. A handler or the composition root naming a page, a layout, a route module or a component inverts that: the App Router tree imports the server layer and renders the components, never the other way round.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The zone shadcn/ui copies components into, and the app's own components
+    // beside them. It sits between `src/app/` and `src/core/` — a component is
+    // handed its data and renders it — so it may name the framework, the UI
+    // libraries, `src/core/` and the `src/i18n/` leaf, and nothing else under
+    // `src/`. `server-only` is banned outright rather than reached through a
+    // zone pattern: a component importing it has decided it can never be a
+    // Client Component, which is the opposite of what this zone is for, and
+    // the marker's whole job is to fail the build far from the cause.
+    name: "boundaries/components-import-only-core-and-i18n",
+    files: ["src/components/**/*.ts", "src/components/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [...ZONE.app, ...ZONE.server, ...ZONE.ai],
+              message: COMPONENTS_LOOK_ONLY_DOWNWARD,
+            },
+            {
+              group: ANTHROPIC_SDK,
+              message: VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS,
+            },
+            {
+              group: ["server-only"],
+              message:
+                "server-only pins a module to the server graph, and a component under src/components/ has to stay renderable from either graph. Put the server-side work in src/server/ and hand the component its result.",
             },
           ],
         },
@@ -498,7 +572,14 @@ export default defineConfig([
               // Nothing builds to `dist/` any more (issue #4 removed the
               // packaging gates), so the built spelling is gone and the source
               // one is the whole rule.
-              group: ["**/src/internal", "**/src/internal/**"],
+              // The `@/` spellings are the same module through the alias
+              // `tsconfig.json` declares, which no `**/src/...` pattern sees.
+              group: [
+                "**/src/internal",
+                "**/src/internal/**",
+                "@/internal",
+                "@/internal/**",
+              ],
               message: INTERNAL_IS_PRIVATE,
             },
             {
@@ -507,7 +588,12 @@ export default defineConfig([
               // through `src/ai/index.ts` — which is what makes the contract
               // suite in tests/ai-port.test.ts run unchanged against whichever
               // adapter src/ai/index.ts publishes.
-              group: ["**/src/ai/adapters", "**/src/ai/adapters/**"],
+              group: [
+                "**/src/ai/adapters",
+                "**/src/ai/adapters/**",
+                "@/ai/adapters",
+                "@/ai/adapters/**",
+              ],
               message:
                 "src/ai/adapters/ is private to the AI layer: import what src/ai/index.ts publishes instead.",
             },
