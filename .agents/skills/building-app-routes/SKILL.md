@@ -2,12 +2,13 @@
 name: building-app-routes
 description: >
   Covers working inside the Next.js App Router tree: adding a page or a layout under
-  src/app/, deciding which file carries a "use client" directive, keeping
-  src/app/api/<name>/route.ts a one-line re-export of a Web-standard handler wired in
-  src/server/composition.ts, what belongs in src/proxy.ts, and reading configuration
-  through src/server/env.ts. Use when adding or changing a route, page, layout or Route
-  Handler, editing the proxy matcher, adding an environment variable or a NEXT_PUBLIC_
-  name, or when an unprefixed path 404s while every check stays green.
+  src/app/, deciding which file carries a "use client" directive and what moves to
+  src/components/, keeping src/app/api/<name>/route.ts a one-line re-export of a
+  Web-standard handler wired in src/server/composition.ts, what belongs in src/proxy.ts,
+  and reading configuration through src/server/env.ts. Use when adding or changing a
+  route, page, layout or Route Handler, editing the proxy matcher, adding an environment
+  variable or a NEXT_PUBLIC_ name, or when an unprefixed path 404s while every check
+  stays green.
 ---
 
 # Building App Routes
@@ -54,6 +55,15 @@ directive is, and nothing else is.
   `src/server/composition.ts` import `server-only`, so those two fail the build instead
   of inlining a secret into a bundle — but only `pnpm build` sees it, and a handler
   module carries no such marker, so there the rule holds by discipline.
+- UI a page renders goes under `src/components/` rather than beside the page — the
+  shadcn/ui copies in `ui/`, the app's own components next to them — and a component
+  that needs the client carries the directive in its own file, so the page above it
+  stays a Server Component. A component with no state, effect or handler needs no
+  directive even when it came from the registry: `src/app/[locale]/page.tsx` renders
+  `Button` with none anywhere on the path.
+- A request schema that browser code also has to satisfy belongs in `src/core/`, not
+  beside the handler. A client under `src/components/` cannot import `src/server/`, and
+  a second copy of the shape on the client side is one that drifts from the server's.
 
 An **asynchronous** Server Component is not unit-tested here. `LocaleLayout` in
 `src/app/[locale]/layout.tsx` awaits its `params`; Testing Library renders on the client

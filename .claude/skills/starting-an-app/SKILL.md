@@ -3,21 +3,22 @@ name: starting-an-app
 description: >
   Covers turning this template into a new application: the copy-and-rename procedure
   driven by tests/placeholders.test.ts, what a new project keeps untouched, removing the
-  AI layer whole under tests/ai-layer-removal.test.ts, and whether to keep both locales
-  or drop one. Use when starting an app from this repository, replacing the package
-  name, the app's display name or the repository slug in a badge or advisory link,
-  deleting src/ai/ and the route that depends on it, or dropping a locale from
-  src/i18n/locales.ts and messages/.
+  AI layer whole under tests/ai-layer-removal.test.ts, whether to keep both locales or
+  drop one, and settling the design direction before the first screen. Use when starting
+  an app from this repository, replacing the package name, the app's display name or the
+  repository slug, deleting src/ai/, dropping a locale from src/i18n/locales.ts and
+  messages/, or replacing the stock shadcn/ui tokens.
 ---
 
 # Starting an App
 
 **Owns:** turning this repository into a new application — the rename, what the new app
-keeps, removing the AI layer whole, and the locale decision. **Does not own:** how a
-skill is authored or mirrored (`authoring-skills`); the README's own prose
-(`updating-docs`); what a gate file may contain (`changing-gates`); working inside the
-App Router tree (`building-app-routes`); the port, its adapters, and swapping one
-provider for another (`integrating-llm`).
+keeps, removing the AI layer whole, the locale decision, and when the design direction
+gets settled. **Does not own:** how a skill is authored or mirrored
+(`authoring-skills`); the README's own prose (`updating-docs`); what a gate file may
+contain (`changing-gates`); working inside the App Router tree (`building-app-routes`);
+the port, its adapters, and swapping one provider for another (`integrating-llm`); what
+a settled direction contains and how the tokens are edited (`designing-ui`).
 
 There is deliberately no bootstrap script. The one this repository used to ship was
 profile-driven machinery that rewrote the tree and then deleted itself, so the only
@@ -31,8 +32,10 @@ Rename first, so nothing downstream is written against the template's identity. 
 the AI layer next — keep it or remove it whole — before writing code of your own:
 removal touches `eslint.config.mjs`, `vitest.config.ts` and AGENTS.md, and doing it once
 your own modules have grown into `src/server/` turns a bounded deletion into a merge.
-Decide the locales last, then run `pnpm check:source` once. Each step below names the
-narrower check to run while you are inside it.
+Decide the locales, then settle the design direction before building the first screen of
+your own — every screen written against the stock tokens is one to restyle later. Run
+`pnpm check:source` once at the end. Each step below names the narrower check to run
+while you are inside it.
 
 ## The rename
 
@@ -243,3 +246,31 @@ One locale still means a prefixed URL: `localePrefix` defaults to `"always"` in
 `src/i18n/routing.ts`, so `/` keeps redirecting to `/en`. Changing that is a routing
 decision, not part of the rename, and it is what `tests/proxy.test.ts` asserts either
 way.
+
+## Settling the design direction
+
+The template ships shadcn/ui's stock `neutral` tokens and an unsettled lock in
+`designing-ui`, both carrying the design-direction marker that `PLACEHOLDERS` in
+`tests/placeholders.test.ts` lists — so the same inventory run as the rename reports it,
+one row for `src/app/globals.css` and one per copy of `designing-ui`'s `SKILL.md`.
+
+Settle it before the first real screen, and research it rather than choosing by taste:
+the user-level `refero-design` skill is the method when it is installed, and the choice
+is the human's either way — present the options and let them pick. Then:
+
+- Fill `designing-ui`'s lock and ledger in the shape that section gives, and replace the
+  marker sentence and the paragraph under it with the settled direction. Edit the
+  `.agents/` copy and run `pnpm agents:sync`.
+- Replace the stock values in `src/app/globals.css`, keeping the `:root` +
+  `@theme inline` shape, and replace its marker comment with one naming the direction.
+  Fonts load through `next/font` in the layout that owns `<html>`; `pnpm build` then
+  fetches them at build time, so a fresh build needs network access.
+- Restyle `src/components/ui/button.tsx` to the settled recipe, dropping any variant the
+  lock has no use for, and update `tests/ui-primitives.test.tsx` in the same edit.
+- Delete the marker's rows from `EXPECTED_INVENTORY`. The marker stays in `PLACEHOLDERS`
+  so it cannot come back unnoticed.
+
+```bash
+pnpm exec vitest run tests/placeholders.test.ts tests/ui-primitives.test.tsx
+pnpm build && pnpm test:smoke
+```

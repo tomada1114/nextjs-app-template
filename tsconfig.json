@@ -10,6 +10,16 @@
     // discovered as an unexplained diff after a build.
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // shadcn/ui components are copied into this repository carrying
+    // `@/components/...` imports, so the alias is what lets that generated
+    // code compile unedited. `baseUrl` is deliberately unset — TypeScript 5+
+    // resolves `paths` against this file's own directory — because setting it
+    // would also make every bare specifier resolvable as a path from the
+    // project root. Two other resolvers have to be told the same thing by
+    // hand: `vitest.config.ts`'s `resolve.alias` (Vite never reads `paths`)
+    // and `eslint.config.mjs`'s zone patterns, which match specifier text and
+    // so need an `@/` twin of every `../` one.
+    "paths": { "@/*": ["./src/*"] },
     "jsx": "react-jsx",
     "plugins": [{ "name": "next" }],
     "strict": true,

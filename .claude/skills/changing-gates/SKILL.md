@@ -275,15 +275,21 @@ Traps that have cost time here:
   still wants.
 - Anchor a zone pattern with a leading `../`. Unanchored, `**/server` also matches the
   package subpath `next-intl/server`, which `src/i18n/request.ts` imports today;
-  `../**/server` cannot match any bare specifier, and every cross-zone import inside
-  `src/` starts with `../` because this repository declares no path alias. Same shape
-  for `../**/app` against `next/app`. `no-restricted-imports` matches this specifier
-  text through the `ignore` package rather than resolving it, and `ignore` treats a
-  leading `./` as a different string from a leading `../` — so `./../server` is
-  invisible to `../**/server` even though it resolves to the same module. Every `ZONE`
-  entry and `AI_LAYER_PRIVATE` therefore carries a `./../**` twin of each `../**`
-  pattern; a bare specifier still cannot start with `./..`, so the twin is exactly as
-  safe as the pattern it doubles.
+  `../**/server` cannot match any bare specifier. Same shape for `../**/app` against
+  `next/app`. `no-restricted-imports` matches this specifier text through the `ignore`
+  package rather than resolving it, and `ignore` treats a leading `./` as a different
+  string from a leading `../` — so `./../server` is invisible to `../**/server` even
+  though it resolves to the same module. Every `ZONE` entry and `AI_LAYER_PRIVATE`
+  therefore carries a `./../**` twin of each `../**` pattern; a bare specifier still
+  cannot start with `./..`, so the twin is exactly as safe as the pattern it doubles.
+- The `@/*` alias `tsconfig.json` declares is a third spelling of the same module, and
+  it needs no anchor: no bare package name can start with `@/`, since an empty scope is
+  not legal. It still needs its own entry — a zone left without an `@/` twin is a
+  boundary the alias walks straight through — which is why `zonePatterns()` generates
+  all six forms per zone and `AI_LAYER_PRIVATE` carries an `!@/ai/index` exemption of
+  its own. A resolver added later (a bundler, a test runner) reads neither `paths` nor
+  this config, and has to be told about the alias separately, the way
+  `vitest.config.ts`'s `resolve.alias` is.
 - A `group` accepts `!` negations, and the **last matching entry wins**. That is how
   `AI_LAYER_PRIVATE` states the AI layer's surface as an allow-list —
   `["../**/ai/**", "./../**/ai/**", "!../**/ai/index", "!./../**/ai/index"]` — rather
@@ -302,11 +308,13 @@ Traps that have cost time here:
   `boundaries/ai-imports-only-core`, `boundaries/port-does-not-know-its-adapters`,
   `boundaries/i18n-is-a-leaf`, `boundaries/app-reaches-the-ai-layer-through-src-ai`,
   `boundaries/server-reaches-ai-through-src-ai-and-never-app`,
+  `boundaries/components-import-only-core-and-i18n`,
   `boundaries/private-trees-are-not-importable`, `automation/node-scripts`,
-  `tests/vitest-rules`, `tests/relaxations`. The six `boundaries/*` blocks are one
-  import order written per zone, so they match disjoint file sets by construction. Name
-  a new block the same way — the name is what a reader, and ESLint's own config
-  inspector, has to identify it by.
+  `tests/vitest-rules`, `tests/relaxations`. Seven of the `boundaries/*` blocks are one
+  import order written per zone, so they match disjoint file sets by construction; the
+  eighth protects private trees from `tests/` and `scripts/`. Name a new block the same
+  way — the name is what a reader, and ESLint's own config inspector, has to identify it
+  by.
 - `tests/boundaries.test.ts` asserts those same edges from the module graph, and it pins
   zones rather than files. An exhaustive list of the modules under `src/` failed on
   every legal new file, which teaches its reader to edit the meta-test until the day
@@ -330,19 +338,22 @@ No check here boots a browser, and only one boots a server: `pnpm run test:smoke
 the last `pnpm build` with `next start` under `NODE_ENV=production` and asserts over
 `fetch` that `/` redirects to a locale-prefixed path, that `/en` and `/ja` render with
 the right `<html lang>`, that an unknown unprefixed path is redirected rather than 404ed
-and that the prefixed one 404s, and that `POST /api/ask` answers its documented
-statuses. Each hop is asserted with `redirect: "manual"`, because a followed redirect
-merges the proxy's answer with the route's and would pass with the proxy gone. That is
-the whole of what a running server is checked for — the seams between the layers, not
-their behaviour, which each layer's own suite owns.
+and that the prefixed one 404s, that the page links a stylesheet carrying a Tailwind
+utility it uses, and that `POST /api/ask` answers its documented statuses. The
+stylesheet case is the only check that sees PostCSS run at all: a component test renders
+a `className` into the DOM whether or not any CSS was generated. Each hop is asserted
+with `redirect: "manual"`, because a followed redirect merges the proxy's answer with
+the route's and would pass with the proxy gone. That is the whole of what a running
+server is checked for — the seams between the layers, not their behaviour, which each
+layer's own suite owns.
 
 It runs from `check:source` and from ci.yml's `static` job, both times immediately after
 `Build`, and from neither `pnpm test` nor `pnpm check:quick`: the build is what it
 serves, so a run without one would either fail or pay for a second build. It never
-builds for itself — it compares `.next/BUILD_ID` against `src/`, `messages/` and
-`next.config.ts` and refuses a missing or stale build, which is how the caller stays the
-only one paying for a build. A green `check:quick` therefore still says nothing about
-anything only a running server shows.
+builds for itself — it compares `.next/BUILD_ID` against `src/`, `messages/`,
+`next.config.ts` and `postcss.config.mjs` and refuses a missing or stale build, which is
+how the caller stays the only one paying for a build. A green `check:quick` therefore
+still says nothing about anything only a running server shows.
 
 Everything outside those five assertions is still a place a change can be wrong while
 every gate passes. A gate proposed to close such a gap is a real gate, not a lint rule,

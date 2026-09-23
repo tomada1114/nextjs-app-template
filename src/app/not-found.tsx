@@ -11,7 +11,7 @@ export default async function RootNotFound(): Promise<ReactElement> {
   return (
     <html lang={locale}>
       <body>
-        <main>
+        <main className="mx-auto flex max-w-2xl flex-col items-start gap-4 p-8">
           <h1>{messages.title}</h1>
           <p>{messages.description}</p>
           <a href={`/${locale}`}>{messages.homeLink}</a>

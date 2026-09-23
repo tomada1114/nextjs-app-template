@@ -79,10 +79,11 @@ subject:
   is what runs it, from `check:source` and from ci.yml's `static` job, both times
   straight after `Build`. A test here checks the build it was handed rather than making
   one: `tests/server-smoke.test.ts` fails with an instruction when `.next/BUILD_ID` is
-  missing, and again when it is older than `src/`, `messages/` or `next.config.ts`,
-  because a run against last commit's build passes every assertion while proving nothing
-  about the change. Adding a file here is a claim that no in-process test could have
-  asserted the same thing; prefer `automation` whenever one could.
+  missing, and again when it is older than `src/`, `messages/`, `next.config.ts` or
+  `postcss.config.mjs`, because a run against last commit's build passes every assertion
+  while proving nothing about the change. Adding a file here is a claim that no
+  in-process test could have asserted the same thing; prefer `automation` whenever one
+  could.
 
 The two directions fail differently, which is why `automation` is a list rather than a
 glob. Forgetting to register a test that does I/O leaves it in `unit`, where the short
@@ -115,15 +116,20 @@ question.
 
 - **The `src/` zones** named in `coverage.thresholds` carry the baseline floor for this
   repository's own logic. That glob is deliberately narrower than `coverage.include`:
-  `src/app/**` and `src/components/**` carry **no floor at all**. They are framework
-  entry points and rendered markup, exercised by a component render or a build rather
-  than by a unit test, and a floor they cannot meet would only teach the next author to
-  move the number. They stay inside `coverage.include`, so an untested file there still
-  reports as a percentage — it simply has no floor to trip. That distinction is the
-  whole point: a narrower _threshold_ glob keeps the number visible, while a
-  `coverage.exclude` entry would hide it, which is what AGENTS.md's "never weaken a
-  gate" forbids by name. Widening or narrowing the threshold glob is a decision to argue
-  for in a PR.
+  `src/app/**` and the `.tsx` files under `src/components/**` carry **no floor at all**.
+  They are framework entry points and rendered markup, exercised by a component render
+  or a build rather than by a unit test, and a floor they cannot meet would only teach
+  the next author to move the number. They stay inside `coverage.include`, so an
+  untested file there still reports as a percentage — it simply has no floor to trip.
+  That distinction is the whole point: a narrower _threshold_ glob keeps the number
+  visible, while a `coverage.exclude` entry would hide it, which is what AGENTS.md's
+  "never weaken a gate" forbids by name. Widening or narrowing the threshold glob is a
+  decision to argue for in a PR.
+- **`src/components/**/*.ts`** splits the zone by extension. Its `.ts` files are plain
+  logic — a hook, a formatter, a client for a JSON endpoint, `cn` — with no rendering
+  step to hide behind, so they carry the same baseline floor as the `src/` zones above.
+  A module earns the markup exemption only by being a `.tsx` component; moving logic out
+  of `src/server/` into a component module is not a way out of a floor.
 - **`scripts/**`** was never measured before it was added to `coverage.include`, so its
   floor is the last measured coverage rounded down to a clean value, not a guessed
   target — it has been raised as coverage grew (see the dated comments in
