@@ -1,19 +1,12 @@
 ---
 name: shipping-issues
 description: >-
-  Rank open GitHub Issues by their `priority: P0`-`P3` labels — backfilling a missing
-  label from how much an issue unblocks and how far its impact spreads — then implement
-  the top one, review the branch locally with /code-review, open a PR that auto-closes
-  the issue (Closes #N), watch CI to green, merge with no approval pause, and return the
-  checkout to the default branch. With no argument it ships the highest-priority issue
-  and then what that run itself produced. Pass "all" to work through every issue in
-  dependency order, independent ones implemented in parallel git worktrees, with PR, CI
-  and merge still serialized. Use when asked to ship the remaining issues, take on the
-  next issue, or clear the ticket backlog.
-argument-hint: "[all | <issue number> | (empty = one issue)] [parallel N]"
-allowed-tools:
-  Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*.py:*),
-  Bash(${CLAUDE_SKILL_DIR}/scripts/*.sh:*)
+  Rank open GitHub Issues by their `priority: P0`-`P3` labels, backfilling missing ones,
+  then implement the top issue, review it with /code-review, open a PR that closes it,
+  watch CI to green, merge, and return to the default branch. Pass "all" to work through
+  every issue in dependency order, independent ones in parallel git worktrees. Use when
+  asked to ship the remaining issues, take on the next issue, or clear the ticket
+  backlog.
 ---
 
 # Shipping Issues

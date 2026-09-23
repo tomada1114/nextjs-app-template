@@ -220,6 +220,7 @@ names its own boundary with its neighbours.
 | `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all                                                  |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
 | `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
+| `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
 ## Security and human approval
