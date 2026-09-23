@@ -21,15 +21,26 @@ checked.
 ## Overview
 
 A template for a Next.js application on the App Router, written in ESM-only TypeScript:
-a locale-prefixed page tree, one JSON endpoint, and one language-model call behind a
-port that an adapter implements. It answers with a fake adapter out of the box, so
-`pnpm dev` works before any credential exists, and the whole AI layer is built to come
-out in one piece for a project that does not want one.
+a locale-prefixed page tree styled with Tailwind v4 and shadcn/ui, one JSON endpoint,
+and one language-model call behind a port that an adapter implements. It answers with a
+fake adapter out of the box, so `pnpm dev` works before any credential exists, and the
+whole AI layer is built to come out in one piece for a project that does not want one.
 
 It is private: nothing here is packed, published, or consumed as a tarball, so there is
 no published `engines.node` floor — `.node-version` and `devEngines.runtime` carry the
 Node 24 development runtime instead. pnpm 11 is the package manager, used through
 Corepack.
+
+## Before the first screen
+
+The template ships no design direction. `src/app/globals.css` carries shadcn/ui's stock
+`neutral` tokens only so a copied component renders, and the lock in `designing-ui` is
+blank; both carry a marker that `tests/placeholders.test.ts` lists beside the rest of
+the template's identity. In this template itself that is intended. In a project started
+from it, settling the direction comes before the first screen of its own: when asked to
+build or restyle UI while that marker still stands, say so and propose settling it first
+— `starting-an-app` owns the step. Never choose a palette, a typeface or a layout by
+taste to get a screen done.
 
 ## Quick reference
 
@@ -86,6 +97,7 @@ on every edit is slow enough that it stops being run at all.
 | A catalog under `messages/`, or `src/i18n/messages.ts` | `pnpm exec vitest run tests/messages.test.ts`        |
 | `src/proxy.ts` or the locale routing behind it         | `pnpm exec vitest run tests/proxy.test.ts`           |
 | Anything only a running server shows                   | `pnpm build`, then `pnpm test:smoke`                 |
+| `src/app/globals.css` or `postcss.config.mjs`          | `pnpm build`, then `pnpm test:smoke`                 |
 | An import that crosses a zone boundary                 | `pnpm exec vitest run tests/boundaries.test.ts`      |
 | A test                                                 | `pnpm exec vitest run tests/<name>.test.ts`          |
 | A script under `scripts/`                              | `pnpm exec vitest run tests/<script>.test.ts`        |
@@ -97,19 +109,30 @@ on every edit is slow enough that it stops being run at all.
 
 ```
 src/
-├── core/     # framework-free vocabulary: a Result, a domain type, a pure function
-├── ai/       # the LlmPort, its error vocabulary, and the adapters behind it
-├── server/   # the environment read, the composition root, and request handlers
-├── i18n/     # the locale list, its URL routing, and the typed message catalogs
-├── app/      # the Next.js App Router tree: pages, layouts, route handlers
-└── proxy.ts  # Next.js's request proxy: locale detection ahead of every page request
-messages/     # one JSON catalog per locale, shaped by en.json
-scripts/      # repository automation, authored as .mjs, never shipped
+├── core/       # framework-free vocabulary: a Result, a domain type, a pure function
+├── ai/         # the LlmPort, its error vocabulary, and the adapters behind it
+├── server/     # the environment read, the composition root, and request handlers
+├── i18n/       # the locale list, its URL routing, and the typed message catalogs
+├── components/ # UI: the shadcn/ui copies under ui/ and this app's own components
+├── app/        # the Next.js App Router tree: pages, layouts, route handlers
+└── proxy.ts    # Next.js's request proxy: locale detection ahead of every page request
+messages/       # one JSON catalog per locale, shaped by en.json
+scripts/        # repository automation, authored as .mjs, never shipped
 ```
 
-Imports run one way — `app` → `server` → `ai` → `core` — with `i18n` a leaf that the
-page tree and the handlers both read. `core` is the bottom of that order: it names no
-framework and no vendor SDK, so it survives a change of either.
+Imports run one way — `app` → `server` → `ai` → `core`, with `app` → `components` →
+`core` beside it — and `i18n` is a leaf that the page tree, the components and the
+handlers all read. `core` is the bottom of both orders: it names no framework and no
+vendor SDK, so it survives a change of either. `components` is reached from `app` alone
+— it renders what it is handed, so it names no page, no handler and nothing in the AI
+layer, and `server`, `ai`, `core` and `i18n` in turn name nothing in it.
+
+A module under `src/` is reached either relatively or through the `@/*` → `./src/*`
+alias, which exists because shadcn/ui writes `@/components/...` into every component it
+copies in. Three resolvers are told about it separately — `tsconfig.json`'s `paths`,
+`vitest.config.ts`'s `resolve.alias`, and `eslint.config.mjs`, which matches specifier
+text and so carries an `@/` twin of every zone pattern — and `tests/boundaries.test.ts`
+resolves both spellings, so neither is a way around the order above.
 
 ### The three seams
 
@@ -196,7 +219,8 @@ names its own boundary with its neighbours.
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                                                                   |
 | `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all                                                  |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
-| `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales                                                         |
+| `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
+| `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
 ## Security and human approval
 
