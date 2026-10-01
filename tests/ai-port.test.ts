@@ -4,6 +4,7 @@ import * as z from "zod";
 import {
   createAnthropicAdapter,
   createFakeLlmPort,
+  createOpenRouterAdapter,
   LlmError,
   type LlmErrorCode,
   type LlmPort,
@@ -356,6 +357,52 @@ describeLlmPortContract("createAnthropicAdapter", {
     }),
 });
 
+/**
+ * The fixture under `tests/fixtures/llm/openrouter/` each `LlmErrorCode` is
+ * provoked by.
+ *
+ * @remarks
+ * A subdirectory of its own, so `tests/ai-anthropic.test.ts`'s exact listing
+ * of `tests/fixtures/llm/` does not see these. `ERR_LLM_TIMEOUT` has no fixture
+ * for the same reason as above.
+ */
+const OPENROUTER_FIXTURE_FOR_CODE = {
+  ERR_LLM_AUTH: "auth-401",
+  ERR_LLM_RATE_LIMIT: "rate-limit-429",
+  ERR_LLM_UNAVAILABLE: "unavailable-502",
+  ERR_LLM_INVALID_OUTPUT: "invalid-output",
+} as const satisfies Partial<Record<LlmErrorCode, string>>;
+
+/** The OpenRouter adapter, wired to a fixture instead of to the network. */
+function replayingOpenRouter(fixture: string): LlmPort {
+  return createOpenRouterAdapter({
+    apiKey: "test-key",
+    fetch: replayFetch(`openrouter/${fixture}`),
+  });
+}
+
+describeLlmPortContract("createOpenRouterAdapter", {
+  succeeds: () => replayingOpenRouter("success"),
+  returnsInvalidOutput: () => replayingOpenRouter("invalid-output"),
+  failsWith: (code) =>
+    code === "ERR_LLM_TIMEOUT"
+      ? createOpenRouterAdapter({
+          apiKey: "test-key",
+          // The adapter's own total deadline is the only bound it has, so it
+          // is what has to end a request nothing answers.
+          deadlineMs: 5,
+          fetch: neverResolvingFetch(),
+        })
+      : replayingOpenRouter(OPENROUTER_FIXTURE_FOR_CODE[code]),
+  neverAnswers: () =>
+    createOpenRouterAdapter({
+      apiKey: "test-key",
+      // Far longer than the suite's budget, so only the caller's abort ends it.
+      deadlineMs: 60_000,
+      fetch: neverResolvingFetch(),
+    }),
+});
+
 describe("createFakeLlmPort", () => {
   it("fails with ERR_LLM_INVALID_OUTPUT when no response was configured", async () => {
     const error = failureOf(await ask(createFakeLlmPort()));
@@ -486,6 +533,50 @@ describe.runIf(isRecording())("recording the Anthropic fixtures", () => {
           apiKey: "sk-ant-invalid",
           maxRetries: 0,
           fetch: recordingFetch("auth-401", 401),
+        }),
+      ),
+    );
+
+    expect(error.code).toBe("ERR_LLM_AUTH");
+  });
+});
+
+/**
+ * Re-captures the two OpenRouter fixtures meant to be recordings of real
+ * exchanges.
+ *
+ * @remarks
+ * The same arrangement as the Anthropic block above, against
+ * `OPENROUTER_API_KEY` from the process environment. Run it alone with
+ * `-t OpenRouter`, so a session holding only this credential does not fail
+ * the block above for lacking the other one.
+ */
+describe.runIf(isRecording())("recording the OpenRouter fixtures", () => {
+  it("has a credential to record with", () => {
+    expect(process.env["OPENROUTER_API_KEY"] ?? "").not.toBe("");
+  });
+
+  it("records a successful exchange", async () => {
+    const result = await createOpenRouterAdapter({
+      apiKey: process.env["OPENROUTER_API_KEY"],
+      fetch: recordingFetch("openrouter/success", 200),
+    }).generate({
+      schema: CONTRACT_SCHEMA,
+      prompt: `Reply with exactly this JSON object, copied verbatim: ${JSON.stringify(CONTRACT_ANSWER)}`,
+      outputLanguage: "en",
+    });
+
+    expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
+  });
+
+  it("records an authentication failure", async () => {
+    // Deliberately not the real credential, and short enough not to look like
+    // one to the staged-content guard.
+    const error = failureOf(
+      await ask(
+        createOpenRouterAdapter({
+          apiKey: "sk-or-v1-invalid",
+          fetch: recordingFetch("openrouter/auth-401", 401),
         }),
       ),
     );

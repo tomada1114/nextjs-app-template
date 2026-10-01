@@ -5,3 +5,7 @@ export {
   createAnthropicAdapter,
 } from "./adapters/anthropic/index";
 export { createFakeLlmPort, type FakeLlmPortOptions } from "./adapters/fake/index";
+export {
+  createOpenRouterAdapter,
+  type OpenRouterAdapterOptions,
+} from "./adapters/openrouter/index";
