@@ -8,7 +8,8 @@
 #   check_source: checks | actions+statuses  (which API the verdict came from)
 #   mergeable / merge_state / review_decision
 #   on FAIL: the failing check names plus the tail of each failing run's log
-#   ERROR means the check results could not be read at all — never a green
+#   ERROR means the check results could not be read at all, or the watch ended
+#   while a check was still unsettled — never a green
 #
 # Two ways to read a PR's CI, because one of them needs a permission not every
 # token can hold. GitHub's fine-grained PATs have no Checks permission at all —
@@ -175,16 +176,41 @@ if [[ "$CHECK_SOURCE" == "checks" ]]; then
   fi
 
   # --- final verdict --------------------------------------------------------
-  FAIL_STATES='["FAILURE","TIMED_OUT","CANCELLED","ACTION_REQUIRED","ERROR","STARTUP_FAILURE"]'
-  failed_names="$(gh pr checks "$PR" --json name,state,link \
-    -q "map(select(.state as \$s | $FAIL_STATES | index(\$s)))[] | [.name, .state, .link] | @tsv" \
-    2>/dev/null)" || {
+  # Every row is read, not only the failing ones: `gh pr checks --watch` can
+  # exit early (a network error, an API hiccup) with checks still running, and
+  # a verdict built from failures alone would call those green.
+  all_checks="$(gh pr checks "$PR" --json name,state,link \
+    -q '.[] | [.name, .state, .link] | @tsv' 2>/dev/null)" || {
     echo "verdict: ERROR"
     report_source
     echo "detail: could not read check results for PR #$PR"
     report_pr_state
     exit 4
   }
+  failed_names=""
+  unsettled=""
+  if [[ -n "$all_checks" ]]; then
+    failed_names="$(printf '%s\n' "$all_checks" | awk -F'\t' '
+      $2 == "FAILURE" || $2 == "TIMED_OUT" || $2 == "CANCELLED" ||
+      $2 == "ACTION_REQUIRED" || $2 == "ERROR" || $2 == "STARTUP_FAILURE" { print }')"
+    # Fail closed: a state that is neither a failure nor a known green
+    # completion (PENDING, QUEUED, IN_PROGRESS, or one gh adds later) is
+    # unsettled.
+    unsettled="$(printf '%s\n' "$all_checks" | awk -F'\t' '
+      $2 != "FAILURE" && $2 != "TIMED_OUT" && $2 != "CANCELLED" &&
+      $2 != "ACTION_REQUIRED" && $2 != "ERROR" && $2 != "STARTUP_FAILURE" &&
+      $2 != "SUCCESS" && $2 != "SKIPPED" && $2 != "NEUTRAL" && $2 != "STALE" { print }')"
+  fi
+
+  if [[ -z "$failed_names" && -n "$unsettled" ]]; then
+    echo "verdict: ERROR"
+    report_source
+    echo "detail: gh pr checks --watch exited $rc with checks still unsettled"
+    echo "unsettled_checks:"
+    printf '%s\n' "$unsettled" | awk -F'\t' '{print "  - " $1 " [" $2 "] " $3}'
+    report_pr_state
+    exit 4
+  fi
 
   if [[ -z "$failed_names" ]]; then
     echo "verdict: PASS"
@@ -231,7 +257,20 @@ fi
 poll_runs() {
   gh run list --commit "$HEAD_SHA" --limit 100 \
     --json databaseId,workflowName,status,conclusion,url \
-    -q '.[] | [.databaseId, .workflowName, .status, .conclusion, .url] | @tsv' 2>/dev/null
+    -q '.[] | [.databaseId, .workflowName, .status, .conclusion, .url] | @tsv' 2>/dev/null \
+    | newest_run_per_workflow
+}
+
+# A workflow with `cancel-in-progress` leaves a `cancelled` run behind every
+# time a newer one starts on the same commit, so only the newest run of each
+# workflow speaks for it. Newest is the highest databaseId: GitHub assigns it
+# in creation order, and a re-run keeps its id, so it cannot be outranked by
+# an older run the way a createdAt tie could.
+newest_run_per_workflow() {
+  awk -F'\t' '
+    !($2 in best) || $1 + 0 > id[$2] + 0 { best[$2] = $0; id[$2] = $1 }
+    !($2 in seen) { seen[$2] = 1; order[++n] = $2 }
+    END { for (i = 1; i <= n; i++) print best[order[i]] }'
 }
 
 poll_statuses() {
