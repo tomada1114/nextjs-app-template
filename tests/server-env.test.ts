@@ -81,31 +81,53 @@ describe(".env.example", () => {
   });
 });
 
+/**
+ * Stubs every variable `src/server/env.ts` declares, plus `NEXT_PHASE`.
+ *
+ * @remarks
+ * Each name not given is stubbed to `undefined` rather than left alone, so a
+ * developer's shell that exports `OPENROUTER_API_KEY` or `LLM_ADAPTER` for
+ * another reason cannot decide what a case below observes.
+ */
+function stubEnvironment(env: Readonly<Record<string, string | undefined>>): void {
+  for (const name of [...SERVER_ENV_NAMES, "NEXT_PHASE"]) {
+    vi.stubEnv(name, env[name]);
+  }
+}
+
 describe("readServerEnv", () => {
   it("returns the value of a variable that is set", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
-    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
+    stubEnvironment({
+      OPENROUTER_API_KEY: "an-example-value",
+      LLM_MODEL: "vendor/an-example-model",
+      API_ACCESS_KEY: "an-example-access-key",
+    });
 
-    expect(readServerEnv({ requiresAccessKey: false })).toStrictEqual({
-      ANTHROPIC_API_KEY: "an-example-value",
+    expect(readServerEnv({ billsAProvider: false })).toStrictEqual({
+      OPENROUTER_API_KEY: "an-example-value",
+      LLM_MODEL: "vendor/an-example-model",
       API_ACCESS_KEY: "an-example-access-key",
     });
   });
 
   it("treats an unset variable as absent", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
+    stubEnvironment({});
 
-    expect(
-      readServerEnv({ requiresAccessKey: false }).ANTHROPIC_API_KEY,
-    ).toBeUndefined();
+    expect(readServerEnv({ billsAProvider: false }).OPENROUTER_API_KEY).toBeUndefined();
   });
 
-  it("treats a blank variable as absent, so a copied .env.example still boots", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "   ");
-    vi.stubEnv("API_ACCESS_KEY", "   ");
+  it("treats a blank variable as absent, so a copied .env.example still parses", () => {
+    stubEnvironment({
+      OPENROUTER_API_KEY: "   ",
+      LLM_MODEL: "",
+      LLM_ADAPTER: " ",
+      API_ACCESS_KEY: "   ",
+    });
 
-    expect(readServerEnv({ requiresAccessKey: false })).toStrictEqual({
-      ANTHROPIC_API_KEY: undefined,
+    expect(readServerEnv({ billsAProvider: false })).toStrictEqual({
+      OPENROUTER_API_KEY: undefined,
+      LLM_MODEL: undefined,
+      LLM_ADAPTER: undefined,
       API_ACCESS_KEY: undefined,
     });
   });
@@ -115,30 +137,29 @@ describe("readServerEnv", () => {
   // with the newline -- would answer 401 to every request including one sending
   // the exact configured value.
   it("trims a configured value, so a pasted newline is not part of the credential", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "  an-example-value\n");
-    vi.stubEnv("API_ACCESS_KEY", " an-example-access-key ");
+    stubEnvironment({
+      OPENROUTER_API_KEY: "  an-example-value\n",
+      API_ACCESS_KEY: " an-example-access-key ",
+    });
 
-    expect(readServerEnv({ requiresAccessKey: true })).toStrictEqual({
-      ANTHROPIC_API_KEY: "an-example-value",
+    expect(readServerEnv({ billsAProvider: true })).toStrictEqual({
+      OPENROUTER_API_KEY: "an-example-value",
       API_ACCESS_KEY: "an-example-access-key",
     });
   });
 
   it("ignores environment variables it does not declare", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
-    vi.stubEnv("API_ACCESS_KEY", undefined);
+    stubEnvironment({});
     vi.stubEnv("SOME_UNDECLARED_VARIABLE", "present");
 
-    expect(readServerEnv({ requiresAccessKey: false })).toStrictEqual({});
+    expect(readServerEnv({ billsAProvider: false })).toStrictEqual({});
   });
 });
 
 /** What `readServerEnv` reported, flattened; `[]` when it did not throw. */
-function reportedIssues(
-  requiresAccessKey: boolean,
-): { path: string; message: string }[] {
+function reportedIssues(billsAProvider: boolean): { path: string; message: string }[] {
   try {
-    readServerEnv({ requiresAccessKey });
+    readServerEnv({ billsAProvider });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return error.issues.map((issue) => ({
@@ -153,76 +174,223 @@ function reportedIssues(
 
 // `POST /api/ask` has no authentication of its own and no middleware in front
 // of it (`src/proxy.ts`'s matcher excludes `api`), so an endpoint that costs
-// money to answer must not also be left open. Refusing that combination at
-// startup is what makes the protection impossible to forget: the server stops
-// as it boots rather than serving one request unprotected (#82).
-//
-// What decides it is the adapter `src/server/composition.ts` wires, which is
-// what it declares through `requiresAccessKey` -- never which variables happen
-// to be exported on the machine.
-describe("readServerEnv with a billed adapter wired", () => {
-  it("throws when no API_ACCESS_KEY is set beside it", () => {
-    vi.stubEnv("API_ACCESS_KEY", undefined);
+// money to answer must not also be left open (#82), and an adapter that cannot
+// authenticate must not start at all. Refusing both at startup is what makes
+// them impossible to forget.
+describe("readServerEnv with the billed provider adapter wired", () => {
+  const BOTH_KEYS = {
+    OPENROUTER_API_KEY: "an-example-value",
+    API_ACCESS_KEY: "an-example-access-key",
+  };
 
-    expect(() => readServerEnv({ requiresAccessKey: true })).toThrow(z.ZodError);
+  it("succeeds when both keys are set", () => {
+    stubEnvironment(BOTH_KEYS);
+
+    expect(reportedIssues(true)).toStrictEqual([]);
   });
 
-  it("names API_ACCESS_KEY as the variable at fault, and no credential value", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
-    vi.stubEnv("API_ACCESS_KEY", undefined);
+  it.each([
+    ["OPENROUTER_API_KEY", undefined],
+    ["OPENROUTER_API_KEY", "   "],
+    ["API_ACCESS_KEY", undefined],
+    ["API_ACCESS_KEY", "   "],
+  ])("refuses to boot when %s is %o, naming it alone", (name, value) => {
+    stubEnvironment({ ...BOTH_KEYS, [name]: value });
+
+    expect(() => readServerEnv({ billsAProvider: true })).toThrow(z.ZodError);
+    expect(reportedIssues(true).map((issue) => issue.path)).toStrictEqual([name]);
+  });
+
+  it("names both variables at fault, and no credential value", () => {
+    stubEnvironment({ LLM_MODEL: "vendor/an-example-model" });
 
     const reported = reportedIssues(true);
 
-    expect(reported.map((issue) => issue.path)).toStrictEqual(["API_ACCESS_KEY"]);
+    expect(reported.map((issue) => issue.path).sort()).toStrictEqual([
+      "API_ACCESS_KEY",
+      "OPENROUTER_API_KEY",
+    ]);
     // A ZodError reaches a log and a crash report, so it may name the variable
     // and never what was in it -- `designing-errors`.
     expect(reported.map((issue) => issue.message).join("\n")).not.toContain(
-      "an-example-value",
+      "an-example-model",
     );
   });
 
-  it("throws when API_ACCESS_KEY is blank, which reads as absent", () => {
-    vi.stubEnv("API_ACCESS_KEY", "   ");
+  // `next build` evaluates the route module, and with it this read, on a
+  // machine that holds no production credential -- CI among them. Only the
+  // build phase waits; a server started from that build still refuses.
+  it("defers both requirements while next build collects page data", () => {
+    stubEnvironment({ NEXT_PHASE: "phase-production-build" });
 
-    expect(() => readServerEnv({ requiresAccessKey: true })).toThrow(z.ZodError);
+    expect(reportedIssues(true)).toStrictEqual([]);
   });
 
-  it("succeeds when an API_ACCESS_KEY is set", () => {
-    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
+  it("still refuses to boot in the phase that serves requests", () => {
+    stubEnvironment({ NEXT_PHASE: "phase-production-server" });
 
-    expect(readServerEnv({ requiresAccessKey: true }).API_ACCESS_KEY).toBe(
-      "an-example-access-key",
-    );
+    expect(
+      reportedIssues(true)
+        .map((issue) => issue.path)
+        .sort(),
+    ).toStrictEqual(["API_ACCESS_KEY", "OPENROUTER_API_KEY"]);
+  });
+
+  it("still validates LLM_ADAPTER's shape while next build runs", () => {
+    stubEnvironment({
+      NEXT_PHASE: "phase-production-build",
+      LLM_ADAPTER: "openrouter",
+    });
+
+    expect(reportedIssues(true).map((issue) => issue.path)).toStrictEqual([
+      "LLM_ADAPTER",
+    ]);
   });
 });
 
-describe("readServerEnv with the fake adapter wired", () => {
-  it("requires nothing, so the zero-credential quick start boots", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
-    vi.stubEnv("API_ACCESS_KEY", undefined);
+describe("LLM_ADAPTER", () => {
+  it("boots with no key at all when it is fake", () => {
+    stubEnvironment({ LLM_ADAPTER: "fake" });
 
-    // `pnpm dev` answers from the fake adapter, which bills nothing, so there
-    // is nothing to protect.
-    expect(reportedIssues(false)).toStrictEqual([]);
-  });
-
-  // The regression the presence-based spelling of this rule caused: a machine
-  // that exports ANTHROPIC_API_KEY for something else -- recording the LLM
-  // fixtures under `LLM_RECORD=1` needs it -- would refuse to start, build, or
-  // even load this suite, while the fake adapter was still what answered.
-  it("requires nothing when a provider credential is exported for another purpose", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", "an-example-value");
-    vi.stubEnv("API_ACCESS_KEY", undefined);
-
-    expect(reportedIssues(false)).toStrictEqual([]);
-  });
-
-  it("accepts an API_ACCESS_KEY on its own", () => {
-    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
-    vi.stubEnv("API_ACCESS_KEY", "an-example-access-key");
-
-    expect(readServerEnv({ requiresAccessKey: false })).toStrictEqual({
-      API_ACCESS_KEY: "an-example-access-key",
+    expect(readServerEnv({ billsAProvider: true })).toStrictEqual({
+      LLM_ADAPTER: "fake",
     });
+  });
+
+  it("keeps an API_ACCESS_KEY given beside it", () => {
+    stubEnvironment({ LLM_ADAPTER: "fake", API_ACCESS_KEY: "an-example-access-key" });
+
+    expect(readServerEnv({ billsAProvider: true }).API_ACCESS_KEY).toBe(
+      "an-example-access-key",
+    );
+  });
+
+  // Never inferred: a missing key with LLM_ADAPTER unset is the deployment
+  // mistake the billed rule exists to stop, not a request for the fake.
+  it("is not implied by a missing key", () => {
+    stubEnvironment({ API_ACCESS_KEY: "an-example-access-key" });
+
+    expect(reportedIssues(true).map((issue) => issue.path)).toStrictEqual([
+      "OPENROUTER_API_KEY",
+    ]);
+  });
+
+  it.each(["openrouter", "Fake", "FAKE", "true", "1", "fake,openrouter"])(
+    "rejects %o, so a typo never falls through to either adapter",
+    (value) => {
+      stubEnvironment({
+        ...{ OPENROUTER_API_KEY: "k", API_ACCESS_KEY: "a" },
+        LLM_ADAPTER: value,
+      });
+
+      expect(reportedIssues(true).map((issue) => issue.path)).toStrictEqual([
+        "LLM_ADAPTER",
+      ]);
+      expect(reportedIssues(false).map((issue) => issue.path)).toStrictEqual([
+        "LLM_ADAPTER",
+      ]);
+    },
+  );
+});
+
+/** A `fetch` that answers every call with a chat completion, recording each body. */
+function recordingCompletions(): { fetch: typeof globalThis.fetch; bodies: unknown[] } {
+  const bodies: unknown[] = [];
+  return {
+    bodies,
+    fetch: (_input, init) => {
+      bodies.push(typeof init?.body === "string" ? JSON.parse(init.body) : undefined);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { role: "assistant", content: '{"answer":"42"}' },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    },
+  };
+}
+
+/**
+ * Loads `src/server/composition.ts` afresh against `env` -- the boot itself.
+ *
+ * @remarks
+ * The composition root reads the environment once, at module load, so a
+ * different environment needs a fresh module registry rather than the
+ * instance an earlier case already built.
+ */
+async function bootWith(
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<(request: Request) => Promise<Response>> {
+  stubEnvironment(env);
+  vi.resetModules();
+  return (await import("../src/server/composition")).askHandler;
+}
+
+function askWithKey(accessKey: string): Request {
+  return new Request("http://localhost/api/ask", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${accessKey}`,
+    },
+    body: JSON.stringify({ prompt: "What is the answer?" }),
+  });
+}
+
+describe("the environment src/server/composition.ts boots with", () => {
+  it.each(["OPENROUTER_API_KEY", "API_ACCESS_KEY"])(
+    "refuses to boot without %s",
+    async (name) => {
+      const env = { OPENROUTER_API_KEY: "a-key", API_ACCESS_KEY: "an-access-key" };
+
+      await expect(bootWith({ ...env, [name]: undefined })).rejects.toThrow(z.ZodError);
+    },
+  );
+
+  it("boots with no key at all under LLM_ADAPTER=fake, and reaches no network", async () => {
+    const network = vi.fn(() => Promise.reject(new Error("network reached")));
+    vi.stubGlobal("fetch", network);
+
+    const handler = await bootWith({ LLM_ADAPTER: "fake" });
+    const response = await handler(askWithKey("ignored"));
+
+    expect(response.status).toBe(200);
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it("hands LLM_MODEL to the adapter as the model it asks", async () => {
+    const { fetch, bodies } = recordingCompletions();
+    vi.stubGlobal("fetch", fetch);
+
+    const handler = await bootWith({
+      OPENROUTER_API_KEY: "a-key",
+      API_ACCESS_KEY: "an-access-key",
+      LLM_MODEL: "vendor/an-example-model",
+    });
+    const response = await handler(askWithKey("an-access-key"));
+
+    expect(response.status).toBe(200);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ model: "vendor/an-example-model" });
+  });
+
+  it("asks the adapter's own default model when LLM_MODEL is unset", async () => {
+    const { fetch, bodies } = recordingCompletions();
+    vi.stubGlobal("fetch", fetch);
+
+    const handler = await bootWith({
+      OPENROUTER_API_KEY: "a-key",
+      API_ACCESS_KEY: "an-access-key",
+    });
+    await handler(askWithKey("an-access-key"));
+
+    expect(bodies[0]).toMatchObject({ model: "deepseek/deepseek-v4.1-flash" });
   });
 });

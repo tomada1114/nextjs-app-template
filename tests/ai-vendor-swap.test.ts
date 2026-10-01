@@ -24,21 +24,28 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * case-insensitively.
  *
  * @remarks
- * One pattern rather than the three tokens a reader would reach for
- * (`@anthropic-ai`, `ANTHROPIC_API_KEY`, `Anthropic`), because all three
- * contain it and so does the adapter directory's own name — and a leak worth
- * catching is just as likely to arrive as a path in a config or a sentence in
- * a document as it is as an identifier. The two files this over-matches are
- * named in {@link NOT_THE_MODEL_PROVIDER} rather than narrowed away, so the
+ * One pattern rather than the tokens a reader would reach for
+ * (`OPENROUTER_API_KEY`, `createOpenRouterAdapter`, `openrouter.ai`), because
+ * all of them contain it and so does the adapter directory's own name — and a
+ * leak worth catching is just as likely to arrive as a path in a config or a
+ * sentence in a document as it is as an identifier. The file this over-matches
+ * is named in {@link NOT_THE_MODEL_PROVIDER} rather than narrowed away, so the
  * pattern stays the simplest thing that cannot be spelled around.
  */
-const VENDOR = /anthropic/i;
+const VENDOR = /openrouter/i;
 
-/** The vendor SDK, as a package specifier rather than as a bare name. */
-const VENDOR_SDK = "@anthropic-ai";
+/**
+ * The vendor's API host, which only the adapter may send a request to.
+ *
+ * @remarks
+ * The adapter speaks plain `fetch` rather than a vendor SDK, so there is no
+ * package specifier to confine; the host is what a request reaching the vendor
+ * from anywhere else would have to name.
+ */
+const VENDOR_HOST = "openrouter.ai/api";
 
 /** The private tree the swap replaces wholesale. */
-const ADAPTER_TREE = "src/ai/adapters/anthropic/";
+const ADAPTER_TREE = "src/ai/adapters/openrouter/";
 
 /** The layer's published surface, which decides what a caller can reach. */
 const AI_LAYER_SURFACE = "src/ai/index.ts";
@@ -54,16 +61,17 @@ const CONTRACT_SUITE = "tests/ai-port.test.ts";
  * Three are application modules: `src/server/composition.ts` is the single line
  * choosing which vendor answers, `src/ai/index.ts` republishes the adapter that
  * line names, and `src/server/env.ts` declares the credential it is handed.
- * Four are manifests and gate configs, which name the vendor as a dependency,
- * an import restriction, an environment variable, and a test file — a swap
- * rewrites each once. An entry joining this list is the signal: it means the
- * choice of vendor has escaped the composition root into a module that had no
- * reason to know it.
+ * Two are an environment example and a gate config, which name the vendor's
+ * variable and its test file. The last is the README, whose quick start tells
+ * a reader which provider's key to obtain — a swap rewrites each once. A
+ * vendor shipping an SDK would add `package.json` and the import ban in
+ * `eslint.config.mjs` back to this list. Any other entry joining it is the
+ * signal: it means the choice of vendor has escaped the composition root into
+ * a module that had no reason to know it.
  */
 const SWAP_EDITS = [
   ".env.example",
-  "eslint.config.mjs",
-  "package.json",
+  "README.md",
   "src/ai/index.ts",
   "src/server/composition.ts",
   "src/server/env.ts",
@@ -99,18 +107,14 @@ const VENDOR_TREES = [ADAPTER_TREE, ".agents/skills/", ".claude/skills/", "tests
  * Files naming the vendor for a reason a swap does not touch.
  *
  * @remarks
- * `.claude/settings.json` enables a plugin published by this vendor as an
- * author of agent skills, which has nothing to do with which model this
- * application calls. `scripts/lib/guard/credentials.mjs` matches `sk-ant-` so a
- * leaked key is caught before it is committed, and a repository stops wanting
- * that only when no contributor anywhere holds such a key. Neither is edited by
- * a swap, and listing them here is what lets {@link VENDOR} stay a single
- * unspellable-around pattern instead of three tokens chosen to dodge them.
+ * `scripts/lib/guard/credentials.mjs` matches `sk-or-v1-` so a leaked key is
+ * caught before it is committed, and a repository stops wanting that only when
+ * no contributor anywhere holds such a key, whichever vendor this application
+ * calls. It is not edited by a swap, and
+ * listing it here is what lets {@link VENDOR} stay a single
+ * unspellable-around pattern instead of tokens chosen to dodge it.
  */
-const NOT_THE_MODEL_PROVIDER = [
-  ".claude/settings.json",
-  "scripts/lib/guard/credentials.mjs",
-];
+const NOT_THE_MODEL_PROVIDER = ["scripts/lib/guard/credentials.mjs"];
 
 /**
  * Modules that must name no vendor at all, asserted one by one.
@@ -216,14 +220,15 @@ describe("swapping the vendor behind LlmPort is a bounded edit", () => {
     expect(readText(relative)).not.toMatch(VENDOR);
   });
 
-  it("keeps the vendor SDK itself inside the adapter tree", () => {
-    // `tests/boundaries.test.ts` asserts the same thing from the module graph,
-    // but only for `src/app/`, `src/core/` and `src/server/`. Inside `src/ai/`
-    // — where the rule matters most, because that is where the port lives
-    // beside the adapter that must not contaminate it — nothing checked it.
+  it("keeps the vendor's API host inside the adapter tree", () => {
+    // The import zones in `tests/boundaries.test.ts` stop `src/server/` from
+    // reaching an adapter module, but a plain `fetch` needs no import at all.
+    // Naming the host is the one thing a request to the vendor from outside
+    // the adapter cannot avoid — inside `src/ai/` too, where the port lives
+    // beside the adapter that must not contaminate it.
     const naming = everyFile.filter(
       (relative) =>
-        relative.startsWith("src/") && (readText(relative) ?? "").includes(VENDOR_SDK),
+        relative.startsWith("src/") && (readText(relative) ?? "").includes(VENDOR_HOST),
     );
 
     expect(
@@ -261,7 +266,7 @@ describe("swapping the vendor behind LlmPort is a bounded edit", () => {
     // Adding the mention: the suite's own expected value no longer holds.
     expect(
       leaks(
-        filesNamingTheVendor(files, readingPosedAs("const model = 'anthropic';\n")),
+        filesNamingTheVendor(files, readingPosedAs("const model = 'openrouter';\n")),
       ),
     ).toStrictEqual([posed]);
     // Removing it: back to exactly what the suite asserts today.
@@ -276,7 +281,6 @@ describe("a replacement adapter inherits the same conformance bar", () => {
     // A literal an author wrote, so the derivation is checked rather than
     // trusted, and a third adapter fails here until it is acknowledged.
     expect(adapterFactories).toStrictEqual([
-      "createAnthropicAdapter",
       "createFakeLlmPort",
       "createOpenRouterAdapter",
     ]);

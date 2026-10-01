@@ -44,9 +44,10 @@ const nextCli = createRequire(import.meta.url).resolve("next/dist/bin/next");
  * not overwrite a variable already present in the environment it is spawned
  * with, so this value wins over either.
  *
- * It is a throwaway string, not a secret: what stands behind the port is the
- * fake adapter `src/server/composition.ts` wires, so an answer here reaches no
- * provider and costs nobody anything.
+ * It is a throwaway string, not a secret: the server is started with
+ * `LLM_ADAPTER=fake`, so what stands behind the port is the fake adapter, an
+ * answer here reaches no provider and costs nobody anything, and CI needs no
+ * provider credential to run this suite.
  */
 const ACCESS_KEY = "smoke-test-throwaway-access-key";
 
@@ -336,7 +337,15 @@ beforeAll(async () => {
       // production build would otherwise be served under `test` and every
       // `process.env.NODE_ENV === "production"` branch would take a path no
       // deployment takes.
-      env: { ...process.env, NODE_ENV: "production", API_ACCESS_KEY: ACCESS_KEY },
+      // `LLM_ADAPTER` is pinned for the same reason as `API_ACCESS_KEY`: an
+      // ambient value -- or an `OPENROUTER_API_KEY` alone -- must not decide
+      // whether this suite reaches, and pays, a real provider.
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        API_ACCESS_KEY: ACCESS_KEY,
+        LLM_ADAPTER: "fake",
+      },
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     },

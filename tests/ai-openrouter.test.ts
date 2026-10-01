@@ -10,7 +10,7 @@ import { headersThenStallFetch, LLM_FIXTURES_DIR, replayFetch } from "./llm-repl
 
 const SCHEMA = z.object({ answer: z.string() });
 
-/** Where this adapter's fixtures live, apart from the Anthropic ones. */
+/** Where this adapter's fixtures live: one subdirectory per adapter. */
 const FIXTURES_DIR = path.join(LLM_FIXTURES_DIR, "openrouter");
 
 interface Call {
