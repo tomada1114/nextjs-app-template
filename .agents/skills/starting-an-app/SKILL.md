@@ -35,7 +35,19 @@ your own modules have grown into `src/server/` turns a bounded deletion into a m
 Decide the locales, then settle the design direction before building the first screen of
 your own — every screen written against the stock tokens is one to restyle later. Run
 `pnpm check:source` once at the end. Each step below names the narrower check to run
-while you are inside it.
+while you are inside it. The GitHub settings stand apart from that sequence: turn them
+on as soon as the repository exists.
+
+## The GitHub settings
+
+"Use this template" copies the tree and none of the repository's settings, so the new
+repository starts with no branch protection, no private vulnerability reporting and no
+Dependabot alerts. As soon as it exists — before its first pull request merges — work
+through AGENTS.md's "GitHub settings a new repository must enable", which holds the list
+and the reasons. Each item is a remote write the owner signs off on, and most are
+switches only the owner can flip. When the new app renames or drops a CI job, edit
+`.github/rulesets/main.json` in the same change and run `pnpm repo:ruleset` again;
+`tests/ruleset-contexts.test.ts` fails while the two disagree.
 
 ## The rename
 
