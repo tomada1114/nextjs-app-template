@@ -16,8 +16,9 @@ description: >
 how a shadcn/ui component enters `src/components/`, and the craft rules every screen
 follows. **Does not own:** which zone a component may import from (`building-app-routes`
 and AGENTS.md's Architecture); the TypeScript inside a component (`writing-typescript`);
-the text a component renders (`localizing-ui`); settling the direction for a new app the
-first time (`starting-an-app`).
+the text a component renders (`localizing-ui`); the states a screen renders and its
+accessible names (`building-screens`); settling the direction for a new app the first
+time (`starting-an-app`).
 
 Nothing here is enforced by a config or a test. A drifted screen passes every gate, so
 the lock below is the check: read it before styling, and compare the rendered screen
