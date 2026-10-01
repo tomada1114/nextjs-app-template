@@ -17,7 +17,8 @@ what it asserts, how it fakes the world, and the anti-patterns to reject in revi
 **Does not own:** which file a test lives in, which vitest project it joins, and the
 coverage floors (`placing-tests`); compile-time assertions with `expectTypeOf`
 (`type-testing`); the shape of the error classes a test asserts against
-(`designing-errors`); where the code under test belongs (`building-app-routes`).
+(`designing-errors`); where the code under test belongs (`building-app-routes`); the
+order of work on a `src/` change, failing test first (`tdd`).
 
 ## Naming and scope
 
