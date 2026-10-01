@@ -1,0 +1,12 @@
+{
+  "status": 502,
+  "body": {
+    "error": {
+      "message": "Provider returned error",
+      "code": 502,
+      "metadata": {
+        "provider_name": "DeepSeek"
+      }
+    }
+  }
+}

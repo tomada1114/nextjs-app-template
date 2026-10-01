@@ -53,6 +53,10 @@ the decision, its source, and why. Then replace the stock values in `globals.css
 record the component recipes (primary action, field, card) in a `references/` file next
 to this one.
 
+Research with the user-level `refero-design` skill when it is installed. Without it,
+follow [references/design-lock.md](references/design-lock.md), whose procedure needs no
+other skill and no MCP server.
+
 ## Foundation
 
 Tailwind v4 with no `tailwind.config.js`: `postcss.config.mjs` is the whole of the build
@@ -101,8 +105,18 @@ arbitrary-value color.
   Adding one means switching `src/components/lib/utils.ts` to `extendTailwindMerge` with
   `extend.theme.text` naming it, plus a `cn` case in `tests/ui-primitives.test.tsx` that
   keeps the size beside a color.
-- Measure a new text/background pairing against WCAG contrast rather than estimating it;
-  placeholder and disabled colors never carry a label.
+
+## Measuring contrast
+
+Measure contrast; never estimate it. For every foreground/background token pair a change
+adds or alters — including one it alters by changing only one side — compute the WCAG
+2.x ratio in both color schemes, from the values in `globals.css`'s `:root` block and
+its `prefers-color-scheme: dark` block. Body text needs 4.5:1; large text and UI parts
+(a control's boundary, a focus ring, an icon that carries meaning) need 3:1. Placeholder
+and disabled colors never carry a label.
+
+Record every pair, scheme and ratio in the pull request; no gate checks them. Compute
+them with [references/design-lock.md](references/design-lock.md)'s script.
 
 ## Craft rules
 
@@ -119,11 +133,30 @@ arbitrary-value color.
 - Mobile is not a later pass: the column is fluid with a 16px gutter below the first
   breakpoint, and no screen scrolls horizontally.
 
+## Reviewing a screen
+
+No gate sees what a screen looks like. The agent's part comes first:
+
+- `pnpm build && pnpm test:smoke`: the page builds and answers over HTTP.
+- A rendered test that finds the screen's controls by role and accessible name, which
+  proves structure and labels, not appearance. **REQUIRED:** `writing-tests`.
+- The contrast numbers for every pair the change touched.
+- The diff read against the lock: tokens only, no raw color or arbitrary value, nothing
+  the reject list rules out.
+
+The human's part, asked once: start a dev server on a free port
+(`pnpm dev --port <port>`), then ask the owner in a single message to open that URL and
+view the screen in light and in dark, at a mobile width, with reduced motion on, and by
+keyboard alone with the focus ring visible on every control — each compared against the
+lock. Stop the server once they have answered.
+
+The pull request carries what they saw, item by item, and "not reviewed" for any item
+nobody looked at — a green run never stands in for it.
+
 ## A screen with no precedent here
 
-Do not extrapolate from taste. Research the surface the way the direction was
-researched, then adapt the findings to the lock rather than letting them relax it. If a
+Do not extrapolate from taste. Research the surface with the method the lock section
+names, then adapt the findings to the lock rather than letting them relax it. If a
 finding and the lock genuinely conflict, say so and let a human decide which gives way —
 quietly softening the lock toward a safer middle is the failure this file guards
-against. The user-level `refero-design` skill is the research method when it is
-installed.
+against.

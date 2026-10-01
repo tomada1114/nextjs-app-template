@@ -1,0 +1,12 @@
+{
+  "status": 429,
+  "body": {
+    "error": {
+      "message": "Rate limit exceeded: too many requests for this model.",
+      "code": 429,
+      "metadata": {
+        "provider_name": "DeepSeek"
+      }
+    }
+  }
+}

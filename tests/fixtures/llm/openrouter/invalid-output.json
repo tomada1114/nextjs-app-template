@@ -1,0 +1,29 @@
+{
+  "status": 200,
+  "body": {
+    "id": "gen-fixture-handwritten-invalid-output",
+    "provider": "DeepSeek",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "object": "chat.completion",
+    "created": 1790812800,
+    "choices": [
+      {
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"answer\": 42, \"confidence\": \"high\"}",
+          "refusal": null,
+          "reasoning": null
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 118,
+      "completion_tokens": 14,
+      "total_tokens": 132
+    }
+  }
+}

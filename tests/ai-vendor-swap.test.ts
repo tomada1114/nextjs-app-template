@@ -278,6 +278,7 @@ describe("a replacement adapter inherits the same conformance bar", () => {
     expect(adapterFactories).toStrictEqual([
       "createAnthropicAdapter",
       "createFakeLlmPort",
+      "createOpenRouterAdapter",
     ]);
   });
 
