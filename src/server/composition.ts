@@ -3,6 +3,7 @@ import "server-only";
 import { createFakeLlmPort, createOpenRouterAdapter } from "../ai/index";
 import { readServerEnv } from "./env";
 import { createAskHandler } from "./handlers/ask";
+import { failure } from "./http";
 
 /**
  * Whether the adapter this file wires bills a provider for every answer.
@@ -12,8 +13,10 @@ import { createAskHandler } from "./handlers/ask";
  * what closes `POST /api/ask`: `readServerEnv` requires `API_ACCESS_KEY` and
  * `OPENROUTER_API_KEY` while it is `true`, so a deployment that pays for its
  * answers cannot serve the endpoint open, or without the key it pays with.
- * `LLM_ADAPTER=fake` is the one environment value that lifts both, because it
- * replaces the billed adapter rather than merely omitting its credential.
+ * `LLM_ADAPTER=fake` is the one setting meant to lift both, because it replaces
+ * the billed adapter rather than merely omitting its credential. `NEXT_PHASE`
+ * lifts them too, during `next build` only — which is why {@link askHandler}
+ * checks the access key again rather than trusting the read.
  *
  * It sits above the environment read because the read has to happen before an
  * adapter can be handed a credential. Wiring a different provider below is the
@@ -24,10 +27,12 @@ const ADAPTER_BILLS_A_PROVIDER = true;
 
 // Read once, at module load, so a malformed or incomplete environment fails
 // the module itself, naming the variable, rather than surfacing later as a
-// puzzling model error. Next.js loads route modules lazily, so under
-// `next start` that is the first request to `POST /api/ask`: it answers 500
-// and the log carries the ZodError. `next build` evaluates this module too, and
-// `readServerEnv` defers the billed rule during that phase only.
+// puzzling model error. `next start` evaluates every route module as it starts
+// (`experimental.preloadEntriesOnStart`, on by default) but swallows a failure
+// there, so the server still comes up and every request to `POST /api/ask`
+// rethrows the cached error: a 500, with the ZodError in the log. `next build`
+// evaluates this module too, and `readServerEnv` defers the billed rule during
+// that phase only.
 const env = readServerEnv({ billsAProvider: ADAPTER_BILLS_A_PROVIDER });
 
 /**
@@ -55,12 +60,35 @@ const llm =
         ...(env.LLM_MODEL === undefined ? {} : { model: env.LLM_MODEL }),
       });
 
+/** Whether the billed adapter is what answers, with no access key to guard it. */
+function servesABilledAdapterOpen(billsAProvider: boolean): boolean {
+  return (
+    billsAProvider && env.LLM_ADAPTER !== "fake" && env.API_ACCESS_KEY === undefined
+  );
+}
+
 /**
  * The handler `src/app/api/ask/route.ts` publishes as its `POST` export.
  *
  * @remarks
- * `accessKey` can be `undefined` only under `LLM_ADAPTER=fake`, where nothing
- * is billed and so nothing needs protecting; `readServerEnv` above refuses it
- * alongside the billed adapter.
+ * `accessKey` may be `undefined` only under `LLM_ADAPTER=fake`, where nothing
+ * is billed and so nothing needs protecting. `readServerEnv` refuses it beside
+ * the billed adapter, except while `NEXT_PHASE` names the production build — a
+ * variable a misbuilt image can carry into the server it runs. So a billed
+ * adapter with no access key is checked here too, and answers every request
+ * with a 500 before the body is read or the provider reached, rather than ever
+ * falling through to an endpoint open to anyone. No request is served during a
+ * real build, so this branch costs that phase nothing. `ERR_LLM_AUTH` is the
+ * code because its remedy is the same: the operator fixes the configuration.
  */
-export const askHandler = createAskHandler({ llm, accessKey: env.API_ACCESS_KEY });
+export const askHandler: (request: Request) => Promise<Response> =
+  servesABilledAdapterOpen(ADAPTER_BILLS_A_PROVIDER)
+    ? () =>
+        Promise.resolve(
+          failure(
+            500,
+            "ERR_LLM_AUTH",
+            "This endpoint is not configured to answer: it bills a provider and has no access key.",
+          ),
+        )
+    : createAskHandler({ llm, accessKey: env.API_ACCESS_KEY });

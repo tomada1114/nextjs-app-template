@@ -28,9 +28,9 @@ cp .env.example .env   # then set OPENROUTER_API_KEY and API_ACCESS_KEY in it
 pnpm dev
 ```
 
-Without both keys, `POST /api/ask` refuses to load: its first request answers `500` and
-the server log names the missing variable, while the pages still render. To run it with
-neither — nothing billed, every answer a fixed sentence — start it as
+Without both keys, `POST /api/ask` refuses to load: every request to it answers `500`
+and the server log names the missing variable, while the pages still render. To run it
+with neither — nothing billed, every answer a fixed sentence — start it as
 `LLM_ADAPTER=fake pnpm dev` instead, or set `LLM_ADAPTER=fake` in `.env`. That is never
 inferred from a missing key: a deployment that lost its key fails rather than quietly
 answering from the fake.

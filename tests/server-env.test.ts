@@ -365,6 +365,58 @@ describe("the environment src/server/composition.ts boots with", () => {
     expect(network).not.toHaveBeenCalled();
   });
 
+  // What closes the endpoint is the adapter wired, not what the machine
+  // exports: a provider key present for another reason -- recording fixtures
+  // under `LLM_RECORD=1` needs one -- must not pull the billed adapter back in
+  // over an explicit LLM_ADAPTER=fake.
+  it("answers from the fake under LLM_ADAPTER=fake, whatever provider key is exported", async () => {
+    const network = vi.fn(() => Promise.reject(new Error("network reached")));
+    vi.stubGlobal("fetch", network);
+
+    const handler = await bootWith({
+      LLM_ADAPTER: "fake",
+      OPENROUTER_API_KEY: "a-key",
+    });
+    const response = await handler(askWithKey("ignored"));
+
+    expect(response.status).toBe(200);
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  // `NEXT_PHASE` is honoured to keep `next build` keyless, and nothing stops a
+  // runtime image from inheriting it. The billed adapter must still never be
+  // served open: every request is refused before the provider is reached.
+  it.each([
+    ["an anonymous caller", undefined],
+    ["a caller presenting some bearer", "anything-at-all"],
+  ])(
+    "refuses %s when NEXT_PHASE skipped the access-key rule beside a billed adapter",
+    async (_case, bearer) => {
+      const network = vi.fn(() => Promise.reject(new Error("network reached")));
+      vi.stubGlobal("fetch", network);
+
+      const handler = await bootWith({
+        NEXT_PHASE: "phase-production-build",
+        OPENROUTER_API_KEY: "a-key",
+      });
+      const request =
+        bearer === undefined
+          ? new Request("http://localhost/api/ask", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ prompt: "What is the answer?" }),
+            })
+          : askWithKey(bearer);
+      const response = await handler(request);
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "ERR_LLM_AUTH" },
+      });
+      expect(network).not.toHaveBeenCalled();
+    },
+  );
+
   it("hands LLM_MODEL to the adapter as the model it asks", async () => {
     const { fetch, bodies } = recordingCompletions();
     vi.stubGlobal("fetch", fetch);

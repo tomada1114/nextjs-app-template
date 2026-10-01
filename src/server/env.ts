@@ -118,8 +118,11 @@ export interface ServerEnvRequirements {
    * without the provider credential that adapter cannot answer with.
    *
    * It is the wiring that decides this, never which credentials the
-   * environment happens to hold. The one environment value that lifts it is
+   * environment happens to hold. The one setting meant to lift it is
    * `LLM_ADAPTER=fake`, because that one replaces the adapter itself.
+   * `NEXT_PHASE` lifts it as well, during `next build` only — see
+   * `isProductionBuild` for why, and for what still holds if that variable
+   * reaches a running server.
    */
   readonly billsAProvider: boolean;
 }
@@ -158,6 +161,12 @@ export const SERVER_ENV_NAMES: readonly string[] = Object.keys(serverEnvShape.sh
  * phase before it spawns the workers that do it, and nothing is served during
  * it, so the shape is still validated there and only the billed rule waits for
  * the server that loads the module to answer a request.
+ *
+ * Nothing stops `NEXT_PHASE` reaching a running server — a build-stage
+ * variable copied into a runtime image — so the rule is not the only guard:
+ * with a billed adapter and no `API_ACCESS_KEY`, `src/server/composition.ts`
+ * answers every request 500 without reaching the provider, and a missing
+ * `OPENROUTER_API_KEY` leaves the adapter failing `ERR_LLM_AUTH` unbilled.
  */
 function isProductionBuild(): boolean {
   return process.env["NEXT_PHASE"] === PHASE_PRODUCTION_BUILD;
