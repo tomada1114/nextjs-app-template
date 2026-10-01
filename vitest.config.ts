@@ -33,6 +33,7 @@ const automationTests = [
   "tests/boundaries.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",
+  "tests/ci-watch.test.ts",
   "tests/clean.test.ts",
   "tests/git-env.test.ts",
   "tests/labels.test.ts",

@@ -5,8 +5,9 @@
 #
 # A fresh `git worktree add` gives tracked files only: no .env, no
 # node_modules, no .venv, so the project's verification command fails before
-# it reads a line of code. This script copies the untracked local config the
-# worktree is missing, installs dependencies, and (with --verify) runs the
+# it reads a line of code. This script installs dependencies — it never copies
+# a secret or personal-permission file (.env*, .envrc, settings.local.json)
+# from the main checkout — and (with --verify) runs the
 # project's verification command once as a baseline. A red baseline is the
 # repository's problem, not the issue's — finding it here costs one command
 # instead of a wasted implementation run, so a red baseline is reported as a
@@ -31,7 +32,7 @@
 #
 # This script REPORTS; it does not decide. A red baseline in a fresh worktree
 # usually means the repo is not worktree-viable right now — a fresh worktree
-# holds tracked files and nothing else: no .env beyond what got copied, no
+# holds tracked files and nothing else: no .env, no
 # pre-warmed cache, no locally-running service it depends on — but "usually" is
 # not "always", and telling the two apart needs the diff, the log, and the
 # repo's own conventions in view. So the baseline is a warning here and the
@@ -45,8 +46,7 @@
 #     pyvenv.cfg and its bin/ shims, so a copy of one is broken the moment
 #     it lives at a different path. Python deps are always re-created by
 #     the matching tool (uv/poetry/pipenv), never cloned.
-#   * The worktree, and every file this script writes (copied local config,
-#     the baseline log), live OUTSIDE the repo's main checkout, under the
+#   * The worktree, and every file this script writes (the baseline log), live OUTSIDE the repo's main checkout, under the
 #     caller-supplied --root. This script never creates or modifies
 #     anything inside the repo checkout — the skill treats an unexpectedly
 #     dirty main checkout as a hard stop condition. This guard is enforced
@@ -374,38 +374,7 @@ provision_one() {
     emit result "CREATED"
   fi
 
-  # --- 4. copy the untracked local config the worktree is missing --------
-  local config_patterns=(".env" ".env.*" "*.local" ".envrc" ".dev.vars" ".claude/settings.local.json" "local.settings.json")
-  local copied_any=0 pat candidate rel dest
-  for pat in "${config_patterns[@]}"; do
-    # shellcheck disable=SC2231 # $pat is a glob on purpose: quoting it would stop the expansion
-    for candidate in "$repo_root"/$pat "$repo_root"/*/$pat; do
-      [[ -f "$candidate" ]] || continue
-      rel="${candidate#"$repo_root"/}"
-      git -C "$repo_root" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1 && continue
-      case "$rel" in
-        *.example|*.sample|*.template|*.dist) continue ;;
-      esac
-      if [[ $DRY -eq 1 ]]; then
-        echo "DRY: copied: $rel"
-      else
-        dest="$worktree_path/$rel"
-        mkdir -p "$(dirname "$dest")"
-        cp "$candidate" "$dest"
-        emit copied "$rel"
-      fi
-      copied_any=1
-    done
-  done
-  if [[ $copied_any -eq 0 ]]; then
-    if [[ $DRY -eq 1 ]]; then
-      echo "DRY: copied: none"
-    else
-      emit copied "none"
-    fi
-  fi
-
-  # --- 5. install dependencies --------------------------------------------
+  # --- 4. install dependencies --------------------------------------------
   local deps_failed=0
   case "$deps_kind" in
     pnpm|bun|npm) do_install_js "${deps_cmd[@]}" || deps_failed=1 ;;

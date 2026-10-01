@@ -120,9 +120,9 @@ git -C <runstate>/worktrees/<m> push
 ```
 
 **Merge, not rebase** — step 3 already pushed these branches, so a rebase would need a
-force-push, and this run does not force-push. A repo that requires linear history is the
-one exception: there, rebase and push with `--force-with-lease`, and only ever on a
-branch this run created that has no PR open on it yet.
+force-push, and this run does not force-push. A repository that requires linear history
+is a stop condition, not an exception: record
+`--event blocked --field reason=linear-history` and ask the human.
 
 ## A merge conflict
 
@@ -165,7 +165,7 @@ Once "not worktree-viable" is concluded, remove that worktree
 later runs skip the probe:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/preflight.sh --profile-cache <runstate>/repo-profile.json \
+.agents/skills/shipping-issues/scripts/preflight.sh --profile-cache <runstate>/repo-profile.json \
     --set-worktree-viable no
 ```
 

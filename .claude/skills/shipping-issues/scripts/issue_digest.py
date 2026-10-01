@@ -73,10 +73,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Dependency phrasings seen in real issue bodies, EN + JA.
+# Dependency phrasings seen in real issue bodies, EN + JA. Group 1 of a leading
+# phrase is a list ("#1, #2 and #3"); every number in it is read.
+_REF_LIST = r"(#\d+(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)#\d+)*)"
 DEP_PATTERNS = [
-    (r"(?:depends?\s+on|blocked\s+by|after|requires?)\s*:?\s*#(\d+)", "depends_on"),
-    (r"(?:blocks|blocking)\s*:?\s*#(\d+)", "blocks"),
+    (r"(?:depends?\s+on|blocked\s+by|after|requires?)\s*:?\s*" + _REF_LIST, "depends_on"),
+    (r"(?:blocks|blocking)\s*:?\s*" + _REF_LIST, "blocks"),
     (r"#(\d+)\s*(?:に依存|の後|完了後|がマージされてから|の続き)", "depends_on"),
     (r"(?:前提|依存|ブロッカー|先行)\s*:?\s*#(\d+)", "depends_on"),
     (r"#(\d+)\s*(?:をブロック|の前提)", "blocks"),
@@ -436,9 +438,10 @@ def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]
     deps: dict[str, set[int]] = {"depends_on": set(), "blocks": set(), "mentions": set()}
     for pattern, kind in DEP_PATTERNS:
         for m in re.finditer(pattern, haystack, re.IGNORECASE):
-            n = int(m.group(1))
-            if n != self_number:
-                deps[kind].add(n)
+            for ref in re.findall(r"\d+", m.group(1)):
+                n = int(ref)
+                if n != self_number:
+                    deps[kind].add(n)
     for m in BARE_REF_RE.finditer(haystack):
         n = int(m.group(1))
         if n != self_number and n not in deps["depends_on"] and n not in deps["blocks"]:

@@ -26,6 +26,8 @@ next-env.d.ts
 .claude/settings.local.json
 # Claude Code: agent worktrees are full checkouts, never part of this one
 .claude/worktrees/
+# Codex CLI: personal project rules stay local; the rest of .codex/ is shared config
+/.codex/rules/local.rules
 
 # Environment variables, dotenv and direnv alike (example files are tracked on
 # purpose). direnv keeps its real values in .envrc.local / .envrc.private, so

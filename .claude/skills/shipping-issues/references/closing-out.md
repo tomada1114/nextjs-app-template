@@ -12,7 +12,7 @@ rules the SKILL.md body already states inline.
 ## Cleanup scope
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/cleanup_run.sh [--remote] [--dry-run] \
+.agents/skills/shipping-issues/scripts/cleanup_run.sh [--remote] [--dry-run] \
     [--worktree-root <runstate>/worktrees] [--merged-only] [--force]
 ```
 

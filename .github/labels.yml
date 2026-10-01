@@ -47,6 +47,9 @@
 - name: "blocked: dependency"
   color: f9d0c4
   description: "Waits on a specific open issue named by a Depends on: #N line."
+- name: "blocked: external"
+  color: d876e3
+  description: "Needs a step only a person can take (console sign-in, purchase, signing identity); agents skip it."
 - name: "on hold"
   color: cccccc
   description: "Not implementable as filed, or parked pending something outside the tracker."

@@ -73,6 +73,19 @@ loaded on demand — not for a fact stated once. Extend an existing skill instea
 creating a near-duplicate when the new material is a variant of what that skill already
 covers.
 
+A platform area such as logging, authentication or LLM calls gets a project skill once
+this repository has made its own decisions there. On a surface someone else documents
+(Next.js, React, Tailwind, shadcn/ui, next-intl, Vitest, pnpm, GitHub Actions), a skill
+holds only this repository's decisions, their reasons, the mechanics that are ours
+(paths, scripts, error codes), and the traps met here. It holds nothing a vendor already
+documents: general platform knowledge stays with official documentation and the vendor's
+own skills, which the project skill links instead of restating.
+
+**External claims.** A version, availability, default, limit, or policy claim about an
+external tool carries `(<URL>, checked YYYY-MM-DD)`, and the author opened that page on
+that date. A link that only explains a concept needs no date. An observed fact says so:
+"observed with `<command>`, YYYY-MM-DD". A claim that is neither is dropped.
+
 One home per rule: a rule stated in both AGENTS.md and a skill costs context twice and
 the two copies drift apart. The one exception is a prohibition an agent needs even while
 its own declared task is something else entirely (for example, never weaken a gate to
