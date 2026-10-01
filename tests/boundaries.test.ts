@@ -124,7 +124,7 @@ const SCANNER_CONTROL = `
 import defaultExport from "next";
 import { named } from "../core/result";
 import "./globals.css";
-import type { OnlyAType } from "@anthropic-ai/sdk";
+import type { OnlyAType } from "@radix-ui/react-slot";
 import { aliased } from "@/core/result";
 export { re } from "./errors";
 const lazy = await import("../ai/index");
@@ -161,7 +161,7 @@ describe("the import scanner the zone assertions run on", () => {
       "next",
       "../core/result",
       "./globals.css",
-      "@anthropic-ai/sdk",
+      "@radix-ui/react-slot",
       "@/core/result",
       "./errors",
       "../ai/index",
@@ -231,7 +231,7 @@ describe("the import scanner the zone assertions run on", () => {
     expect(resolveWithin("src/core/result.ts", "@/ai/index")).toBe("src/ai/index");
     // A scoped package is `@scope/name` and an empty scope is not legal, so
     // nothing a registry publishes can be mistaken for an aliased path.
-    expect(resolveWithin("src/core/result.ts", "@anthropic-ai/sdk")).toBeUndefined();
+    expect(resolveWithin("src/core/result.ts", "@radix-ui/react-slot")).toBeUndefined();
   });
 });
 
@@ -390,22 +390,22 @@ describe("src/ imports run one way, app → server → ai → core and app → c
   });
 });
 
-describe("src/core/ is framework-free and vendor-free", () => {
+describe("src/core/ is framework-free", () => {
   // The zone holds the vocabulary the other three are written in. A framework
-  // or SDK import here makes that vocabulary un-reusable and un-testable
-  // without the thing it imported.
-  const forbidden = ["next", "react", "react-dom", "@anthropic-ai"];
+  // import here makes that vocabulary un-reusable and un-testable without the
+  // thing it imported.
+  const forbidden = ["next", "react", "react-dom"];
 
   it.each(forbidden)("imports no %s", (pkg) => {
     expect(packageOffenders(modulesIn("src/core"), pkg)).toStrictEqual([]);
   });
 });
 
-describe("src/components/ is UI: no vendor SDK, no server-only", () => {
+describe("src/components/ is UI: no server-only", () => {
   // `server-only` throws on import outside a React Server Components graph, so
   // a component carrying it can never be a Client Component — which is the one
   // thing this zone exists to be able to become.
-  it.each(["@anthropic-ai", "server-only"])("imports no %s", (pkg) => {
+  it.each(["server-only"])("imports no %s", (pkg) => {
     expect(packageOffenders(modulesIn("src/components"), pkg)).toStrictEqual([]);
   });
 });
@@ -454,12 +454,6 @@ describe("src/app/ and src/server/ reach the AI layer only through src/ai/index.
       "src/server/probe.ts: @/ai/errors",
     ]);
   });
-
-  it("imports no vendor SDK", () => {
-    expect(
-      packageOffenders(modulesIn("src/app", "src/server"), "@anthropic-ai"),
-    ).toStrictEqual([]);
-  });
 });
 
 describe("src/ai/port.ts does not know its adapters", () => {
@@ -478,18 +472,17 @@ describe("src/ai/port.ts does not know its adapters", () => {
 // `src/server/composition.ts` holds two declarations that have to agree:
 // `ADAPTER_BILLS_A_PROVIDER`, which is what makes `readServerEnv` demand
 // `API_ACCESS_KEY`, and the adapter it wires a few lines below. Nothing but the
-// TSDoc on both held them together, so the documented one-line swap — fake
-// adapter out, provider adapter in — could leave `POST /api/ask` open and
-// billed. The two cannot be moved next to each other: the environment read has
-// to sit between them, because a provider adapter is handed
-// `env.ANTHROPIC_API_KEY`. So the agreement is asserted here instead.
+// TSDoc on both held them together, so swapping the adapter could leave
+// `POST /api/ask` open and billed. The two cannot be moved next to each other:
+// the environment read has to sit between them, because a provider adapter is
+// handed `env.OPENROUTER_API_KEY`. So the agreement is asserted here instead.
 //
 // This lives in this file rather than beside the handler tests for two reasons.
 // It reads a source file off disk with the scanner above, which is what this
 // suite is and what puts it in `vitest.config.ts`'s `automation` project. And
 // the zone edges asserted above are what make a name-based read sound at all:
-// `src/server/` may not import an adapter directly and may not import a vendor
-// SDK, so `src/ai/index.ts` is the only door a model call can come through, and
+// `src/server/` may not import an adapter directly, so `src/ai/index.ts` is the
+// only door a model call can come through, and
 // which names composition.ts calls from that door is a real signal rather than
 // a guess.
 
@@ -553,10 +546,11 @@ function isCalled(source: string, name: string): boolean {
  * What it does not: this reads a name, never what the name does. A
  * `createFakeLlmPort` rewritten to proxy a real provider, or a paid call made
  * inline *beside* a still-wired fake adapter, would pass here. The zone edges
- * above narrow that considerably — reaching a provider needs either the vendor
- * SDK or an adapter module, and `src/server/` may import neither — but the
- * residue is real, and this assertion is a guard against the documented
- * one-line swap being made half-way, not a proof that no money can be spent.
+ * above narrow that considerably — reaching a provider through the layer needs
+ * an adapter module, which `src/server/` may not import, though a bare `fetch`
+ * to a provider's URL would pass here — so the residue is real, and this
+ * assertion is a guard against an adapter swap being made half-way, not a
+ * proof that no money can be spent.
  */
 function wiresABilledAdapter(module: string, source: string): boolean {
   const called = valueImportsOf(module, source, AI_SURFACE).filter((name) =>
@@ -585,11 +579,11 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
     [
       "a provider adapter wired with the flag left false",
       `
-        import { createAnthropicAdapter } from "../ai/index";
+        import { createOpenRouterAdapter } from "../ai/index";
         import { readServerEnv } from "./env";
         const ADAPTER_BILLS_A_PROVIDER = false;
-        const env = readServerEnv({ requiresAccessKey: ADAPTER_BILLS_A_PROVIDER });
-        const llm = createAnthropicAdapter({ apiKey: env.ANTHROPIC_API_KEY });
+        const env = readServerEnv({ billsAProvider: ADAPTER_BILLS_A_PROVIDER });
+        const llm = createOpenRouterAdapter({ apiKey: env.OPENROUTER_API_KEY });
       `,
       true,
       false,
@@ -607,9 +601,22 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
     [
       "a provider adapter wired with the flag flipped to true",
       `
-        import { createAnthropicAdapter } from "../ai/index";
+        import { createOpenRouterAdapter } from "../ai/index";
         const ADAPTER_BILLS_A_PROVIDER = true;
-        const llm = createAnthropicAdapter({ apiKey: "" });
+        const llm = createOpenRouterAdapter({ apiKey: "" });
+      `,
+      true,
+      true,
+    ],
+    [
+      "the fake opted into beside a provider adapter, with the flag true",
+      `
+        import { createFakeLlmPort, createOpenRouterAdapter } from "../ai/index";
+        const ADAPTER_BILLS_A_PROVIDER = true;
+        const llm =
+          env.LLM_ADAPTER === "fake"
+            ? createFakeLlmPort({ response: { answer: "x" } })
+            : createOpenRouterAdapter({ apiKey: env.OPENROUTER_API_KEY });
       `,
       true,
       true,
@@ -628,7 +635,7 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
       "a factory named only in a comment, which is not a wiring",
       `
         import { createFakeLlmPort } from "../ai/index";
-        // Swap in createAnthropicAdapter({ apiKey: env.ANTHROPIC_API_KEY }) here.
+        // Swap in createOpenRouterAdapter({ apiKey: env.OPENROUTER_API_KEY }) here.
         const ADAPTER_BILLS_A_PROVIDER = false;
         const llm = createFakeLlmPort({ response: { answer: "x" } });
       `,
@@ -654,7 +661,7 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
       "boolean",
     );
     expect(compositionSource).toContain(
-      "readServerEnv({ requiresAccessKey: ADAPTER_BILLS_A_PROVIDER })",
+      "readServerEnv({ billsAProvider: ADAPTER_BILLS_A_PROVIDER })",
     );
   });
 

@@ -40,17 +40,6 @@ const INTERNAL_IS_PRIVATE =
   "src/internal/ is private. Tests reach it through the public surface of the module that owns it (see the `writing-tests` skill), and repository automation must not depend on module internals at all.";
 
 /**
- * The Anthropic SDK, under every subpath it publishes.
- *
- * @remarks
- * `no-restricted-imports` matches the specifier as written and never resolves
- * it, so this ban holds before the package is a dependency and keeps holding
- * if it stops being one. That is what lets the zone boundaries below be
- * stated once, ahead of the adapter that will consume the SDK.
- */
-const ANTHROPIC_SDK = ["@anthropic-ai/**"];
-
-/**
  * Each zone under `src/`, as every specifier that can reach into it.
  *
  * @remarks
@@ -141,10 +130,6 @@ const AI_LAYER_LOOKS_ONLY_DOWNWARD =
 /** Why `src/components/` looks only at `src/core/`, `src/i18n/` and the framework. */
 const COMPONENTS_LOOK_ONLY_DOWNWARD =
   "src/components/ is UI: it renders what it is handed. The import order is app → components → core, so a component names no page, no handler, no composition root, and nothing in the AI layer. Take the value as a prop and let src/app/ do the fetching.";
-
-/** Why a vendor SDK stops at the adapter that wraps it. */
-const VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS =
-  "Only an adapter under src/ai/adapters/ talks to a vendor SDK. A request or a response crossing this zone is an LlmPort call, so the layer can be swapped — or removed whole — without touching src/app/ or src/server/.";
 
 export default defineConfig([
   // Only generated trees are ignored; everything hand-written is linted,
@@ -326,7 +311,6 @@ export default defineConfig([
                 "react/**",
                 "react-dom",
                 "react-dom/**",
-                ...ANTHROPIC_SDK,
               ],
               message:
                 "src/core/ holds the vocabulary the other zones are written in — a Result, a domain type, a pure function — and it stays free of the framework and of any vendor SDK so it survives a change of either. Put the framework-aware code in src/app/ or src/server/ and the vendor-aware code behind src/ai/.",
@@ -421,10 +405,6 @@ export default defineConfig([
               group: AI_LAYER_PRIVATE,
               message: AI_LAYER_IS_PRIVATE,
             },
-            {
-              group: ANTHROPIC_SDK,
-              message: VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS,
-            },
           ],
         },
       ],
@@ -441,10 +421,6 @@ export default defineConfig([
             {
               group: AI_LAYER_PRIVATE,
               message: AI_LAYER_IS_PRIVATE,
-            },
-            {
-              group: ANTHROPIC_SDK,
-              message: VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS,
             },
             {
               group: [...ZONE.app, ...ZONE.components],
@@ -475,10 +451,6 @@ export default defineConfig([
             {
               group: [...ZONE.app, ...ZONE.server, ...ZONE.ai],
               message: COMPONENTS_LOOK_ONLY_DOWNWARD,
-            },
-            {
-              group: ANTHROPIC_SDK,
-              message: VENDOR_SDK_IS_AN_ADAPTERS_BUSINESS,
             },
             {
               group: ["server-only"],

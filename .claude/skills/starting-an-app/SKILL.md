@@ -158,10 +158,10 @@ procedure:
   wiring a port is the whole of what that file does, `src/app/api` because the one route
   there is the layer's only caller, and the `integrating-llm` skill with its
   `.claude/skills/` mirror because the subject it documents is what leaves.
-- **`AI_LAYER_TOKENS`** — `ANTHROPIC_API_KEY` and `@anthropic-ai`, the two vendor names
-  a file can carry without naming a path. **`AI_LAYER_SYMBOLS`** is the other half: the
-  names this repository gives the layer's own surface, which a document cites as often
-  as it cites a path.
+- **`AI_LAYER_TOKENS`** — `OPENROUTER_API_KEY`, the vendor name a file can carry without
+  naming a path. **`AI_LAYER_SYMBOLS`** is the other half: the names this repository
+  gives the layer's own surface — `LLM_MODEL` and `LLM_ADAPTER` among them — which a
+  document cites as often as it cites a path.
 - **`REMOVED_SKILL_NAMES`** — the bare name of every skill on `REMOVED_PATHS`, derived
   from it rather than listed again; today just `integrating-llm`. Sibling skills
   cross-reference each other by name and never by path, so without this a
@@ -175,21 +175,24 @@ procedure:
 
 Delete the paths, then work through both edited lists:
 
-- `src/server/env.ts` loses the key from its schema and `.env.example` the matching
-  line. `API_ACCESS_KEY` and the rule requiring it stay: the rule is keyed off what the
-  composition root wires (`requiresAccessKey`), not off a vendor's variable, so it
-  survives the vendor leaving and is waiting for the first endpoint of your own that
-  costs money to answer. Keep `src/server/env.ts` itself, empty schema and all — it is
-  the seam the next secret enters through, and deleting it means rediscovering where
-  `process.env` is allowed to be read.
-- `eslint.config.mjs` loses the vendor-SDK zone rules, and `tests/boundaries.test.ts`
-  the cases asserting them.
+- `src/server/env.ts` loses `OPENROUTER_API_KEY`, `LLM_MODEL` and `LLM_ADAPTER` from its
+  schema, along with the provider key's half of the billed rule, and `.env.example` the
+  matching lines. `API_ACCESS_KEY` and its half of the rule stay, build-phase deferral
+  included: the rule is keyed off what the composition root wires (`billsAProvider`),
+  not off a vendor's variable, so it survives the vendor leaving and is waiting for the
+  first endpoint of your own that costs money to answer. Keep `src/server/env.ts`
+  itself, empty schema and all — it is the seam the next secret enters through, and
+  deleting it means rediscovering where `process.env` is allowed to be read.
+- `eslint.config.mjs` loses the AI layer's zone rules (`AI_LAYER_PRIVATE` and the
+  `src/ai/` blocks), and `tests/boundaries.test.ts` the cases asserting them.
 - `vitest.config.ts` loses the deleted suites from `automationTests` and the removed
   zone from its coverage glob. Narrowing a glob over a directory that no longer exists
   is not lowering a floor; no threshold number moves, and none may.
 - `README.md` and AGENTS.md lose the route and the port from their prose — AGENTS.md's
   Architecture tree, its three seams, and the contract statement all name them.
-- `tests/server-env.test.ts` loses the cases for the removed key.
+- `tests/server-env.test.ts` loses the cases for the removed variables and the
+  composition-root boot, and `tests/server-smoke.test.ts` its `LLM_ADAPTER=fake` pin
+  along with the `POST /api/ask` cases.
 - The skills on `EDITED_DOCUMENT_FILES` teach rules that outlive the layer and
   illustrate them with it. **Delete the illustration and leave the rule standing** — the
   sentence, the bullet, or the section whose _subject_ is the layer. Do not write a
@@ -200,8 +203,8 @@ Delete the paths, then work through both edited lists:
   `AI_LAYER_SYMBOLS` and `REMOVED_SKILL_NAMES` — are a lower bound, not a substitute for
   reading it. The skills on `EDITED_DOCUMENT_FILES` were written before
   `authoring-skills` required a new mention to carry a needle, so a paragraph can name
-  the layer with none: `building-app-routes`' "The zero-credential quick start is
-  untouched by all of this" paragraph names no path, token, symbol or skill, and a grep
+  the layer with none: `building-app-routes`' "Key any gate of this kind off what the
+  composition root wires" paragraph names no path, token, symbol or skill, and a grep
   alone walks past it. A skill's frontmatter `description` is a site like any other: it
   is that skill's one trigger surface, and a trigger naming a file that is gone is dead
   weight nothing reports once this suite is deleted. Several descriptions name a removed
