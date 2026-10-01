@@ -254,6 +254,7 @@ names its own boundary with its neighbours.
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                                                                   |
 | `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all                                                  |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
+| `building-screens`      | the states a screen renders (loading, failed, not found, empty, a failed action) and its accessible names, keyboard reach and focus |
 | `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `create-pr`             | opening a pull request for the current branch, or updating the one already open for it, outside `shipping-issues`                   |
