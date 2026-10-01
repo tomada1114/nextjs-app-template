@@ -112,12 +112,11 @@ everything that could wait**. Check each such command against three questions, i
 3. **Does the issue's goal require it now?** Then it may run mid-run — an issue whose
    acceptance criterion _is_ removing an existing directory, say. Even then, reach for
    step 1 first: moving the directory into the holding area achieves the same
-   working-tree result with no prompt and a copy kept. For tracked content,
-   `git rm -r <dir>` is equally prompt-free and the commit history is the backup; `mv`
-   is for what git does not hold (untracked or gitignored content, generated trees,
-   local data). Only a case neither covers — the content is too large to keep, or lives
-   where a move cannot reach — takes the prompt mid-run, and the step 10 report says
-   why.
+   working-tree result with no prompt and a copy kept. For tracked content, follow the
+   move with `git add -A -- <dir>` to stage the deletion — not `git rm -r`, which is not
+   on every allowlist and has stalled a background agent on a prompt nobody saw. Only a
+   case the move does not cover — the content is too large to keep, or lives where a
+   move cannot reach — takes the prompt mid-run, and the step 10 report says why.
 
 **The holding area** is `<runstate>/holding/<n>/` — `<n>` the issue being worked, `run`
 for anything not tied to one. It sits outside every checkout, so a moved-out directory
