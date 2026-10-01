@@ -335,6 +335,7 @@ def main() -> int:
         for i in digest["issues"] if i.get("stale_dependency_labels")
     }
     ranking = digest["ranking"]
+    tracking = digest["tracking_issues"]
     ready = [r for r in ranking if r["readiness"] == "READY"]
     # Why an explicitly named issue was not selected, or None. Naming an issue
     # overrides the design hold (the digest was asked --include-design) and
@@ -342,7 +343,10 @@ def main() -> int:
     explicit_hold: str | None = None
     if explicit_issue is not None:
         named = [r for r in ranking if r["number"] == explicit_issue]
-        if not named:
+        if explicit_issue in tracking:
+            explicit_hold = (f"#{explicit_issue} is a tracking issue — ship one of "
+                             "its sub-issues instead")
+        elif not named:
             explicit_hold = (f"#{explicit_issue} is not an open, shippable issue "
                              "in the digest (closed, or outside the filter)")
         elif named[0]["readiness"] != "READY":
@@ -400,6 +404,7 @@ def main() -> int:
         "label_coverage": digest["label_coverage"],
         "contract_coverage": digest["contract_coverage"],
         "needs_design": digest["needs_design"],
+        "tracking_issues": tracking,
         "stale_dependency_labels": sorted(stale_dependency_by_number),
         "cache": digest.get("cache"),
         "open_issue_count": digest["open_issue_count"],
@@ -516,6 +521,9 @@ def main() -> int:
               + f" → {label_spelling} with every dependency closed; clear with "
               + "apply_priority_labels.py "
               + " ".join(f"--clear-dependency {n}" for n in stale_numbers))
+    if tracking:
+        print("tracking: " + ",".join(f"#{n}" for n in tracking)
+              + " → never ranked; ship their sub-issues")
     held = [r for r in ranking
             if r["readiness"] != "READY" and not r["readiness"].startswith("DESIGN:")]
     if held:
