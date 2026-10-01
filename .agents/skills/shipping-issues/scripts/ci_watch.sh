@@ -135,9 +135,35 @@ if [[ "$CHECK_SOURCE" == "checks" ]]; then
     "$TIMEOUT_BIN" "$TIMEOUT" gh pr checks "$PR" --watch --interval 20 >/dev/null 2>&1
     rc=$?
   else
-    echo "timeout_enforced: no (no timeout/gtimeout on PATH — install coreutils for gtimeout)" >&2
-    gh pr checks "$PR" --watch --interval 20 >/dev/null 2>&1
+    # No timeout binary (stock macOS): a background watcher kills the watch
+    # at the deadline and leaves a marker, so the exit reads as 124 either way.
+    echo "timeout_enforced: shell (no timeout/gtimeout on PATH)" >&2
+    TIMED_OUT_MARK="$(mktemp)"
+    rm -f "$TIMED_OUT_MARK"
+    trap 'rm -f "$GH_ERR" "$TIMED_OUT_MARK"' EXIT
+    gh pr checks "$PR" --watch --interval 20 >/dev/null 2>&1 &
+    watch_pid=$!
+    # Polls once a second rather than one long sleep, so it exits by itself
+    # soon after the watch ends and never outlives this script. It counts
+    # sleeps, not `date +%s` seconds, whose one-second resolution would kill
+    # the watch up to a second early.
+    (
+      waited=0
+      while kill -0 "$watch_pid" 2>/dev/null; do
+        if (( waited >= TIMEOUT )); then
+          : >"$TIMED_OUT_MARK"
+          kill "$watch_pid" 2>/dev/null
+          exit 0
+        fi
+        sleep 1
+        waited=$(( waited + 1 ))
+      done
+    ) >/dev/null 2>&1 &
+    watcher_pid=$!
+    wait "$watch_pid"
     rc=$?
+    wait "$watcher_pid" 2>/dev/null
+    [[ -e "$TIMED_OUT_MARK" ]] && rc=124
   fi
   if [[ $rc -eq 124 ]]; then
     echo "verdict: TIMEOUT"

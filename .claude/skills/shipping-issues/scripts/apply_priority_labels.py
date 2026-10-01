@@ -58,6 +58,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Run from the .claude/skills mirror, a sibling import would leave __pycache__/
+# there, which `pnpm agents:check` reports as drift.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from issue_digest import (DEPENDENCY_BLOCK_LABELS, DESIGN_BLOCK_LABELS, DESIGN_LABEL,
                           TIER_ALIASES, TIER_LABELS, TIER_ORDER, normalize_label,

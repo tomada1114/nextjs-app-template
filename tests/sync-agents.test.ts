@@ -1,5 +1,14 @@
+import { execFileSync } from "node:child_process";
 import consoleModule from "node:console";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,6 +71,37 @@ describe("the committed skill trees", () => {
         path.join(repoRoot, MIRROR_DIRECTORY),
       ),
       "run `pnpm agents:sync` and commit the result",
+    ).toEqual([]);
+  });
+});
+
+describe("the shipping-issues scripts", () => {
+  // Claude Code runs these from the mirror, so any bytecode a sibling import
+  // writes lands in `.claude/skills/` and shows up as `extra` drift. Each
+  // script sets `sys.dont_write_bytecode` before importing a sibling; this
+  // runs every one against a copy and checks that nothing was cached.
+  it("leaves no __pycache__ behind when every script is run", () => {
+    const scripts = makeWorkspace("shipping-scripts");
+    cpSync(
+      path.join(repoRoot, SOURCE_DIRECTORY, "shipping-issues", "scripts"),
+      scripts,
+      {
+        recursive: true,
+      },
+    );
+    const env = { ...process.env };
+    delete env["PYTHONDONTWRITEBYTECODE"];
+    delete env["PYTHONPYCACHEPREFIX"];
+    const pythonScripts = readdirSync(scripts).filter((name) => name.endsWith(".py"));
+    expect(pythonScripts).toContain("apply_priority_labels.py");
+    for (const script of pythonScripts) {
+      execFileSync("python3", [path.join(scripts, script), "--help"], {
+        cwd: scripts,
+        env,
+      });
+    }
+    expect(
+      listFiles(scripts, "copy").filter((file) => file.includes("__pycache__/")),
     ).toEqual([]);
   });
 });
