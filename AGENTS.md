@@ -57,6 +57,7 @@ pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts 
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
 pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
@@ -340,6 +341,15 @@ read or write `.env*` or anything under `secrets/`" and "never bypass the hooks"
 instructions in this file, not as blocks — reaching for either spelling is the thing
 being ruled out, not the spelling that happens to be caught.
 
+Some changes reach a pull request, or `main` itself, without passing any local gate at
+all: an edit made through GitHub's web UI or API, which runs no hook; and a commit made
+by another tool or from another clone where the hook was never installed or was skipped.
+Only CI and the `main` ruleset stand in their way, and CI does not cover the whole hook:
+no workflow re-runs the staged secret guard (`scripts/check-staged.mjs`) on a pull
+request. A secret in such a commit is found only after the fact, by
+`security-audit.yml`'s weekly `secret-scan` job over the full history — or at push time
+by GitHub's own secret scanning and push protection, where the repository has them on.
+
 `scripts/lib/guard/` is the rule engine `scripts/check-staged.mjs` (the pre-commit
 layer) uses to decide whether a staged path or its content is secret-shaped. That is the
 whole of its scope, on purpose.
@@ -363,6 +373,38 @@ instruction, the same way the rules above it do.
 A skill holds the reasoning behind a rule and the judgment a config cannot express; it
 never holds a value a config owns, and never holds a prohibition an agent would meet
 while its declared task is something else.
+
+### GitHub settings a new repository must enable
+
+Beside the two layers above, GitHub enforces what a repository's own settings declare.
+"Use this template" copies files, not settings, so every repository made from this one
+starts with none of it, and its admin turns each on once:
+
+- **Secret scanning** and **push protection** (Settings › Advanced Security) — the
+  server-side net for a secret the staged guard does not recognise or a skipped hook
+  never saw; push protection refuses a detected secret at `git push`.
+- **Private vulnerability reporting** — `.github/ISSUE_TEMPLATE/config.yml` sends a
+  reporter to the repository's private advisory form, a dead link until this is on.
+- **Dependabot alerts** and **Dependabot security updates** — `.github/dependabot.yml`
+  configures version updates only; alerts on a known-vulnerable dependency, and the pull
+  requests that fix one, are separate switches.
+- **The `main` ruleset**, applied by `pnpm repo:ruleset` from
+  `.github/rulesets/main.json` with a token that has admin rights on the repository. It
+  blocks deletion of and force-pushes to the default branch, and requires a pull request
+  whose required checks are green — with no approving review, since the owner works
+  alone beside agents. `tests/ruleset-contexts.test.ts` holds each required context to a
+  job that reports on every pull request, so a renamed job fails locally instead of
+  leaving every pull request waiting on a check that never arrives. `bypass_actors` is
+  empty on purpose: an agent's `gh` runs with the owner's token, so a bypass the owner
+  holds is one every agent holds too, and the ruleset is the only server-side net
+  between an agent's `gh pr merge` and a red merge. An emergency change goes through a
+  pull request like any other. The script creates or updates a ruleset and never deletes
+  one.
+- **The label set**, created by `pnpm repo:labels` from `.github/labels.yml` — the
+  labelling workflow only applies a label that already exists.
+
+Each item is a write to the repository's settings, so it needs the owner's sign-off like
+any other remote write; an agent proposes it and does not run it.
 
 ## Conventions
 
