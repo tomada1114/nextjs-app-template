@@ -1,23 +1,23 @@
 ---
 name: writing-typescript
 description: >
-  Use when writing or reviewing TypeScript under src/**, in a .ts module or a .tsx
-  component: narrowing unknown instead of any, `satisfies` vs `as`, a type guard,
-  interface vs type, an exhaustive switch over a union, inline `import type` under
-  verbatimModuleSyntax, why `enum` is rejected (no-restricted-syntax), what a zone
-  surface like src/ai/index.ts may export, annotating a return type or a generic
-  boundary, hitting noUncheckedIndexedAccess, exactOptionalPropertyTypes or
-  noPropertyAccessFromIndexSignature, placing a new constant, or fixing a logic bug in
-  an existing src/ function.
+  Use when writing or reviewing TypeScript under src/** (.ts or .tsx): narrowing unknown
+  instead of any, `satisfies` vs `as`, a type guard, interface vs type, an exhaustive
+  switch over a union, inline `import type` under verbatimModuleSyntax, why `enum` is
+  rejected (no-restricted-syntax), what a zone surface like src/ai/index.ts may export,
+  annotating a return type or a generic boundary, hitting noUncheckedIndexedAccess,
+  exactOptionalPropertyTypes or noPropertyAccessFromIndexSignature, placing a new
+  constant, keeping src/core pure, or fixing a logic bug in an existing src/ function.
 ---
 
 # Writing TypeScript
 
-**Owns:** type-system judgment, naming, and constant placement inside a module under
-`src/**`. **Does not own:** the shape of an error class and the `ERR_*` code vocabulary
-(`designing-errors`); which file a page, a handler or a client component belongs in
-(`building-app-routes`); compile-time assertions with `expectTypeOf` (`type-testing`);
-the `.mjs` files under `scripts/` (`writing-repo-scripts`).
+**Owns:** type-system judgment, naming, constant placement, and what keeps `src/core/**`
+pure, inside a module under `src/**`. **Does not own:** the shape of an error class and
+the `ERR_*` code vocabulary (`designing-errors`); which file a page, a handler or a
+client component belongs in (`building-app-routes`); compile-time assertions with
+`expectTypeOf` (`type-testing`); the `.mjs` files under `scripts/`
+(`writing-repo-scripts`).
 
 ## Naming and constants
 
@@ -142,3 +142,29 @@ the `.mjs` files under `scripts/` (`writing-repo-scripts`).
 - A module that outgrows the per-file size budget in `eslint.config.mjs`'s
   `src/size-budget` block is a module doing more than one thing. Split it; the number is
   a ceiling, not a target, and raising it is what AGENTS.md rules out.
+
+## Core logic
+
+The import boundary keeps the framework out of `src/core/**`; these rules keep what is
+left testable without one. No gate enforces them — a `Date.now()` in core passes lint,
+typecheck and every test.
+
+- Core is handed what the outside world supplies; it never reads it. The current time
+  (`now: Date`, or `clock: () => Date` when one call needs several readings),
+  randomness, configuration, and the result of any I/O arrive as arguments. So no
+  `Date.now()`, argument-less `new Date()`, `Math.random()`, `crypto.randomUUID()`,
+  `process.env`, `fetch` or file read under `src/core/`.
+- The caller supplies them: a handler under `src/server/handlers/`, or the composition
+  root beside it, is where the clock is read, and `src/server/env.ts` stays the one
+  reader of `process.env`.
+- A tuning value — a threshold, a limit, a weight — lives in one exported value per
+  concern, beside the module that consumes it, and is passed in rather than scattered as
+  literals through a body, so a test hands in another value instead of patching the
+  module. For example,
+  `export const SCORING_TUNING = { … } as const satisfies ScoringTuning`.
+- A state transition takes the current value and returns the next one, or an `err()`
+  from `src/core/result.ts` when the move is not allowed. It never mutates its input;
+  declare state `readonly` so a mutation fails to compile.
+
+Before reaching for an architectural pattern out of habit, read
+[references/patterns-not-adopted.md](references/patterns-not-adopted.md).
