@@ -39,7 +39,7 @@ that has since changed."}
 
 <context>
 Work directory: {workdir}   {"<- already provisioned: dependencies installed,
-                              local config copied, baseline verified" in
+                              baseline verified, no secrets copied" in
                               parallel mode; omit in serial mode}
 Base branch: {base_branch}
 Branch: {branch_name}             <- already created and checked out; do not

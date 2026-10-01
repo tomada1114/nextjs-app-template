@@ -63,8 +63,8 @@ phrasings. These edges only appear on reading:
   all touch?); branches that both append to one are a same-file collision.
 - **Shared-cause duplication** — two issues that are symptoms of one underlying defect
   (the same rename, the same missing guard) produce the same hunks independently. If two
-  shortlisted issues name the same symbol or the same failure, ship one first and rebase
-  the other on the result — or report them as one issue.
+  shortlisted issues name the same symbol or the same failure, ship one first and start
+  the other from the result — or report them as one issue.
 - **Umbrella issues** — an epic listing `- [ ] #12 #13 #14` is not itself implementable.
   Treat it as a container: ship the children, leave the epic.
 
@@ -109,7 +109,7 @@ Two issues may share a batch only when **all** of these hold:
   deciding a design while the batch runs, not implementing one that was decided.
 
 Cap a batch at **3** concurrent worktrees. Beyond that the default branch drifts faster
-than the batch's branches can rebase onto it, and the conflict cost outgrows the
+than the batch's branches can be brought up to date, and the conflict cost outgrows the
 wall-clock saving.
 
 Fewer than 2 issues clear these checks → the batch is serial, and no worktree is
@@ -152,8 +152,8 @@ Either way, the same four things happen in the same order:
 3. Record it in the run record
    (`--event design --field issue=<n> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`).
 4. Clear the block:
-   `python3 ${CLAUDE_SKILL_DIR}/scripts/apply_priority_labels.py --clear-design <n>` —
-   after the comment posted, never before.
+   `python3 .agents/skills/shipping-issues/scripts/apply_priority_labels.py --clear-design <n>`
+   — after the comment posted, never before.
 
 **Neither path invents a product or UX call** the repo and the issue thread do not
 already answer. Inline, ask the user and do not implement past it; in the background,

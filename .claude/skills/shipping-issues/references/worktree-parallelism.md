@@ -135,11 +135,12 @@ knowingly red baseline has to show its work.
 ## What a fresh worktree is missing
 
 `git worktree add` checks out **tracked files only**. Everything below is absent, and
-`worktree_setup.sh` handles the first two:
+`worktree_setup.sh` handles the dependencies:
 
 - **Untracked local config** — `.env`, `.env.local`, `*.local`, `.envrc`,
-  `.claude/settings.local.json`. Copied from the main checkout. `.example` / `.sample` /
-  `.template` variants are skipped, and so is anything actually tracked.
+  `.claude/settings.local.json`. **Never copied.** A worktree gets no secret and no
+  personal-permission file; an issue whose verification needs one is not worktree-viable
+  and runs serially in the main checkout.
 - **Dependencies** — `node_modules`, `vendor/`, `.venv` are all empty. Reinstalled from
   the lockfile. On macOS the script clones `node_modules` with `cp -Rc` first (APFS
   clonefile: near-instant, copy-on-write) except under `npm ci`, which wipes the

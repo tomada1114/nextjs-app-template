@@ -14,13 +14,16 @@ description: >-
 **Done means all three:** the PR is merged to the default branch, the issue is CLOSED,
 and nothing was deleted or weakened to get there.
 
-**Invoking this skill is the authorization for every write it makes, up to and including
-the merge** — labels, branches, pushes, the PR, follow-up issues, step 8b's design
-comments, cleanup. Green CI is the go-ahead: as soon as [step 6](#6-ci-to-green) reports
-`PASS`, the merge happens in the same turn, with no "shall I merge?" and no
-summary-then-wait. Re-confirming per issue defeats `all` mode entirely. The only pauses
-are the [Stop conditions](#stop-conditions) and two narrow asks named inline: a
-genuinely tied top two at step 2, and `NO_CHECKS` at step 6.
+**Invoking this skill is the sign-off for exactly the remote writes it lists, for this
+invocation, up to and including the merge** — priority and status labels, pushing its
+own branches, creating the PR, merging it, filing and labelling follow-up issues, step
+8b's design comments, and deleting its own branches at cleanup. Anything outside that
+list stops and asks: a force-push, a hook bypass, a weakened gate, or a new dependency
+(proposed, then the run waits for sign-off). Green CI is the go-ahead: as soon as
+[step 6](#6-ci-to-green) reports `PASS`, the merge happens in the same turn, with no
+"shall I merge?" and no summary-then-wait. Re-confirming per issue defeats `all` mode
+entirely. The only pauses are the [Stop conditions](#stop-conditions) and two narrow
+asks named inline: a genuinely tied top two at step 2, and `NO_CHECKS` at step 6.
 
 ## Table of Contents
 
@@ -78,6 +81,8 @@ after every design-blocked issue this run files or finds.
   the issue's goal cannot move forward without it. Holding area, what counts as "can
   wait", and the final confirmation:
   [closing-out.md#approval-gated-commands](references/closing-out.md#approval-gated-commands).
+- Scripts run from the main checkout's root as
+  `.agents/skills/shipping-issues/scripts/<name>`.
 - Every issue starts from a clean, up-to-date default branch, and the run returns there
   after every merge (`git switch <default> && git pull --ff-only`).
 - **A run finishes what it started**, to depth 1
@@ -101,7 +106,7 @@ Layout: [run-record.md](references/run-record.md). Record each event as it happe
 batched at the end:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/run_record.py --repo <owner>/<repo> \
+python3 .agents/skills/shipping-issues/scripts/run_record.py --repo <owner>/<repo> \
     --event <kind> [--field k=v ...] [--body-file <path>]
 ```
 
@@ -112,7 +117,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/run_record.py --repo <owner>/<repo> \
 ### 1. Plan — one call
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/plan.py --mode <all|single|N> \
+python3 .agents/skills/shipping-issues/scripts/plan.py --mode <all|single|N> \
     [--max-parallel N] [--label L] [--assignee A] [--milestone M] \
     [--include-design] --record
 ```
@@ -147,7 +152,7 @@ exit 2, so rank from `~P<n>` suggestions and report findings instead.
 - **≤3 without a settled tier** — read them (`issue_digest.py --detail N --detail M`)
   against [priority-rubric.md](references/priority-rubric.md), then:
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/apply_priority_labels.py \
+  python3 .agents/skills/shipping-issues/scripts/apply_priority_labels.py \
       --backfill --set N=P0 --quiet
   ```
 - **more, tangled edges, or a close top-two** — hand
@@ -205,7 +210,7 @@ dependencies, and runs the baseline (bounded). It **reports and does not decide*
 
 ```bash
 git switch <default_branch> && git pull --ff-only   # once, before the batch
-${CLAUDE_SKILL_DIR}/scripts/worktree_setup.sh --spec <n>:<branch> \
+.agents/skills/shipping-issues/scripts/worktree_setup.sh --spec <n>:<branch> \
     --spec <m>:<branch> --base <default_branch> --root <runstate>/worktrees \
     --log-dir <runstate>/verify --verify "<confirmed verify command>"
 ```
@@ -310,7 +315,7 @@ start with **`Closes #N`** after the summary (a bare `#N` closes nothing) and ta
 (`--event pr-created --field issue=<n> --field pr=<url>`), then:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/link_check.sh <pr> --issue <n> --fix
+.agents/skills/shipping-issues/scripts/link_check.sh <pr> --issue <n> --fix
 ```
 
 `land_pr.sh` re-checks the link at step 7 too; this earlier call is not redundant
@@ -324,7 +329,7 @@ the checks API serves the previous commit's results for a minute or two after a 
 and a stale PASS is worse than a stale FAIL. Then:
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/ci_watch.sh <pr> --timeout 1800 > <runstate>/ci/<pr>.log
+.agents/skills/shipping-issues/scripts/ci_watch.sh <pr> --timeout 1800 > <runstate>/ci/<pr>.log
 grep -E '^(verdict|mergeable|merge_state|review_decision):' <runstate>/ci/<pr>.log
 ```
 
@@ -342,7 +347,7 @@ or `ERROR` →
 ### 7. Merge and confirm the issue closed
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/land_pr.sh <pr> --issue <n>
+.agents/skills/shipping-issues/scripts/land_pr.sh <pr> --issue <n>
 ```
 
 Merge as soon as step 6 reports `verdict: PASS` — call `land_pr.sh` in that same turn.
@@ -380,7 +385,7 @@ which: [filing-followups.md](references/filing-followups.md) — **read it befor
 anything**.
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/file_followup.py \
+python3 .agents/skills/shipping-issues/scripts/file_followup.py \
     --title "<repo's title convention>" --body-file <path> \
     --tier P2 --area <area> --touches <paths> --label <area label> \
     --found-while <n> [--needs-design]
@@ -464,9 +469,9 @@ every merged-PR branch in the repository — other people's included — which i
 run's to decide.
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/cleanup_run.sh --branch <name> [--branch <name> ...] \
+.agents/skills/shipping-issues/scripts/cleanup_run.sh --branch <name> [--branch <name> ...] \
     [--remote] [--dry-run] [--worktree-root <runstate>/worktrees] [--merged-only] [--force]
-${CLAUDE_SKILL_DIR}/scripts/preflight.sh \
+.agents/skills/shipping-issues/scripts/preflight.sh \
     --profile-cache <runstate>/repo-profile.json --set-worktree-viable <yes|no>
 ```
 
@@ -496,7 +501,8 @@ the user actually has to answer.
 ## Stop conditions
 
 Stop the whole run and report when: the plan is `BLOCKED`, a dependency cycle needs a
-human to break it, a merge conflict needs a product decision, or the same CI failure
+human to break it, a merge conflict needs a product decision, the repository requires
+linear history (`--event blocked --field reason=linear-history`), or the same CI failure
 survives the retry ceiling on two different issues.
 
 Also stop on **a change in the repository that this run did not make** — the main
