@@ -30,8 +30,10 @@ Events: `run-start`, `selection` (the rubric-shaped block from priority-rubric.m
 `merged`, `followup`, `cleanup`, `blocked`, `note`.
 
 `design` records a settled — or deliberately deferred — design, from either path:
-`--field issue=<n> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`.
-A `DEFERRED` line is the more valuable of the two to read back: it is a question waiting
+`--field issue=<n> --field step=<2b|8b> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`.
+`step` tells the two inline paths apart: `2b` decided the design gating the issue being
+implemented, `8b` decided one from the sweep on a host without background completion. A
+`DEFERRED` line is the more valuable of the two to read back: it is a question waiting
 on a human, and the label still says blocked.
 
 `parallel-group` records the plan's grouping decision once per batch (plan.py --record

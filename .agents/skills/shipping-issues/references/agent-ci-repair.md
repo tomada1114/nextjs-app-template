@@ -1,8 +1,9 @@
-# CI repair (sub-agent prompt)
+# CI repair (brief)
 
-Spawned at [SKILL.md step 6](../../SKILL.md#6-ci-to-green), only after `ci_watch.sh`
-returns `FAIL`, one PR at a time. **`sonnet` by default, escalating to `opus` once the
-same failure has survived two attempts in a row.**
+Used at [SKILL.md step 6](../SKILL.md#6-ci-to-green), only after `ci_watch.sh` returns
+`FAIL`, one PR at a time — run inline, or handed to **`executor`** for attempts 1–2 and
+to **`architect`** from attempt 3, once the same failure has survived two attempts in a
+row. A repeat attempt on the same tier continues the same agent where the host allows.
 
 Write the failing log to a file **outside** the working directory first
 (`<runstate>/ci/<pr>.log`) — a stray untracked file inside it makes cleanup skip the
@@ -30,8 +31,8 @@ the GitHub API otherwise, do not watch CI, do not sleep or poll.
 
 Base branch: {base_branch}
 Verification command: {verify_command, from step 3's smoke run}
-Project conventions: read {workdir}/CLAUDE.md and {workdir}/AGENTS.md
-before changing anything.
+Project conventions: read {workdir}/AGENTS.md (and the host's own instruction
+file, if any) before changing anything.
 
 The failing output is in:
   {log_path}

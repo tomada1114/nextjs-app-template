@@ -140,8 +140,10 @@ Two paths lead here, and they differ only in who decides and when:
   the critical path, before step 3.
 - **background — [step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background)**, for
   every _other_ design-blocked issue: the ones this run just filed and the ones already
-  sitting in the backlog. An `opus` sub-agent decides each one while this session keeps
-  shipping, and does 1–2 and 4 below itself.
+  sitting in the backlog. An `architect` sub-agent decides each one while this session
+  keeps shipping, and does 1–2 and 4 below itself — on a host that reports background
+  completion. Elsewhere this session decides each one inline, the same way, at the point
+  step 8b names.
 
 Either way, the same four things happen in the same order:
 
@@ -150,15 +152,17 @@ Either way, the same four things happen in the same order:
    this back, not re-derive it. The comment is the design of record; a decision that
    lives only in a run's transcript did not happen.
 3. Record it in the run record
-   (`--event design --field issue=<n> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`).
+   (`--event design --field issue=<n> --field step=<2b|8b> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`)
+   — `step=2b` for the critical-path decision, `step=8b` for the sweep, whether that ran
+   in the background or inline.
 4. Clear the block:
    `python3 .agents/skills/shipping-issues/scripts/apply_priority_labels.py --clear-design <n>`
    — after the comment posted, never before.
 
 **Neither path invents a product or UX call** the repo and the issue thread do not
-already answer. Inline, ask the user and do not implement past it; in the background,
-the agent returns `DEFERRED` with the question, leaves the label on, and the question
-reaches the user in the step 10 report.
+already answer. At step 2b, ask the user and do not implement past it; at step 8b,
+background or inline, the decision comes back `DEFERRED` with the question, leaves the
+label on, and the question reaches the user in the step 10 report.
 
 Inline, continue at step 3 with the decided approach as part of the brief. In the
 background, the cleared issue is simply ready — for this run at step 8c if budget
