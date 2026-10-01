@@ -44,10 +44,13 @@ taste to get a screen done.
 
 ## Quick reference
 
+The scripts are grouped by how they may be run: finite ones an agent runs to check its
+own work, servers that never end on their own, and the ones that write to GitHub.
+
+### Checks an agent runs
+
 ```sh
-pnpm dev           # start the Next.js development server on http://localhost:3000
 pnpm build         # production build; also type-checks the App Router entry points
-pnpm start         # serve the production build from `pnpm build`
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
 pnpm check:source  # the same gate plus the build and skill script tests, with coverage enforced
 pnpm fix           # ESLint autofix, then Prettier
@@ -57,8 +60,6 @@ pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts 
 pnpm test:skills   # the shipping-issues skill's Python script tests (needs python3; ~2 min)
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
-pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
-pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
@@ -83,6 +84,37 @@ check of its own; they all call these scripts.
 Development and source checks stay on Node 24, stated once in `.node-version` and once
 in `devEngines.runtime`. Never relax `devEngines.runtime`'s `onFail: error`, and never
 reach for `--config.runtime-on-fail=ignore`: nothing here runs on any other Node.
+
+### Long-running — run with the rules below
+
+```sh
+pnpm dev           # start the Next.js development server on http://localhost:3000
+pnpm start         # serve the production build from `pnpm build`
+```
+
+### Writes to GitHub
+
+```sh
+pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
+```
+
+These are listed apart because they write to the repository on GitHub, not because an
+agent may never run them: an agent may run `pnpm repo:labels` when its task needs the
+label set. `pnpm repo:ruleset` needs a token with admin rights on the repository and
+stays a human's step.
+
+### Running a server without taking over the developer's
+
+- To verify something only a running server shows, run `pnpm build && pnpm test:smoke`
+  first: the smoke suite starts `next start` on a free port and stops it itself. Start a
+  server yourself only when that cannot show it.
+- Start that server on a free port (`pnpm dev --port <free>` or
+  `pnpm start --port <free>`), verify against it, and always stop it before your turn
+  ends.
+- Never stop, restart or bind the developer's server on :3000.
+- Run no `open`, `gh … --web` or any other command that opens a browser window or takes
+  focus during a routine check; give the human the URL instead.
 
 ## Validating a change
 
@@ -438,7 +470,9 @@ starts with none of it, and its admin turns each on once:
   labelling workflow only applies a label that already exists.
 
 Each item is a write to the repository's settings, so it needs the owner's sign-off like
-any other remote write; an agent proposes it and does not run it.
+any other remote write; an agent proposes it and does not run it. The label set is the
+one exception: as the Quick reference's "Writes to GitHub" says, an agent may run
+`pnpm repo:labels` when its task needs the labels.
 
 ## Conventions
 
