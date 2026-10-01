@@ -5,8 +5,9 @@ description: >
   README.md, CONTRIBUTING.md, AGENTS.md, a skill under .agents/skills/, .env.example, or
   a TSDoc comment on a published symbol. Use when triaging whether a pull request needs
   a document changed at all, when a rule or an architecture boundary moved and it is
-  unclear which file owns it, when the quick start or the setup steps drifted, or when
-  deciding that an internal refactor needs no documentation change.
+  unclear which file owns it, when one change must move two files at once, when the
+  quick start or the setup steps drifted, or when deciding that an internal refactor
+  needs no documentation change.
 ---
 
 # Updating Documentation
@@ -80,13 +81,32 @@ widening its row. `tests/skills-frontmatter.test.ts` asserts the table and the a
 directory list agree in both directions, so a missed row fails the suite rather than
 going quietly.
 
+## Changes that move two files at once
+
+Some facts have two readers, and a pull request that changes one copy owes the other in
+the same change. Where the last column names a test, a miss fails the suite; where it
+says "review", nothing catches it but the reader of the diff.
+
+| When you change                                            | Also change                                                    | Caught by                          |
+| ---------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------- |
+| A skill added, renamed or deleted                          | Its row in AGENTS.md's Skills table                            | `tests/skills-frontmatter.test.ts` |
+| A hand-run `package.json` script added, renamed or removed | Its line in AGENTS.md's Quick reference, in the matching block | review                             |
+| An environment variable `src/server/env.ts` reads          | `.env.example`, with an empty value                            | `tests/server-env.test.ts`         |
+| A locale in `src/i18n/locales.ts`                          | A catalog under `messages/` holding every key `en.json` has    | `tests/messages.test.ts`           |
+| A gate, or the narrowest check for one kind of change      | Its row in AGENTS.md's "Validating a change" table             | review                             |
+
+**BACKGROUND:** `smart-commit` for the pairs that must share a commit rather than only a
+pull request — the lockfile, the skill mirror, a `src/` change and its test. Adding a
+script reaches more than two files; **REQUIRED:** `writing-repo-scripts` for that list.
+
 ## The checklist owns the mechanical items
 
 `.github/PULL_REQUEST_TEMPLATE.md` already carries the two items that fire most often —
 the one for a new environment variable and the one for a new UI string. Work from the
-template; this skill does not restate its items and neither should anything else.
-`localizing-ui` owns the catalog procedure behind the second of them, and AGENTS.md's
-Conventions owns the English rule and the one exception the catalogs get.
+template; the environment pair above is the one item this skill repeats, for the test
+behind it, and nothing else should restate them. `localizing-ui` owns the catalog
+procedure behind the second of them, and AGENTS.md's Conventions owns the English rule
+and the one exception the catalogs get.
 
 ## What belongs in prose
 
