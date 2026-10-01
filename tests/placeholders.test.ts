@@ -33,7 +33,7 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * `tomada1114/nextjs-app-template` is not a blank like the others — it is
  * this template's real repository slug, and it names this template just as
  * literally as `my-package` does. A fork that keeps it points its CI badge
- * and its vulnerability-report link at someone else's repository. Only the
+ * and its vulnerability-report links at someone else's repository. Only the
  * full slug is listed: a bare `tomada1114` would match
  * `tests/sync-labels.test.ts`'s `tomada1114/typescript-template` fixture
  * data, and a bare `nextjs-app-template` would produce a duplicate row per
@@ -90,17 +90,18 @@ const PLACEHOLDERS = [
  *
  * @remarks
  * These seven files *are* the template's identity, so a placeholder in them is
- * intended, not a leak: they are what a new app rewrites first. Four carry the
+ * intended, not a leak: they are what a new app rewrites first. Five carry the
  * repository's identity — the package name and description, the slug, the
- * copyright holder — and four the copy a visitor reads: the localized metadata
+ * copyright holder — and two the copy a visitor reads: the localized metadata
  * and `HomePage.title` keys in each catalog. Everything else in
  * the tree — the rest of `src/`, `tests/`, `scripts/`, the skills, the
  * workflows, `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort,
  * so the rename is a bounded edit to seven files rather than a
- * repository-wide search that can miss one. Two of the rows are the template's
- * real repository slug rather than a blank, deliberately: the CI badge and the
- * security-advisory link have to resolve *while this repository is the
- * template*, and a fork replaces them like any other row.
+ * repository-wide search that can miss one. Three of the rows are the
+ * template's real repository slug rather than a blank, deliberately: the CI
+ * badge and the two security-advisory links — the issue chooser's and
+ * `SECURITY.md`'s — have to resolve *while this repository is the template*,
+ * and a fork replaces them like any other row.
  *
  * The design-direction rows sit outside that count: the stylesheet and both
  * copies of `designing-ui` carry the marker until a new app settles its
@@ -115,6 +116,7 @@ const EXPECTED_INVENTORY = [
   "README.md: Your Name",
   "README.md: my-package",
   "README.md: tomada1114/nextjs-app-template",
+  "SECURITY.md: tomada1114/nextjs-app-template",
   "messages/en.json: An App Router skeleton.",
   "messages/en.json: Next.js App Template",
   "messages/ja.json: App Router のひな形です。",
@@ -176,8 +178,8 @@ describe("the template's own identity strings", () => {
 
 describe("the badge and advisory URLs", () => {
   // The inventory above only proves the slug appears *somewhere* in each file;
-  // it would pass on a badge URL missing its workflow filename. This pins both
-  // URLs by their shape instead — path segments and filename — with owner and
+  // it would pass on a badge URL missing its workflow filename. This pins each
+  // URL by its shape instead — path segments and filename — with owner and
   // repository left open on purpose: a renamed project writes its own slug in,
   // and pinning this template's would make the rename `starting-an-app`
   // documents impossible to finish with a green suite. The slug itself is the
@@ -189,6 +191,10 @@ describe("the badge and advisory URLs", () => {
     ],
     [
       ".github/ISSUE_TEMPLATE/config.yml",
+      /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/security\/advisories\/new/,
+    ],
+    [
+      "SECURITY.md",
       /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/security\/advisories\/new/,
     ],
   ])("%s carries a well-formed repository URL", (relative, pattern) => {
