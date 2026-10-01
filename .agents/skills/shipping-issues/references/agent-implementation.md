@@ -80,11 +80,16 @@ Do:
    `git checkout --`, or move it aside with `mv` into {holding_dir}, and name
    any scratch file — including a throwaway fixture or repository you created
    under a temp directory — you left behind in your report. If the issue
-   requires deleting an existing directory, `git rm -r` it when tracked, or
-   `mv` it into {holding_dir} (keep its relative path) when not — never
-   `rm -rf`. `rm` triggers an approval prompt that stalls the run, and a
-   disposable temp directory costs nothing to keep. Any other command that
-   would ask for approval: don't run it — name it under UNRESOLVED.
+   requires deleting an existing file or directory, `mv` it into {holding_dir}
+   (keep its relative path), then stage the deletion with `git add -A -- <path>`
+   when it was tracked — never `git rm`, never `rm -rf`. If it requires removing
+   a dependency, delete its entry from `package.json` and run `pnpm install` as
+   a command of its own — never `pnpm remove`/`rm`/`uninstall`. `rm`, `git rm`
+   and `pnpm remove` can each raise an approval prompt that nobody answers, and
+   one such command chained with others stalls the whole call; a disposable temp
+   directory costs nothing to keep. Any other command that would ask for
+   approval, `pnpm install` included: don't wait on it — name it under
+   UNRESOLVED.
 7. Run every verification in the **foreground**. Do not start a long command
    in the background and then poll it — a run that returns while waiting on
    its own background job returns without its report, and its work has to be

@@ -72,10 +72,12 @@ cross-reference back to this file.
   stalls the run, and a disposable temp directory costs nothing to keep. Revert a probe
   inside the checkout with `git checkout --`, or move it out of the way with `mv` into
   `{holding_dir}` (`<runstate>/holding/<n>/`, keeping its relative path). When the issue
-  itself requires removing a directory, the same move does it — or `git rm -r` for
-  tracked content, whose history is the backup — never `rm -rf`. Any other command that
-  raises an approval prompt is not run: name it under `UNRESOLVED` and the parent defers
-  it ([closing-out.md#approval-gated-commands](closing-out.md#approval-gated-commands)).
+  itself requires removing a file or directory, the same move does it, followed by
+  `git add -A -- <path>` for tracked content — never `git rm`, never `rm -rf`. A
+  dependency is removed by editing `package.json` and running `pnpm install` on its own,
+  never `pnpm remove`. Any other command that raises an approval prompt is not run: name
+  it under `UNRESOLVED` and the parent defers it
+  ([closing-out.md#approval-gated-commands](closing-out.md#approval-gated-commands)).
 
 The design brief is the one named exception to the first rule: it writes two specific
 things to GitHub (a design comment, a label clear) as its whole purpose, spelled out in
