@@ -371,13 +371,17 @@ instructions in this file, not as blocks — reaching for either spelling is the
 being ruled out, not the spelling that happens to be caught.
 
 Some changes reach a pull request, or `main` itself, without passing any local gate at
-all: an edit made through GitHub's web UI or API, which runs no hook; and a commit made
-by another tool or from another clone where the hook was never installed or was skipped.
-Only CI and the `main` ruleset stand in their way, and CI does not cover the whole hook:
-no workflow re-runs the staged secret guard (`scripts/check-staged.mjs`) on a pull
-request. A secret in such a commit is found only after the fact, by
-`security-audit.yml`'s weekly `secret-scan` job over the full history — or at push time
-by GitHub's own secret scanning and push protection, where the repository has them on.
+all: an edit made through GitHub's web UI or API, which runs no hook; a commit made by
+another tool or from another clone where the hook was never installed or was skipped;
+and a conflict resolution concluded with `git rebase --continue`, which commits through
+git's sequencer without running pre-commit at all — unlike a plain `git commit` at the
+rebase stop or `git merge --continue`, where `check:staged` and `agents:check` still
+run. Only CI and the `main` ruleset stand in the way of these changes, and CI does not
+cover the whole hook: no workflow re-runs the staged secret guard
+(`scripts/check-staged.mjs`) on a pull request. A secret in such a commit is found only
+after the fact, by `security-audit.yml`'s weekly `secret-scan` job over the full history
+— or at push time by GitHub's own secret scanning and push protection, where the
+repository has them on.
 
 `scripts/lib/guard/` is the rule engine `scripts/check-staged.mjs` (the pre-commit
 layer) uses to decide whether a staged path or its content is secret-shaped. That is the

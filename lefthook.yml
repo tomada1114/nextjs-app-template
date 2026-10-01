@@ -29,10 +29,17 @@
 # every job below at commit time (see AGENTS.md's "Enforcement layers").
 
 pre-commit:
-  # A merge or rebase replays commits that already passed these checks.
-  skip:
-    - merge
-    - rebase
+  # No hook-level `skip`. The commit that concludes a conflicted merge, or a
+  # `git commit` at a rebase stop, carries a conflict resolution no hook has
+  # seen, so `check:staged` and `agents:check` run in those states too: the
+  # first is the only layer that refuses a secret (no CI job re-runs it over a
+  # pull request), and a resolved conflict between `.agents/skills/` and
+  # `.claude/skills/` is exactly where the mirror drifts. Only the style and
+  # speed jobs — `format`, `eslint`, `typecheck`, `test:related` — skip a merge
+  # or rebase, because CI re-runs each of them over the whole tree.
+  # `git rebase --continue` commits a resolution without running pre-commit at
+  # all (see AGENTS.md's "Enforcement layers").
+  # tests/lefthook-merge-guard.test.ts pins this shape.
   jobs:
     # Formatting is applied and re-staged, so "always formatted" holds without
     # anyone remembering to run `pnpm fix`. Runs alone, before the parallel
@@ -50,6 +57,7 @@ pre-commit:
     - name: format
       run: pnpm exec prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
+      skip: [merge, rebase]
 
     - name: checks
       group:
@@ -64,6 +72,7 @@ pre-commit:
           - name: eslint
             glob: "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
             run: pnpm exec eslint --max-warnings 0 --no-warn-ignored {staged_files}
+            skip: [merge, rebase]
 
           # Type-checks the whole program, not only the staged files — a
           # change in one file routinely breaks a type in another that this
@@ -72,6 +81,7 @@ pre-commit:
           - name: typecheck
             glob: "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
             run: pnpm run typecheck
+            skip: [merge, rebase]
 
           # Only the test files reachable from the staged files' module
           # graph, not the whole suite — CI runs the full suite on every
@@ -80,6 +90,7 @@ pre-commit:
           # test file with no production-code counterpart.
           - name: test:related
             run: pnpm run test:related {staged_files}
+            skip: [merge, rebase]
 
           # Content-based checks git itself can see: a credential in a
           # staged file, and an .env*/secrets/** file about to be committed.
