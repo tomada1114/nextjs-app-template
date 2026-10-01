@@ -67,16 +67,24 @@ file that.
 ```bash
 python3 .agents/skills/shipping-issues/scripts/file_followup.py \
     --title "<repo's title convention>" --body-file <path> \
-    --tier P2 --area <area> --touches <paths> --label <area label> \
-    --found-while <n> [--needs-design]
+    --tier P2 --area <area> --touches <paths> --label <type label> \
+    --found-while <n> [--blocked-by <n,n>] [--needs-design]
 ```
 
-`--tier` is required even with `--needs-design` — the moment the design is decided the
-issue must already rank correctly. `--area` and `--touches` become the issue's
-[ship contract](ship-contract.md). `--needs-design` is for an open design question, not
-a verified fix ([below](#design-not-settled)). Exit 2 (`NO_WRITE_ACCESS`) → report the
-finding at step 10 instead. File as you go, right after the PR that surfaced it lands;
-record (`--event followup`), and pass `--refresh` on the next plan.
+The `--label` is one of the type labels `triaging-issues` defines (`bug`, `enhancement`,
+`documentation`, `chore`, `security`). `--tier` is required even with `--needs-design` —
+the moment the design is decided the issue must already rank correctly. `--area` and
+`--touches` become the issue's [ship contract](ship-contract.md). `--needs-design` is
+for an open design question, not a verified fix ([below](#design-not-settled)).
+`--blocked-by` writes what `triaging-issues` asks of a waiting issue: a
+`## Dependencies` section with a `Depends on: #N` line per blocker, and the
+`blocked: dependency` label. Exit 2 (`NO_WRITE_ACCESS`) → report the finding at step 10
+instead. Exit 4 → a label it needs is not defined in the repository, so nothing was
+filed: fix a misspelled `--label`; for a label `.github/labels.yml` declares, run
+`pnpm repo:labels` and re-run the same call once; otherwise report the finding at
+step 10. The script never creates a label definition itself. File as you go, right after
+the PR that surfaced it lands; record (`--event followup`), and pass `--refresh` on the
+next plan.
 
 ## What is not an issue
 
