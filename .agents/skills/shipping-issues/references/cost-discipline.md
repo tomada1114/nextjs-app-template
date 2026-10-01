@@ -102,13 +102,16 @@ confirming it costs a couple of targeted reads.
 Two things scale that count beyond the issue list itself, both deliberately bounded:
 
 - **Design decisions (step 8b)** — one `architect` run per design-blocked issue, capped
-  at 3 in flight when they run in the background. Run in the background, they cost
-  nothing in wall-clock on the shipping path (nothing ever waits on one) and almost
-  nothing in this context: what comes back is a verdict and a two-line approach, while
-  the design itself goes to the issue. Run inline, each costs the reads one decision
-  needs, between two issues. What they buy is a backlog that stops accumulating
-  undecided work — the single most expensive thing a backlog can hold, because every
-  future ranking pass re-reads it and skips it again.
+  at 3 in flight when they run in the background. Inline (no background completion),
+  each is one decision this session makes between issues: this run's own filings plus at
+  most 3 backlog designs, and every one counts against the run budget like a patch round
+  — the rest wait for the next run. Run in the background, they cost nothing in
+  wall-clock on the shipping path (nothing ever waits on one) and almost nothing in this
+  context: what comes back is a verdict and a two-line approach, while the design itself
+  goes to the issue. Run inline, each costs the reads one decision needs, between two
+  issues. What they buy is a backlog that stops accumulating undecided work — the single
+  most expensive thing a backlog can hold, because every future ranking pass re-reads it
+  and skips it again.
 - **Shipping the run's own follow-ups (step 8c)** — a full steps 3–8 cycle per
   follow-up, the same cost as any issue. This is why depth is capped at 1: a run that
   shipped what it filed, and then what _that_ filed, has no termination condition and no

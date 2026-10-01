@@ -160,15 +160,22 @@ issues highest tier first; a round is handed off in one message where the host b
 spawns. **The queue drains on each completion report, not at a step**: when one returns,
 record it and start the next queued one in the same turn, whatever step the shipping
 path is on. Hand off this run's own filings as soon as `file_followup.py` returns their
-numbers. Inline, take the same queue one decision at a time, between issues — after a
-merge and before the next step 3 — never in the middle of one issue's steps 3–7.
+numbers.
 
-Sweep the backlog's held designs **once per run, right after step 1** — in every mode,
-single included — and never again per issue shipped. Anything still queued or in flight
-when the run ends is a step 10 line; nothing ever waits on it.
+**Inline** (no background completion), the same queue is bounded and timed differently.
+It takes this run's own filings plus **at most 3** backlog designs, highest tier first —
+the same 3 as the background cap; every other held design is a step 10 line, "not
+decided this run". Decisions run one at a time, between issues: the first after the
+first merge, then after each later merge and before the next step 3 — never in the
+middle of one issue's steps 3–7. Only when there is nothing to ship at all (the plan
+selected no issue) do they run straight after step 1.
+
+Sweep the backlog's held designs **once per run, at step 1** — in every mode, single
+included — and never again per issue shipped. Anything still queued or in flight when
+the run ends is a step 10 line; nothing ever waits on it.
 
 Record each return
-(`--event design --field issue=<n> --field mode=<background|inline> --field verdict=<DECIDED|DEFERRED>`).
+(`--event design --field issue=<n> --field step=8b --field mode=<background|inline> --field verdict=<DECIDED|DEFERRED>`).
 `LABEL: left-on` alongside `VERDICT: DECIDED` means only the label write failed — clear
 it from this session before treating the issue as ready. An issue returned `DECIDED` is
 ordinary backlog from that moment: ready for the next run, or for this one at step 8c.

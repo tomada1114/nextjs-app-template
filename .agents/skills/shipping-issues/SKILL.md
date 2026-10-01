@@ -32,37 +32,34 @@ asks named inline: a genuinely tied top two at step 2, and `NO_CHECKS` at step 6
 | `all`               | Ship every shippable issue in dependency-then-priority order; independent ones implemented and reviewed in parallel worktrees, PR → CI → merge serialized.       |
 | a number, e.g. `42` | Ship that issue, after checking nothing it depends on is still open.                                                                                             |
 
-A count or concurrency in the argument ("10個ぐらい", "3 at a time") is `--max-parallel`
-(default 3; raise it only because the user asked); any other hint is a `plan.py` filter.
-A `blocked: design` issue (or `design=open` in its
-[ship contract](references/ship-contract.md)) is implemented only by naming its number
-or passing `--include-design` ([step 2b](#2b-decide-a-design-that-gates-the-pick)).
+A count in the argument ("10個ぐらい", "3 at a time") is `--max-parallel` (default 3,
+raised only on request); other hints are `plan.py` filters. A `blocked: design` issue
+(or `design=open` in its [ship contract](references/ship-contract.md)) ships only by
+number or `--include-design` ([step 2b](#2b-decide-a-design-that-gates-the-pick)).
 
 ## Working rules
 
-- **One checkout, one writer.** Step 1 decides once per batch: **serial** works in the
-  main checkout, one issue start to finish; **parallel** gives each issue a worktree
-  under `<runstate>/worktrees/<n>` and leaves the main checkout clean on the default
-  branch. Everything that talks to GitHub stays in this session, one PR at a time.
+- **One checkout, one writer.** Step 1 decides once per batch — never re-decide it
+  mid-batch: **serial** works in the main checkout, one issue start to finish;
+  **parallel** gives each issue a worktree under `<runstate>/worktrees/<n>` and leaves
+  the main checkout clean. All GitHub traffic stays in this session, one PR at a time.
 - **Nothing waits on the user mid-run.** A command your host's permission settings gate
-  behind an approval prompt (typically the `rm -rf` family) stalls the run. Take an
-  equivalent that raises no prompt (`mv` into the holding area instead of `rm`), else
-  defer it to the single end-of-run confirmation, else run it mid-run only when the
-  issue cannot move without it
+  behind an approval prompt (typically `rm -rf`) stalls the run: take a prompt-free
+  equivalent (`mv` into the holding area, not `rm`), else defer it to the one end-of-run
+  confirmation, else run it mid-run only when the issue cannot move without it
   ([closing-out.md](references/closing-out.md#approval-gated-commands)).
 - **Inline by default; tiers by name.** On a host with named sub-agents (AGENTS.md
-  "Sub-agents"), a brief (`references/agent-*.md`) may go to the tier
-  [cost-discipline.md](references/cost-discipline.md#tier-assignment) names — `executor`
-  or `architect` — spawned by tier name, never by a bare model name. A patch round or a
-  repeat CI repair on the same tier continues the same agent where the host allows.
+  "Sub-agents"), a brief (`references/agent-*.md`) may go to the `executor` or
+  `architect` tier [cost-discipline.md](references/cost-discipline.md#tier-assignment)
+  names — by tier name, never a bare model name. A patch round or repeat CI repair on
+  the same tier continues the same agent where the host allows.
 - **State lives in `<runstate>`** ([run-record.md](references/run-record.md)), never
   inside a checkout — an untracked path there is a hard stop. Record each event as it
   happens with `scripts/run_record.py`; **re-read `<runstate>/run.md` after a context
   compaction** or whenever unsure what this run already did
   ([recovery.md](references/recovery.md#after-a-context-compaction)).
 - Scripts (`.agents/skills/shipping-issues/scripts/<name>`) run from the main checkout's
-  root and need `git`, `python3`, `gh`. Conventions come from the project's `AGENTS.md`
-  (and the host's own instruction file, if any).
+  root; need `git`, `python3`, `gh`, and `AGENTS.md` (plus any host instruction file).
 
 ## Workflow
 
@@ -77,9 +74,9 @@ Read the block; do not re-derive it ([plan-output.md](references/plan-output.md)
 `preflight: BLOCKED` stops the run; `tree: DIRTY` is a question to ask **now**;
 `existing-worktrees: BLOCKED` is a [stop condition](#stop-conditions). **Confirm the
 guessed `verify-check:`** — CI's real gate, and it terminates — before step 3 runs it.
-`needs-design:` starts step 8b now; `stale-labels:` → run the command it prints,
-unasked. `labels: COMPLETE` skips step 2; `github: write=no` → rank from `~P<n>` and
-report.
+`needs-design:` feeds step 8b (background: start now; inline: after the first merge);
+`stale-labels:` → run the command it prints, unasked. `labels: COMPLETE` skips step 2;
+`github: write=no` → rank from `~P<n>` and report.
 
 ### 2. Label the unlabeled — only when the plan says so
 
@@ -99,8 +96,10 @@ before step 3
 ### 2c. Confirm the proposed batch
 
 The plan proposes, this step decides: check each issue's real reach against `touches=`
-([dependency-triage.md](references/dependency-triage.md#parallel-vs-sequential-all-mode));
-on disagreement take the narrower grouping. Shrinking never needs asking.
+([dependency-triage.md](references/dependency-triage.md#parallel-vs-sequential-all-mode)).
+Where step 2's research groups and `plan.py`'s grouping disagree, take the narrower (a
+second opinion, not a tie-break). Shrinking never needs asking; no named tiers → serial
+(`--max-parallel 1`).
 
 ### 3. Implement
 
@@ -157,8 +156,9 @@ Every issue filed `--needs-design`, plus step 1's `needs-design:`, gets one
 ([queue and recording](references/delegation-templates.md#design-decision-step-8b)). On
 a host that reports background completion, hand each to `architect` in the background
 and keep shipping — cap 3 in flight, start the next as each returns. Otherwise decide
-each inline, one at a time, between issues. `DEFERRED` keeps the label; its question
-goes to step 10.
+inline, one at a time, between issues: this run's own filings plus **at most 3** backlog
+designs; the rest are step 10 lines ("not decided this run"). `DEFERRED` keeps the
+label; its question goes to step 10.
 
 ### 8c. Take the run's own output back into the queue
 
@@ -171,12 +171,11 @@ step 10; never wait on a design still in flight.
 
 ### 9. Clean up
 
-**Once, after the last merge, script only** — `rm` is never used anywhere in the run;
-what has to go mid-run is moved into `<runstate>/holding/<n>/`. Run `cleanup_run.sh`
-with **every branch this run created as `--branch <name>`** (without it, every merged-PR
-branch in the repository goes, other people's included), from the default branch.
-**Deferred approvals come last, in one ask**, as the run's final tool call
-([closing-out.md](references/closing-out.md#cleanup-scope)).
+**Once, after the last merge, script only**; `rm` is never used in the run (mid-run,
+`mv` into `<runstate>/holding/<n>/`). From the default branch, run `cleanup_run.sh` with
+**every branch this run created as `--branch <name>`** — without it every merged-PR
+branch goes, other people's included. **Deferred approvals come last, in one ask**, as
+the final tool call ([details](references/closing-out.md#cleanup-scope)).
 
 ### 10. Report
 

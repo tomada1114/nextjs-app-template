@@ -47,8 +47,12 @@ Where the host has named sub-agents, hand it to **`executor`** by default and to
 ([the foundation exception](cost-discipline.md#the-foundation-exception-architect-for-what-the-backlog-builds-on)).
 A change small enough that the handoff costs more than the work is implemented here
 rather than handed off
-([the floor](cost-discipline.md#the-floor-too-small-to-delegate)). With no tiers, follow
-the brief inline, one issue at a time.
+([the floor](cost-discipline.md#the-floor-too-small-to-delegate)). With no tiers — a
+host without named sub-agents, or a Codex CLI checkout whose `.codex/` layer is not
+loaded because the project is untrusted — follow the brief inline, one issue at a time,
+and run the batch **serial**: plan with `--max-parallel 1` and create no worktrees. Each
+worktree costs a dependency install and a baseline, and with one writer working through
+them in turn it buys no concurrency.
 
 In parallel mode hand off every brief in the batch **before waiting on any** — in one
 message where the host batches spawns — each with its own worktree path, never the main

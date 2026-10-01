@@ -71,9 +71,10 @@ before that. Pick the first of these the host supports:
 2. **Background, with completion reported.** On a host that can run a command in the
    background and re-invoke the session when it exits, start
    `ci_watch.sh <pr> --timeout 1800 > <runstate>/ci/<pr>.log` that way and wait for that
-   report. The wait may drain
-   [step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background)'s queue; it never
-   opens another PR. A `TIMEOUT` after the full 1800 s is `ERROR`.
+   report. Until that verdict is read, nothing else on the shipping path moves — no next
+   step 3, no other PR, no checkout or branch switch; the only work allowed meanwhile is
+   draining [step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background)'s
+   background queue. A `TIMEOUT` after the full 1800 s is `ERROR`.
 
 Never stand in for either with `sleep` or a poll loop of your own: the script's own
 timeout and verdicts are what make a stalled CI a reported outcome rather than a hung

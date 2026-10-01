@@ -152,7 +152,9 @@ Either way, the same four things happen in the same order:
    this back, not re-derive it. The comment is the design of record; a decision that
    lives only in a run's transcript did not happen.
 3. Record it in the run record
-   (`--event design --field issue=<n> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`).
+   (`--event design --field issue=<n> --field step=<2b|8b> --field mode=<inline|background> --field verdict=<DECIDED|DEFERRED>`)
+   — `step=2b` for the critical-path decision, `step=8b` for the sweep, whether that ran
+   in the background or inline.
 4. Clear the block:
    `python3 .agents/skills/shipping-issues/scripts/apply_priority_labels.py --clear-design <n>`
    — after the comment posted, never before.
