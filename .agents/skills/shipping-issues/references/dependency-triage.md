@@ -157,7 +157,9 @@ Either way, the same four things happen in the same order:
    in the background or inline.
 4. Clear the block:
    `python3 .agents/skills/shipping-issues/scripts/apply_priority_labels.py --clear-design <n>`
-   — after the comment posted, never before.
+   — after the comment posted, never before. It removes the label and rewrites a ship
+   contract's `design=open` to `design=settled`, since either form alone still holds the
+   issue.
 
 **Neither path invents a product or UX call** the repo and the issue thread do not
 already answer. At step 2b, ask the user and do not implement past it; at step 8b,

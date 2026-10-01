@@ -30,9 +30,32 @@ carry **`Closes #N`** after the summary (a bare `#N` closes nothing) and target 
 .agents/skills/shipping-issues/scripts/link_check.sh <pr> --issue <n> --fix
 ```
 
-`land_pr.sh` re-checks the link at merge time too; this earlier call is not redundant
-because it catches `WRONG_BASE` before CI spends thirty minutes on the wrong base.
-`--fix` appends a missing `Closes #N`; `WRONG_BASE` → retarget before merging.
+Run it before step 6's watch starts: every body edit it makes fires the PR's `edited`
+event, which re-runs the PR-title and labeling workflows, and a run cancelled by the
+next edit must not land inside a watch. `land_pr.sh` re-checks the link at merge time
+without `--fix`; this earlier call is not redundant, because it is the only one that
+repairs, and it catches `WRONG_BASE` before CI spends thirty minutes on the wrong base.
+`WRONG_BASE` → retarget before merging. When GitHub lists no link to the issue, `--fix`
+reads the body first and never adds a second keyword:
+
+- **No closing keyword for `#N` in the body** → it appends `Closes #N`.
+- **The keyword is there, or was just appended, and GitHub still lists no link** → it
+  re-saves the body: a minimal body of only `Closes #N`, then the full body put back, at
+  most 2 times (4 edits), a few seconds apart, stopping as soon as the link appears. The
+  full body is restored after every minimal save, including on an interrupt; if it
+  cannot be, the verdict is `ERROR` and the detail names the file holding the full body
+  and the `gh pr edit` that puts it back (the PR description's edit history on GitHub
+  keeps it too) — restore it before anything else. A body it could not read is never
+  rewritten (`ERROR`).
+
+`NOT_LINKED`'s `detail:` says which case is left. "has no Closes/Fixes/Resolves
+keyword", or "closes #M but not the target issue #N", means the body still lacks the
+keyword (its `fix:` line says the edit failed): re-run `--fix`, or add `Closes #N` to
+the body by hand. "has a closing keyword for #N, but GitHub has not linked it" means the
+re-saves left the link missing: go on to step 6 anyway. Step 7's `land_pr.sh` then
+refuses the merge with `result: NOT_LINKED`, and the PR is held for the human
+([landing-outcomes.md](landing-outcomes.md)): merging it with `--no-link-check` is their
+decision, never this run's.
 
 ## Watching CI
 
@@ -42,7 +65,7 @@ and a stale PASS is worse than a stale FAIL. Then:
 
 ```bash
 .agents/skills/shipping-issues/scripts/ci_watch.sh <pr> --timeout <seconds> > <runstate>/ci/<pr>.log
-grep -E '^(verdict|waited_seconds|mergeable|merge_state|review_decision):' <runstate>/ci/<pr>.log
+grep -E '^(verdict|waited_seconds|head_sha|mergeable|merge_state|review_decision):' <runstate>/ci/<pr>.log
 ```
 
 Redirected — raw output carries failing-run log tails that must stay out of this
@@ -83,12 +106,19 @@ run.
 ## Merging
 
 ```bash
-.agents/skills/shipping-issues/scripts/land_pr.sh <pr> --issue <n>
+.agents/skills/shipping-issues/scripts/land_pr.sh <pr> --issue <n> --head-sha <head_sha>
 ```
+
+`<head_sha>` is the `head_sha:` line of the `PASS` in `<runstate>/ci/<pr>.log` — the
+commit CI verified. The merge is pinned to it (`gh pr merge --match-head-commit`), so a
+push that landed after the watch makes GitHub refuse the merge instead of merging an
+unverified commit (`MERGE_REFUSED`: watch CI again). When the log has no `head_sha:`
+line, omit the flag: the script then pins to the head it reads just before it checks the
+merge state.
 
 Merge as soon as CI reports `verdict: PASS` — call `land_pr.sh` in that same turn. Do
 not ask whether to merge, and do not report the green CI and wait: green CI is the
-approval. Read `result:` and `issue:`. Six results, one of which must never read as
+approval. Read `result:` and `issue:`. Every result, and the two that must never read as
 success: [landing-outcomes.md](landing-outcomes.md). Record (`--event merged ...`).
 
 ## After the merge

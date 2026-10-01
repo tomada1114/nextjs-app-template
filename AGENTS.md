@@ -340,14 +340,15 @@ Stop and ask.
 
 Invoking a skill that lists the commits or remote writes it makes is the sign-off for
 exactly those, for that invocation only. Three skills in this repository are such cases.
-`shipping-issues`: the writes its `SKILL.md` lists — priority and status labels, pushing
-its own branches, creating the pull request, merging it once CI passes, filing and
-labelling follow-up issues and the comments it posts, and deleting the branches it
-created. `create-pr`: pushing the current branch, `gh pr create` for it, and
-`gh pr edit` on its own open pull request — never a force-push and never a merge.
-`smart-commit`: the commits it makes on the current branch, and pushing that branch to
-`origin` only when the request asked for a push — never a force-push, never another
-branch, and never the default branch.
+`shipping-issues`: the writes its `SKILL.md` lists — priority and status labels, syncing
+label definitions from `.github/labels.yml` with `pnpm repo:labels`, pushing its own
+branches, creating the pull request, merging it once CI passes, filing and labelling
+follow-up issues and the comments it posts, and deleting the branches it created.
+`create-pr`: pushing the current branch, `gh pr create` for it, and `gh pr edit` on its
+own open pull request — never a force-push and never a merge. `smart-commit`: the
+commits it makes on the current branch, and pushing that branch to `origin` only when
+the request asked for a push — never a force-push, never another branch, and never the
+default branch.
 
 One request is a standing exception too: the owner explicitly asking for an issue ("file
 an issue for this") is the sign-off for the `gh issue create` of each issue that request

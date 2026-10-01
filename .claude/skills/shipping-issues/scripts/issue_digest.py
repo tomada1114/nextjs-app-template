@@ -111,13 +111,115 @@ CONTRACT_KNOWN_FIELDS = ("tier", "area", "blocked-by", "blocks", "touches", "des
 CONTRACT_REQUIRED_FIELDS = ("tier", "blocked-by", "touches")
 
 
+# A fence opener: up to three spaces, then three or more backticks or tildes; a
+# backtick fence's info string may not contain a backtick (CommonMark).
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
+_BACKTICK_RUN_RE = re.compile(r"`+")
+
+
+# An HTML comment block (CommonMark HTML block type 2): a line that starts,
+# after up to three spaces, with `<!--`. It runs to the line holding `-->`.
+_HTML_COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
+
+
+def _code_spans(body: str) -> list[tuple[int, int]]:
+    """The [start, end) offsets of `body`'s fenced code blocks and inline code
+    spans, so a quoted ship-contract example is not read as the contract.
+
+    A fence closes on a line of the same character at least as long as the
+    opener (an unclosed fence runs to the end). An inline span is a backtick
+    run closed by the next run of the same length within one paragraph: a
+    blank line, a fence, or an HTML comment block ends the paragraph, so a
+    stray backtick before a contract block cannot pair with one after it (an
+    unmatched run is literal text). Indented code blocks, other HTML blocks,
+    and backslash-escaped backticks are not modelled."""
+    spans: list[tuple[int, int]] = []
+    paragraphs: list[tuple[int, int]] = []
+    pos = 0
+    fence: tuple[str, int, int] | None = None  # (char, length, start)
+    in_comment = False
+    para_start: int | None = None
+
+    def end_paragraph(at: int) -> None:
+        nonlocal para_start
+        if para_start is not None:
+            paragraphs.append((para_start, at))
+            para_start = None
+
+    for line in body.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        if fence is not None:
+            char, length, start = fence
+            close = re.fullmatch(r" {0,3}(%s{%d,})\s*" % (re.escape(char), length), stripped)
+            if close:
+                spans.append((start, pos + len(line)))
+                fence = None
+        elif in_comment:
+            in_comment = "-->" not in stripped
+        elif m := _FENCE_OPEN_RE.match(stripped):
+            end_paragraph(pos)
+            fence = (m.group(1)[0], len(m.group(1)), pos)
+        elif _HTML_COMMENT_OPEN_RE.match(stripped):
+            end_paragraph(pos)
+            in_comment = "-->" not in stripped[stripped.index("<!--") + 4:]
+        elif not stripped.strip():
+            end_paragraph(pos)
+        elif para_start is None:
+            para_start = pos
+        pos += len(line)
+    if fence is not None:
+        spans.append((fence[2], len(body)))
+    end_paragraph(len(body))
+    for start, end in paragraphs:
+        runs = list(_BACKTICK_RUN_RE.finditer(body, start, end))
+        i = 0
+        while i < len(runs):
+            width = len(runs[i].group(0))
+            closer = next((j for j in range(i + 1, len(runs))
+                           if len(runs[j].group(0)) == width), None)
+            if closer is None:
+                i += 1
+                continue
+            spans.append((runs[i].start(), runs[closer].end()))
+            i = closer + 1
+    return spans
+
+
+def unclosed_fence(body: str) -> str | None:
+    """The fence line that would close a code block `body` leaves open at its
+    end, or None when every fence is closed. Text appended after an open fence
+    is code, so a ship contract written there would never be read."""
+    fence: tuple[str, int] | None = None
+    for line in (body or "").splitlines():
+        if fence is None:
+            m = _FENCE_OPEN_RE.match(line)
+            if m:
+                fence = (m.group(1)[0], len(m.group(1)))
+        elif re.fullmatch(r" {0,3}(%s{%d,})\s*" % (re.escape(fence[0]), fence[1]), line):
+            fence = None
+    return fence[0] * fence[1] if fence else None
+
+
+def find_ship_contracts(body: str) -> list[re.Match[str]]:
+    """Every real `<!-- ship: ... -->` block in `body`, in order: a block that
+    starts inside a fenced code block or inline code is a quoted example, not
+    the contract. parse_ship_contract() and apply_priority_labels.py's
+    settle_contract_design() both read the contract through this one helper,
+    so they always agree on which block it is."""
+    body = body or ""
+    spans = _code_spans(body)
+    return [m for m in SHIP_CONTRACT_RE.finditer(body)
+            if not any(s <= m.start() < e for s, e in spans)]
+
+
 def parse_ship_contract(body: str) -> dict[str, Any] | None:
     """The `<!-- ship: ... -->` block's fields, or None if the body has none.
 
-    The last block wins: an issue edited to correct its contract usually gains a
+    Blocks quoted inside code are ignored (find_ship_contracts). The last
+    real block wins: an issue edited to correct its contract usually gains a
     second block rather than losing the first.
     """
-    blocks = SHIP_CONTRACT_RE.findall(body or "")
+    blocks = [m.group(1) for m in find_ship_contracts(body)]
     if not blocks:
         return None
     raw: dict[str, str] = {}
@@ -184,8 +286,11 @@ READY_NEGATIVE_LABELS = {
 # READY_NEGATIVE_LABELS so the two states never collapse into one meaning.
 # All members are normalize_label() output, so "Blocked: Design", "blocked/design"
 # and "needs-design" resolve to the same key on lookup.
-DESIGN_LABEL = ("blocked: design", "5319e7",
-                "Design/approach not settled - decide it before implementing")
+# Name, color and description as .github/labels.yml declares them, which the
+# two must not disagree on. Only the name is read: `pnpm repo:labels` creates
+# the set, and no script of this skill ever does.
+DESIGN_LABEL = ("blocked: design", "e99695",
+                "The approach is not settled; needs a human decision first.")
 DESIGN_BLOCK_LABELS = {
     normalize_label(n) for n in
     ("blocked: design", "needs design", "needs-design", "needs:design",
@@ -208,10 +313,10 @@ DEPENDENCY_BLOCK_LABELS = {
 
 def resolve_design_label(existing: list[str]) -> tuple[str, bool]:
     """Return (label name this repo uses for the design-not-settled state,
-    whether it still needs to be created). Mirrors apply_priority_labels.py's
-    tier-label resolution: prefer the canonical name, then any existing alias
-    meaning the same thing (shortest wins), only fall back to creating the
-    canonical one when the repo has neither.
+    whether the repo lacks it). Prefers the canonical name, then any existing
+    alias meaning the same thing (shortest wins); with neither, the canonical
+    name and True, which the caller reports — `pnpm repo:labels` creates it,
+    never this skill.
     """
     canonical = DESIGN_LABEL[0]
     by_norm = {normalize_label(name): name for name in existing}
@@ -235,18 +340,18 @@ PRIORITY_LABEL_WEIGHTS = {
 }
 
 # The four labels this skill writes. The tier IS the persisted ranking: it is
-# read on every later run so issue prose never has to be re-analyzed. Colors and
-# descriptions are what apply_priority_labels.py creates the labels with.
+# read on every later run so issue prose never has to be re-analyzed.
 TIER_ORDER = ["P0", "P1", "P2", "P3"]
+# As .github/labels.yml declares them, for the same reason as DESIGN_LABEL.
 TIER_LABELS = {
     "P0": ("priority: P0", "b60205",
-           "Ship now - unblocks other issues or damage is being taken"),
+           "Ship now: other issues are blocked on it, or damage is being taken."),
     "P1": ("priority: P1", "d93f0b",
-           "Do next - leverage on the ground later issues stand on"),
+           "Do next: leverage work later issues stand on (CI, schema, shared types, config)."),
     "P2": ("priority: P2", "fbca04",
-           "Normal - self-contained, nothing waits on it"),
-    "P3": ("priority: P3", "0e8a16",
-           "Defer - nice-to-have"),
+           "Normal: a real, self-contained change; nothing waits on it."),
+    "P3": ("priority: P3", "c5def5",
+           "Defer: nice-to-have, docs polish, or cosmetics."),
 }
 
 # Label vocabularies that already express a tier, recognized on read so a repo
@@ -967,7 +1072,8 @@ def main() -> int:
         if needs_design:
             print("needs-design: " + ", ".join(
                 f"#{r['number']}[{tier_cell(r)}]" for r in needs_design)
-                + " — 設計未確定のため保留(明示指定 / --include-design で着手可)")
+                + " — held until the design is settled (take one on by number or "
+                "with --include-design)")
         # Held issues explain why the pick is what it is; the top of that list
         # is where a merge will free something up, so 10 is plenty.
         held = [r for r in ranked
