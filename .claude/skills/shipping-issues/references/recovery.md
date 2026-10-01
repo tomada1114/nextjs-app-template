@@ -123,8 +123,11 @@ is a **failed outcome**, not a green one.
   ([pr-ci-merge.md#waiting-inside-the-command-timeout](pr-ci-merge.md#waiting-inside-the-command-timeout));
   past that, treat it as `ERROR`.
 - `verdict: ERROR` → re-read the actual PR/CI state before treating it as a green. An
-  error is not a pass.
-- `land_pr.sh` has six possible results and one of them must never read as success:
+  error is not a pass. With `unsettled_checks:`, the watch ended while those checks were
+  still running, or a check came back `STALE` (its result is for an outdated state): run
+  the same watch once more. "head moved … during the watch" means a push landed
+  mid-watch: watch again, for the new head.
+- `land_pr.sh` has eleven possible results and two of them must never read as success:
   [landing-outcomes.md](landing-outcomes.md).
 
 ## Bringing the rest of a parallel batch up to date

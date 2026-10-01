@@ -40,7 +40,9 @@ Then write the tiers — one call, both halves:
 each `--set` overrides one you did, including any `P2(~P0)` you confirmed. Do not
 re-tier an issue you have no evidence about — the suggestion is better than a
 guess. Exit code 2 means the token cannot write labels here: report that instead,
-and rank from the suggestions.
+and rank from the suggestions. Exit code 4 (`verdict: MISSING_LABELS`) means a tier
+label is not defined yet and nothing was written: run `pnpm repo:labels`, then the
+same call once more; a second exit 4 is reported, not retried.
 
 Do not write `blocked: design` (or `--set-design`) on anything — that decision
 belongs to the run that takes the issue on deliberately, not to this pass.

@@ -38,7 +38,10 @@ that carry a duty for the calling session.
   stated facts · `PARTIAL` means at least one did not, so part of it rests on dependency
   edges alone · `SERIAL` means one issue at a time, no worktrees.
 - `select:` / `batch A:` / `branch:` — the pick, everything that can be worked beside
-  it, and the branch name already derived for each. Use those names.
+  it, and the branch name already derived for each. Use those names. A named issue
+  (`--mode <N>`) overrides only the design hold: when it is blocked, held by a label, or
+  has an open PR, the line reads `select: none — #N is not ready: <readiness>`
+  (`select_hold` in `--json`), and nothing is shipped — report why instead.
 - `needs-design:` — the input to SKILL.md step 8b's sweep. Start that round at step 1,
   before step 3: in the background it costs the shipping path nothing to wait on, and
   starting now is what gets those issues unblocked while the run is still going.
