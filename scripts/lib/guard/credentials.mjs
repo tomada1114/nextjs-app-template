@@ -47,6 +47,10 @@ export const CREDENTIAL_PATTERNS = [
   // Real Anthropic keys (`sk-ant-api03-…-AA`) are hyphen-segmented, not a
   // single contiguous alphanumeric run, so the body must accept `-`/`_`.
   { pattern: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/, name: "an Anthropic API key" },
+  // OpenRouter keys are `sk-or-v1-` plus a hex run. The hyphen after `or`
+  // breaks the OpenAI rule's contiguous body below, so that rule never names
+  // one of these, and this one needs its own entry.
+  { pattern: /\bsk-or-v1-[A-Za-z0-9]{20,}\b/, name: "an OpenRouter API key" },
   {
     pattern: /\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9]{20,}\b/,
     name: "an OpenAI API key",
