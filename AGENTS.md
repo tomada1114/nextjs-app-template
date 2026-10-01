@@ -224,6 +224,35 @@ names its own boundary with its neighbours.
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
+## Sub-agents
+
+A skill runs every step inline by default. On a host that can hand a step to a named
+sub-agent, a step marked for a tier may go to one of three:
+
+| Tier        | Effort | Takes                                                                                                                                |
+| ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `executor`  | low    | a settled spec with a clear pass/fail: implementing it, adding tests, getting a check green, bulk edits, research that only collects |
+| `architect` | high   | design judgment, review and bug finding, multi-file work, synthesis, a spec that still has holes                                     |
+| `worker`    | medium | single-shot, tool-free writing or checking from a complete brief                                                                     |
+
+Each tier is defined once per host, and both hosts must describe the same three:
+`.claude/agents/<tier>.md` for Claude Code, which pins a model alias (`opus` for
+`executor` and `architect`, `sonnet` for `worker` — never a dated model ID, which would
+go stale) and an `effort`; and `.codex/agents/<tier>.toml` for Codex CLI, which sets
+only `model_reasoning_effort` and omits `model`, so the session's model is inherited —
+Codex CLI runs a different vendor's models, where the Claude Code choice cannot be
+mirrored. The instructions themselves are the same text in both files.
+`tests/agent-tiers.test.ts` holds the two directories to those names, efforts and
+instructions.
+
+- Neither file declares a permission — no `sandbox_mode`, no tool list. A sub-agent's
+  limits are the host's and the spawning session's, not something a tier widens.
+- Codex CLI loads a project's `.codex/` layers only for a trusted project; in an
+  untrusted checkout the three definitions are absent, and a step marked for a tier runs
+  inline.
+- Codex CLI ships a built-in `worker`; `.codex/agents/worker.toml` replaces it inside
+  this repository. That is intended.
+
 ## Security and human approval
 
 - **Commit, push, and pull request need a human's sign-off** — given per request, or by
