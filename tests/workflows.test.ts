@@ -2860,7 +2860,9 @@ describe("the workflows in .github/workflows", () => {
     expect(workflowNames).toEqual([
       "check-pr-title.yml",
       "ci.yml",
+      "codeql.yml",
       "dependency-review.yml",
+      "osv-scan.yml",
       "pr-label.yml",
       "security-audit.yml",
       "typos.yml",
@@ -2915,14 +2917,16 @@ describe("the workflows in .github/workflows", () => {
 
   it("grants a write scope only where the job cannot do its work without one", () => {
     // pr-label writes a label and tolerates the read-only token a fork PR
-    // gets. Everything else, and in particular everything that runs
-    // repository code, stays read-only. This repository publishes nothing, so
-    // no workflow needs OIDC or a tag push any more.
+    // gets. codeql uploads its results to code scanning, which takes
+    // `security-events: write`, and never runs on a pull request. Everything
+    // else, and in particular everything that runs repository code, stays
+    // read-only. This repository publishes nothing, so no workflow needs OIDC
+    // or a tag push any more.
     const writers = workflowNames.filter((name) =>
       scan(workflowSource(name)).some((line) => line.text.endsWith(": write")),
     );
 
-    expect(writers.sort()).toEqual(["pr-label.yml"]);
+    expect(writers.sort()).toEqual(["codeql.yml", "pr-label.yml"]);
   });
 });
 

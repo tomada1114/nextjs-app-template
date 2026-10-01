@@ -1,0 +1,36 @@
+name: OSV scan
+
+on:
+  pull_request:
+  schedule:
+    # Weekly. An OSV advisory published after a PR merged is found here.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # Same rule as ci.yml: cancel a superseded pull request run, never any other.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    name: Scan pnpm-lock.yaml against OSV
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Complements dependency-review.yml, which judges only what a PR adds and
+      # reads GitHub's advisory database: this reads the whole lockfile against
+      # OSV, so an advisory on a dependency already present fails here too. The
+      # job log is the report; nothing is uploaded, so no write scope is needed.
+      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
