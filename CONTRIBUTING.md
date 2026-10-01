@@ -2,7 +2,8 @@
 
 ## Setup
 
-Use Node.js 24 and pnpm 11 through Corepack:
+Use Node.js 24 and pnpm 11 through Corepack. `pnpm check:source` also needs a `python3`
+on `PATH`, for the shipping-issues skill's script tests (`pnpm test:skills`):
 
 ```sh
 node --version
