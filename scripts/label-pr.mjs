@@ -14,10 +14,10 @@
 // reported as a GitHub Actions notice, never a non-zero exit. A missing
 // PR_NUMBER is a misconfiguration rather than an expected read-only case, and
 // exits non-zero instead.
-import { spawnSync } from "node:child_process";
 import console from "node:console";
 import process from "node:process";
 
+import { spawnGh } from "./lib/gh.mjs";
 import { parseJson, readKey, readString } from "./lib/json.mjs";
 
 /**
@@ -116,42 +116,18 @@ export function computeLabelUpdate(title, currentLabels) {
   return { addLabel, removeLabels };
 }
 
-/**
- * Result of one `gh` invocation.
- *
- * @typedef {object} GhResult
- * @property {number | null} status - Exit code, or null when the process never started.
- * @property {string} stdout - Captured standard output.
- * @property {string} stderr - Captured standard error.
- * @property {Error} [error] - Set when the process could not be spawned at all.
- */
+/** @typedef {import("./lib/gh.mjs").GhResult} GhResult */
+/** @typedef {import("./lib/gh.mjs").GhRunner} GhRunner */
 
 /**
- * A function able to run `gh`. Tests pass an in-memory fake instead of
- * mocking `node:child_process`, following the `writing-tests` skill
- * ("prefer a real in-memory fake to a mock").
- *
- * @typedef {(args: readonly string[]) => GhResult} GhRunner
- */
-
-/**
- * Run `gh` with the real CLI. The default {@link GhRunner} used by {@link applyLabelUpdate}.
+ * Run `gh` with the real CLI and this script's spawn limits. The default
+ * {@link GhRunner} used by {@link applyLabelUpdate}.
  *
  * @param {readonly string[]} args - Arguments passed to `gh`.
  * @returns {GhResult} The raw result.
  */
-export function spawnGh(args) {
-  const result = spawnSync("gh", [...args], {
-    encoding: "utf8",
-    timeout: 60_000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    ...(result.error === undefined ? {} : { error: result.error }),
-  };
+export function runGh(args) {
+  return spawnGh(args, { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
 }
 
 /**
@@ -189,7 +165,7 @@ export function fetchCurrentLabels(prNumber, run) {
  * @param {GhRunner} [options.run] - The `gh` runner to use; defaults to the real CLI.
  * @returns {void}
  */
-export function applyLabelUpdate({ prNumber, title, run = spawnGh }) {
+export function applyLabelUpdate({ prNumber, title, run = runGh }) {
   /** @type {string[]} */
   let currentLabels;
   try {
@@ -244,7 +220,7 @@ export function applyLabelUpdate({ prNumber, title, run = spawnGh }) {
  * @param {GhRunner} [options.run] - The `gh` runner to use; defaults to the real CLI.
  * @returns {number} Process exit code.
  */
-export function main({ env = process.env, run = spawnGh } = {}) {
+export function main({ env = process.env, run = runGh } = {}) {
   const prNumber = env["PR_NUMBER"] ?? "";
   if (prNumber === "") {
     console.error(
