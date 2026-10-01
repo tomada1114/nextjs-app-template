@@ -13,6 +13,7 @@ nothing".
 ## Table of Contents
 
 - [Fix inline, file and ship, or file and leave](#fix-inline-file-and-ship-or-file-and-leave)
+- [The filing call](#the-filing-call)
 - [What is not an issue](#what-is-not-an-issue)
 - [Verify before filing](#verify-before-filing)
 - [What the body needs](#what-the-body-needs)
@@ -61,6 +62,30 @@ someday" with no observed defect behind it. An issue nobody will act on costs th
 run's ranking pass real attention. Note what an inline fix already covered — do not also
 file that.
 
+## The filing call
+
+```bash
+python3 .agents/skills/shipping-issues/scripts/file_followup.py \
+    --title "<repo's title convention>" --body-file <path> \
+    --tier P2 --area <area> --touches <paths> --label <type label> \
+    --found-while <n> [--blocked-by <n,n>] [--needs-design]
+```
+
+The `--label` is one of the type labels `triaging-issues` defines (`bug`, `enhancement`,
+`documentation`, `chore`, `security`). `--tier` is required even with `--needs-design` —
+the moment the design is decided the issue must already rank correctly. `--area` and
+`--touches` become the issue's [ship contract](ship-contract.md). `--needs-design` is
+for an open design question, not a verified fix ([below](#design-not-settled)).
+`--blocked-by` writes what `triaging-issues` asks of a waiting issue: a
+`## Dependencies` section with a `Depends on: #N` line per blocker, and the
+`blocked: dependency` label. Exit 2 (`NO_WRITE_ACCESS`) → report the finding at step 10
+instead. Exit 4 → a label it needs is not defined in the repository, so nothing was
+filed: fix a misspelled `--label`; for a label `.github/labels.yml` declares, run
+`pnpm repo:labels` and re-run the same call once; otherwise report the finding at
+step 10. The script never creates a label definition itself. File as you go, right after
+the PR that surfaced it lands; record (`--event followup`), and pass `--refresh` on the
+next plan.
+
 ## What is not an issue
 
 An operational action is not an issue: something resolved by running an existing command
@@ -103,11 +128,12 @@ held design"). Do not add it for a verified defect with an obvious fix merely be
 is large or touches many files — size is not the test, an undecided approach is.
 
 Treat the label as temporary, and write the body accordingly. Every issue filed this way
-gets a background `opus` sub-agent sent after it at
-[SKILL.md step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background), which decides
-the approach from the repo and the issue thread, records it as a comment, and clears the
+gets a design decision at
+[SKILL.md step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background) — by a
+background `architect` where the host allows, inline otherwise — which decides the
+approach from the repo and the issue thread, records it as a comment, and clears the
 block — often within this same run. So name the open questions precisely, and separate
-the two kinds: the ones answerable from this codebase, which that agent will answer, and
-the ones only a human can settle, which it hands back as `DEFERRED`. A vague "design
-TBD" wastes that agent's run; a sharp question gets the issue unblocked before you next
-look at it.
+the two kinds: the ones answerable from this codebase, which that decision will answer,
+and the ones only a human can settle, which it hands back as `DEFERRED`. A vague "design
+TBD" wastes that decision's run; a sharp question gets the issue unblocked before you
+next look at it.

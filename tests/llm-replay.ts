@@ -24,13 +24,13 @@ export const LLM_FIXTURES_DIR = fileURLToPath(
  * Deliberately not a whole `Response`. Only the status and the JSON body are
  * kept, because those are all a replay needs, and dropping the headers is what
  * makes a credential structurally unable to reach a committed file: the request
- * — where the SDK puts `x-api-key` — is never written down at all, and neither
- * is any response header a future API version might add.
+ * — where the adapter puts its `authorization` header — is never written down
+ * at all, and neither is any response header a future API version might add.
  *
- * The body *is* verbatim, so what the provider puts inside it is committed:
- * `success.json` carries the real `id` of the recorded message, and an error
- * body carries its `request_id`. Those are opaque per-request identifiers, not
- * credentials, and keeping them is what makes the fixture a real recording.
+ * The body *is* verbatim, so what the provider puts inside it is committed: a
+ * recorded `success.json` carries the real `id` of the generation. That is an
+ * opaque per-request identifier, not a credential, and keeping it is what
+ * makes the fixture a real recording.
  *
  * `headers` exists for the hand-written fixtures that need one (a
  * `retry-after`, say); the recorder never writes it.
@@ -72,10 +72,11 @@ export function readFixture(name: string): LlmFixture {
  * A `fetch` that answers from a committed fixture and never opens a socket.
  *
  * @remarks
- * This is the whole replay mechanism. Substituting the SDK's HTTP layer rather
+ * This is the whole replay mechanism. Substituting the adapter's `fetch` rather
  * than stubbing the adapter is what keeps the code under test identical to the
  * code that talks to the provider — the request is built, signed, sent and its
- * response decoded by the real SDK — and it needs no test dependency to do it.
+ * response decoded by the real adapter — and it needs no test dependency to do
+ * it.
  */
 export function replayFetch(name: string): typeof globalThis.fetch {
   const fixture = readFixture(name);
@@ -93,9 +94,9 @@ export function replayFetch(name: string): typeof globalThis.fetch {
  *
  * @remarks
  * Rejecting with the signal's own `reason` is what makes both deadline paths
- * observable: the SDK aborts its internal controller when its `timeout`
- * elapses, and forwards the caller's `AbortSignal` to that same controller, so
- * one implementation covers a timed-out request and a cancelled one.
+ * observable: an adapter sends its request under one signal composed from its
+ * own deadline and the caller's `AbortSignal`, so one implementation covers a
+ * timed-out request and a cancelled one.
  */
 export function neverResolvingFetch(): typeof globalThis.fetch {
   return (_input, init) =>
@@ -118,10 +119,10 @@ export function neverResolvingFetch(): typeof globalThis.fetch {
  * The rejection a real `fetch` produces for an aborted request.
  *
  * @remarks
- * The name is the load-bearing part: the SDK tells a deadline apart from any
- * other transport failure by `name === "AbortError"` alone, so a `reason` that
- * is not already an `Error` still has to arrive under that name rather than as
- * a bare value.
+ * A real `fetch` rejects with the signal's `reason` when it is an `Error`, and
+ * otherwise with an `AbortError`; a `reason` that is not already an `Error`
+ * therefore arrives under that name rather than as a bare value, so an adapter
+ * that inspects the rejection sees what it would see in production.
  */
 function abortRejection(reason: unknown): Error {
   if (reason instanceof Error) {
@@ -172,15 +173,14 @@ export function recordingFetch(
  * A `fetch` that answers with headers and then never finishes the body.
  *
  * @remarks
- * The window {@link neverResolvingFetch} cannot reach. The SDK converts an
- * abort into `APIUserAbortError` only while it still owns the request, and it
- * hands ownership over once the `Response` resolves; a cancellation arriving
- * during the body decode therefore surfaces as a bare `AbortError` instead.
- * Reproducing that window is what keeps the port's `cause`-by-identity promise
- * under test on both sides of the headers rather than only the near side.
+ * The window {@link neverResolvingFetch} cannot reach: the `Response` has
+ * resolved, so an abort arriving now lands on the body read rather than on the
+ * request. Reproducing that window is what keeps the deadline, and the port's
+ * `cause`-by-identity promise, under test on both sides of the headers rather
+ * than only the near side.
  *
  * `bodyRead` settles once the consumer has actually started reading the body —
- * the moment the SDK stops owning the request, and the boundary a caller can
+ * the moment the request is past its headers, and the boundary a caller can
  * wait on instead of estimating with a real sleep. It is created once, at
  * helper construction, with the `let resolve` pattern rather than
  * `Promise.withResolvers`, which is ES2024 and outside `tsconfig.json`'s
@@ -190,7 +190,7 @@ export function recordingFetch(
  * high-water mark of 1 the stream pre-fills and `pull` runs at construction,
  * before any consumer, which would resolve `bodyRead` on the near side of the
  * boundary it exists to mark. At HWM 0, `pull` runs only once something (here,
- * the SDK's own `Response` decoding) actually reads.
+ * the adapter's own `Response` decoding) actually reads.
  */
 export function headersThenStallFetch(): {
   fetch: typeof globalThis.fetch;

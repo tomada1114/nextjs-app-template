@@ -1,5 +1,6 @@
 import "server-only";
 
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import * as z from "zod";
 
 /**
@@ -11,13 +12,13 @@ import * as z from "zod";
  * environment. Node reports that as `""`, not as a missing key, and treating
  * the two differently would make a copied example file a configuration error.
  *
- * The value is trimmed rather than kept as written, because every name here is
- * a credential and surrounding whitespace is never part of one. A secret pasted
- * out of a manager with a trailing newline would otherwise be a key no caller
- * can present in a matching form: `src/server/handlers/ask.ts` compares against
- * a bearer token that cannot carry leading or trailing whitespace, so an
- * untrimmed `API_ACCESS_KEY` would answer 401 to every request, including one
- * sending the exact configured value.
+ * The value is trimmed rather than kept as written, because surrounding
+ * whitespace is never part of any value here. A secret pasted out of a manager
+ * with a trailing newline would otherwise be a key no caller can present in a
+ * matching form: `src/server/handlers/ask.ts` compares against a bearer token
+ * that cannot carry leading or trailing whitespace, so an untrimmed
+ * `API_ACCESS_KEY` would answer 401 to every request, including one sending the
+ * exact configured value.
  */
 const optionalSetting = z
   .string()
@@ -37,36 +38,57 @@ const optionalSetting = z
  */
 const serverEnvShape = z.object({
   /**
-   * Credential for the Anthropic adapter.
+   * Credential for the OpenRouter adapter `src/server/composition.ts` wires.
    *
    * @remarks
-   * Optional because `src/server/composition.ts` wires the fake adapter by
-   * default, which needs no credential at all — that is what keeps the
-   * template's promise that `pnpm dev` answers a request with nothing
-   * configured. The key stays in this schema because the Anthropic adapter is
-   * still shipped and still one line away in `src/server/composition.ts`: a
-   * deployment that switches to it supplies this variable, and the adapter
-   * reports a missing or rejected key as the port's `ERR_LLM_AUTH` on the
-   * request that needed it — a failure a caller can see and act on, which a
-   * server that refuses to boot is not.
-   *
-   * Its mere presence obliges nothing. A machine can have this exported for
-   * something else entirely — the fixture recording flow in
-   * `tests/ai-port.test.ts` needs it — while this application still answers
-   * from the fake adapter and bills no one. What obliges
-   * {@link serverEnvShape.API_ACCESS_KEY} is which adapter is wired, not which
-   * variables happen to be set; see {@link ServerEnvRequirements}.
+   * Optional in the shape, required by the rule below: the composition root
+   * refuses to load without it unless {@link serverEnvShape.LLM_ADAPTER}
+   * replaces the provider with the fake. A missing key is a deployment mistake,
+   * and failing the module that needs it names the variable, where a
+   * constructed adapter would answer every request with `ERR_LLM_AUTH`.
    */
-  ANTHROPIC_API_KEY: optionalSetting,
+  OPENROUTER_API_KEY: optionalSetting,
+
+  /**
+   * The OpenRouter model id every answer is asked of, `vendor/model`.
+   *
+   * @remarks
+   * Unset, the adapter's own default answers. Not validated beyond being
+   * non-blank: OpenRouter's catalogue is the authority on which ids exist, and
+   * an unknown one comes back from it as a failed request. Nothing else about
+   * the model is configurable here, by decision.
+   */
+  LLM_MODEL: optionalSetting,
+
+  /**
+   * An explicit opt-in to the fake adapter, whose only accepted value is
+   * `fake`.
+   *
+   * @remarks
+   * With it set, the fake answers, no credential is required, and nothing is
+   * billed — the path the smoke test and a keyless local run take. It is never
+   * inferred from a missing {@link serverEnvShape.OPENROUTER_API_KEY}: a
+   * deployment that lost its key must stop, not quietly start answering with
+   * canned text. Any other value is rejected rather than ignored, so a typo
+   * cannot fall through to the billed provider either.
+   */
+  LLM_ADAPTER: optionalSetting.pipe(
+    z
+      .literal("fake", {
+        error:
+          "LLM_ADAPTER accepts only `fake`. Leave it unset to answer through the provider adapter src/server/composition.ts wires.",
+      })
+      .optional(),
+  ),
 
   /**
    * The shared secret a caller of `POST /api/ask` must present.
    *
    * @remarks
-   * Optional on its own — the zero-credential quick start answers from the
-   * fake adapter and has nothing to protect — but required as soon as
-   * `src/server/composition.ts` wires an adapter that bills a provider, which
-   * it says by passing {@link ServerEnvRequirements.requiresAccessKey}.
+   * Required while `src/server/composition.ts` wires an adapter that bills a
+   * provider, which it says through {@link ServerEnvRequirements.billsAProvider};
+   * optional only when `LLM_ADAPTER=fake` takes that adapter's place and there
+   * is nothing to protect.
    *
    * `src/server/composition.ts` hands the value to the handler, which
    * compares it against the caller's `Authorization: Bearer` credential.
@@ -85,40 +107,70 @@ export type ServerEnv = z.infer<typeof serverEnvShape>;
 /** What the composition root has to tell {@link readServerEnv} about itself. */
 export interface ServerEnvRequirements {
   /**
-   * Whether the adapter the composition root wires bills a provider per answer.
+   * Whether the provider adapter the composition root wires bills per answer.
    *
    * @remarks
    * `POST /api/ask` reaches the model call with nothing in front of it: no
    * middleware (`src/proxy.ts`'s matcher excludes `api` outright) and no check
    * in the handler beyond body validation. So an endpoint that costs money to
    * answer must not also be open, and `true` here is what makes that
-   * impossible to forget — `readServerEnv` throws, and the server stops as it
-   * starts rather than serving one request unprotected.
+   * impossible to forget — `readServerEnv` throws without `API_ACCESS_KEY`, and
+   * without the provider credential that adapter cannot answer with.
    *
-   * It is the adapter that decides this, never the environment. Keying the
-   * rule off whether a provider credential is *present* would refuse to start
-   * on any machine that exports one for an unrelated reason, while the fake
-   * adapter — which bills nothing — is what actually answers.
+   * It is the wiring that decides this, never which credentials the
+   * environment happens to hold. The one setting meant to lift it is
+   * `LLM_ADAPTER=fake`, because that one replaces the adapter itself.
+   * `NEXT_PHASE` lifts it as well, during `next build` only — see
+   * `isProductionBuild` for why, and for what still holds if that variable
+   * reaches a running server.
    */
-  readonly requiresAccessKey: boolean;
+  readonly billsAProvider: boolean;
 }
 
-/** The shape, plus the one rule that spans two of its fields. */
+/** Names, never values: each message reaches a log and a crash report. */
+const REQUIRED_WHILE_BILLED = {
+  OPENROUTER_API_KEY:
+    "OPENROUTER_API_KEY is required because src/server/composition.ts answers through the OpenRouter adapter. Set it, or set LLM_ADAPTER=fake to answer from the fake adapter with no credential and no bill.",
+  API_ACCESS_KEY:
+    "API_ACCESS_KEY is required because src/server/composition.ts wires an adapter that bills a provider for every answer. POST /api/ask reaches that model call with no authentication of its own, so it must not be left open.",
+} as const;
+
+/** The shape, plus the rule that spans its fields while a provider bills. */
 const billedServerEnvSchema = serverEnvShape.superRefine((env, ctx) => {
-  if (env.API_ACCESS_KEY !== undefined) {
+  if (env.LLM_ADAPTER === "fake") {
     return;
   }
-  ctx.addIssue({
-    code: "custom",
-    path: ["API_ACCESS_KEY"],
-    // Names, never values: this message reaches a log and a crash report.
-    message:
-      "API_ACCESS_KEY is required because src/server/composition.ts wires an adapter that bills a provider for every answer. POST /api/ask reaches that model call with no authentication of its own, so it must not be left open.",
-  });
+  for (const [name, message] of Object.entries(REQUIRED_WHILE_BILLED)) {
+    if (env[name as keyof typeof REQUIRED_WHILE_BILLED] === undefined) {
+      ctx.addIssue({ code: "custom", path: [name], message });
+    }
+  }
 });
 
 /** Every name {@link serverEnvShape} declares, for the `.env.example` check. */
 export const SERVER_ENV_NAMES: readonly string[] = Object.keys(serverEnvShape.shape);
+
+/**
+ * Whether this process is `next build` evaluating route modules.
+ *
+ * @remarks
+ * `next build` imports every route module to collect its segment config, and
+ * `src/server/composition.ts` reads the environment at module load — so
+ * without this, a build would demand the production credentials and CI, which
+ * holds none, could not build at all. Next sets `NEXT_PHASE` for exactly this
+ * phase before it spawns the workers that do it, and nothing is served during
+ * it, so the shape is still validated there and only the billed rule waits for
+ * the server that loads the module to answer a request.
+ *
+ * Nothing stops `NEXT_PHASE` reaching a running server — a build-stage
+ * variable copied into a runtime image — so the rule is not the only guard:
+ * with a billed adapter and no `API_ACCESS_KEY`, `src/server/composition.ts`
+ * answers every request 500 without reaching the provider, and a missing
+ * `OPENROUTER_API_KEY` leaves the adapter failing `ERR_LLM_AUTH` unbilled.
+ */
+function isProductionBuild(): boolean {
+  return process.env["NEXT_PHASE"] === PHASE_PRODUCTION_BUILD;
+}
 
 /**
  * Reads and validates `process.env`.
@@ -137,11 +189,12 @@ export const SERVER_ENV_NAMES: readonly string[] = Object.keys(serverEnvShape.sh
  * environment; see {@link ServerEnvRequirements}.
  * @returns The validated environment.
  * @throws A `ZodError` naming every variable that did not match its shape, or
- * the missing `API_ACCESS_KEY` a billed adapter obliges.
+ * the `OPENROUTER_API_KEY` and `API_ACCESS_KEY` a billed adapter obliges.
  */
 export function readServerEnv(requirements: ServerEnvRequirements): ServerEnv {
-  const schema = requirements.requiresAccessKey
-    ? billedServerEnvSchema
-    : serverEnvShape;
+  const schema =
+    requirements.billsAProvider && !isProductionBuild()
+      ? billedServerEnvSchema
+      : serverEnvShape;
   return schema.parse(process.env);
 }

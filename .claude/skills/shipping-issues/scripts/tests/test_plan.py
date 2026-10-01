@@ -60,7 +60,8 @@ def rank_row(number, tier="P1", readiness="READY", touches=None, title=None,
     }
 
 
-def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None):
+def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None,
+                   tracking=()):
     """`stale_dependency`, when given, maps issue number -> the stale label
     names it carries, and only affects the default `issues` records built
     here (an explicit `issues=` overrides it entirely, same as it does with
@@ -75,6 +76,7 @@ def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None):
                               "missing": [r["number"] for r in rows],
                               "incomplete": {}},
         "needs_design": list(needs_design),
+        "tracking_issues": sorted(tracking),
         "stale_dependency_labels": sorted(stale_dependency),
         "ranking": rows,
         "issues": issues if issues is not None else [
@@ -197,14 +199,15 @@ class MainTest(unittest.TestCase):
 
     def _run(self, argv, rows, preflight=PREFLIGHT, preflight_rc=0,
              needs_design=(), issues=None, worktrees=(), worktree_paths=(),
-             stale_dependency=None):
+             stale_dependency=None, tracking=()):
         self.recorded: list[list[str]] = []
         paths = [f"/state/acme__widgets/worktrees/{n}" for n in worktrees]
         paths += list(worktree_paths)
         self.worktree_list = "".join(
             f"worktree {path}\nHEAD abc\n\n" for path in paths)
         payload = json.dumps(
-            digest_payload(rows, needs_design, issues, stale_dependency))
+            digest_payload(rows, needs_design, issues, stale_dependency,
+                           tracking))
 
         self.preflight_calls: list[list[str]] = []
 
@@ -307,6 +310,73 @@ class MainTest(unittest.TestCase):
         self.assertIn("select: #42", out)
         self.assertIn("plan: serial", out)
         self.assertIn("--include-design", self.digest_cmd)
+
+    def test_explicit_issue_that_is_not_ready_is_never_selected(self):
+        # Naming an issue overrides the design hold and nothing else: the
+        # readiness strings are the ones issue_digest.py prints for an open
+        # blocker, an `on hold` label, a `blocked: external` label, and an
+        # open PR.
+        for readiness in ("BLOCKED-BY:#2", "LABEL:on hold",
+                          "LABEL:blocked: external", "HAS-PR:#7"):
+            with self.subTest(readiness=readiness):
+                rows = [rank_row(2, touches=["b/"]),
+                        rank_row(1, readiness=readiness, touches=["a/"])]
+                rc, out, err = self._run(["--mode", "1"], rows)
+                self.assertEqual(rc, 0, err)
+                self.assertIn(f"select: none — #1 is not ready: {readiness}\n",
+                              out)
+                self.assertNotIn("git switch -c", out)
+                self.assertIn(f"next: nothing to ship — #1 is not ready: "
+                              f"{readiness}", out)
+
+    def test_explicit_issue_not_ready_reaches_the_json_and_the_record(self):
+        rows = [rank_row(1, readiness="LABEL:on hold")]
+        rc, out, err = self._run(["--mode", "1", "--json", "--record"], rows)
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertIsNone(payload["select"])
+        self.assertEqual(payload["batches"], [])
+        self.assertEqual(payload["select_hold"],
+                         "#1 is not ready: LABEL:on hold")
+        events = [cmd[cmd.index("--event") + 1] for cmd in self.recorded]
+        self.assertEqual(events, ["run-start"])
+
+    def test_explicit_issue_missing_from_the_digest_is_not_selected(self):
+        rc, out, err = self._run(["--mode", "#9"], [rank_row(1, touches=["a/"])])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("select: none — #9 is not an open, shippable issue", out)
+        self.assertNotIn("select: #1", out)
+
+    def test_explicit_tracking_issue_is_not_selected_and_says_why(self):
+        rc, out, err = self._run(["--mode", "9", "--json"],
+                                 [rank_row(1, touches=["a/"])], tracking=[9])
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertIsNone(payload["select"])
+        self.assertEqual(payload["tracking_issues"], [9])
+        self.assertEqual(payload["select_hold"],
+                         "#9 is a tracking issue — ship one of its sub-issues "
+                         "instead")
+
+    def test_tracking_issues_are_listed_beside_the_pick(self):
+        rc, out, err = self._run([], [rank_row(1, touches=["a/"])],
+                                 tracking=[9, 4])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("select: #1", out)
+        self.assertIn("tracking: #4,#9 → never ranked; ship their sub-issues",
+                      out)
+
+    def test_no_tracking_issue_prints_no_tracking_line(self):
+        rc, out, err = self._run([], [rank_row(1, touches=["a/"])])
+        self.assertNotIn("tracking:", out)
+
+    def test_explicit_design_held_issue_is_still_selectable(self):
+        # The digest is asked --include-design for a named issue, so its row
+        # reads READY; a DESIGN: readiness never reaches here for one.
+        rc, out, err = self._run(["--mode", "5"], [rank_row(5, touches=["a/"])])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("select: #5", out)
+        self.assertIn("git switch -c fix/5-thing-5", out)
 
     def test_nothing_ready_says_so_instead_of_proposing_a_branch(self):
         rows = [rank_row(1, readiness="BLOCKED-BY:#2")]

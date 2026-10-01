@@ -10,7 +10,7 @@ import { headersThenStallFetch, LLM_FIXTURES_DIR, replayFetch } from "./llm-repl
 
 const SCHEMA = z.object({ answer: z.string() });
 
-/** Where this adapter's fixtures live, apart from the Anthropic ones. */
+/** Where this adapter's fixtures live: one subdirectory per adapter. */
 const FIXTURES_DIR = path.join(LLM_FIXTURES_DIR, "openrouter");
 
 interface Call {
@@ -408,6 +408,51 @@ describe("the committed OpenRouter fixtures", () => {
     const text = readFileSync(path.join(FIXTURES_DIR, `${name}.json`), "utf8");
 
     expect(text).not.toMatch(/sk-or-/i);
+    expect(text).not.toMatch(/"(?:authorization|x-api-key)"/i);
+    expect(text).not.toMatch(/Bearer /);
+  });
+});
+
+describe("the tests/fixtures/llm/ tree", () => {
+  // The per-adapter suites list and scan only their own subdirectory, so a
+  // fixture written straight into `tests/fixtures/llm/`, or into a directory no
+  // suite owns, would otherwise be replayed by nothing and checked by nothing.
+
+  /** Every adapter subdirectory a suite above owns; nothing else may sit here. */
+  const ADAPTER_FIXTURE_DIRS = ["openrouter"];
+
+  /** Every file under `dir`, as paths relative to `LLM_FIXTURES_DIR`. */
+  function filesUnder(dir: string): string[] {
+    return readdirSync(path.join(LLM_FIXTURES_DIR, dir), { withFileTypes: true })
+      .flatMap((entry) => {
+        const relative = path.posix.join(dir, entry.name);
+        return entry.isDirectory() ? filesUnder(relative) : [relative];
+      })
+      .sort();
+  }
+
+  it("holds exactly the adapter subdirectories and no top-level fixture", () => {
+    const top = readdirSync(LLM_FIXTURES_DIR, { withFileTypes: true });
+
+    expect(
+      top.filter((entry) => !entry.isDirectory()).map((e) => e.name),
+    ).toStrictEqual([]);
+    expect(
+      top
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort(),
+    ).toStrictEqual(ADAPTER_FIXTURE_DIRS);
+  });
+
+  it("walked a tree that actually contains fixtures", () => {
+    expect(filesUnder(".")).toContain("openrouter/success.json");
+  });
+
+  it.each(filesUnder("."))("carries no credential in %s", (relative) => {
+    const text = readFileSync(path.join(LLM_FIXTURES_DIR, relative), "utf8");
+
+    expect(text).not.toMatch(/sk-(?:or|ant)-/i);
     expect(text).not.toMatch(/"(?:authorization|x-api-key)"/i);
     expect(text).not.toMatch(/Bearer /);
   });

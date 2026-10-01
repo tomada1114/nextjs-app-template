@@ -8,9 +8,7 @@ import {
   type LlmPort,
   type LlmRequest,
 } from "../src/ai/index";
-import { POST } from "../src/app/api/ask/route";
 import type { Result } from "../src/core/result";
-import { askHandler } from "../src/server/composition";
 import { createAskHandler } from "../src/server/handlers/ask";
 
 /**
@@ -491,25 +489,51 @@ describe("the ask handler with an access key configured", () => {
 });
 
 describe("the composed /api/ask route", () => {
-  it("is the handler composition.ts builds, re-exported as POST", () => {
+  /**
+   * The composition root and the route rebuilt against `env`, registry and all.
+   *
+   * @remarks
+   * `src/server/composition.ts` reads the environment once at module load and
+   * refuses to load at all without the provider's credentials, so neither
+   * module is imported statically here: a static import would assert on
+   * whatever the developer's shell exports. Every declared name is stubbed,
+   * absent unless `env` gives it, for the same reason.
+   */
+  async function composedWith(
+    env: Readonly<Record<string, string | undefined>>,
+  ): Promise<{
+    askHandler: (request: Request) => Promise<Response>;
+    POST: (request: Request) => Promise<Response>;
+  }> {
+    for (const name of [
+      "OPENROUTER_API_KEY",
+      "LLM_MODEL",
+      "LLM_ADAPTER",
+      "API_ACCESS_KEY",
+    ]) {
+      vi.stubEnv(name, env[name]);
+    }
+    vi.resetModules();
+    const { askHandler } = await import("../src/server/composition");
+    const { POST } = await import("../src/app/api/ask/route");
+    return { askHandler, POST };
+  }
+
+  it("is the handler composition.ts builds, re-exported as POST", async () => {
+    const { askHandler, POST } = await composedWith({ LLM_ADAPTER: "fake" });
+
     expect(POST).toBe(askHandler);
   });
 
   // Pins the answer envelope the route replies with, against the real
-  // composition rather than against a handler this test builds itself, and
-  // with the environment stubbed rather than read: what `askHandler` does
-  // turns on the `API_ACCESS_KEY` the developer's shell happens to hold at
-  // module load, so a case that used the static import would be asserting on
-  // the ambient environment. The body is matched by shape, not by wording --
-  // which adapter composition.ts wires is its own decision to change, but
-  // that the reply is `{answer: <string>}` and not an error envelope is not.
+  // composition rather than against a handler this test builds itself. The
+  // body is matched by shape, not by wording -- which adapter composition.ts
+  // wires is its own decision to change, but that the reply is
+  // `{answer: <string>}` and not an error envelope is not.
   it("answers a well-formed request with the answer envelope", async () => {
-    const composed = await composedWith({
-      ANTHROPIC_API_KEY: undefined,
-      API_ACCESS_KEY: undefined,
-    });
+    const { askHandler } = await composedWith({ LLM_ADAPTER: "fake" });
 
-    const response = await composed(
+    const response = await askHandler(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
@@ -525,57 +549,35 @@ describe("the composed /api/ask route", () => {
     expect(body.answer).toBeTypeOf("string");
   });
 
-  /**
-   * The composition root rebuilt against `env`, module registry and all.
-   *
-   * @remarks
-   * `src/server/composition.ts` reads the environment once at module load, so
-   * a test about what a given environment composes has to load the module
-   * again rather than reuse the instance the static import above already
-   * built.
-   */
-  async function composedWith(
-    env: Readonly<Record<string, string | undefined>>,
-  ): Promise<(request: Request) => Promise<Response>> {
-    for (const [name, value] of Object.entries(env)) {
-      vi.stubEnv(name, value);
-    }
-    vi.resetModules();
-    return (await import("../src/server/composition")).askHandler;
-  }
+  // The keyless path is explicit: under LLM_ADAPTER=fake nothing is billed,
+  // so with no API_ACCESS_KEY the route answers an anonymous caller rather
+  // than a 401 (#82), and with no provider key it still answers rather than
+  // surfacing ERR_LLM_AUTH (#77).
+  it("answers 200 under LLM_ADAPTER=fake with no credential of either kind", async () => {
+    const { askHandler } = await composedWith({ LLM_ADAPTER: "fake" });
 
-  // Pins the promise README.md and AGENTS.md both make: a fresh checkout with
-  // no ANTHROPIC_API_KEY still answers instead of surfacing ERR_LLM_AUTH as a
-  // 500 (#77), and with no API_ACCESS_KEY it answers an anonymous caller rather
-  // than a 401 (#82).
-  it("answers 200 with no credential of either kind configured", async () => {
-    const composed = await composedWith({
-      ANTHROPIC_API_KEY: undefined,
-      API_ACCESS_KEY: undefined,
-    });
-
-    const response = await composed(
+    const response = await askHandler(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
     expect(response.status).toBe(200);
   });
 
-  // What closes the endpoint is the adapter composition.ts wires, not what the
-  // machine exports: a developer who has ANTHROPIC_API_KEY set for something
-  // else -- recording the LLM fixtures under `LLM_RECORD=1` needs it -- still
-  // runs the fake adapter, which bills nothing, so nothing is required and the
-  // quick start still answers (#82).
-  it("answers 200 while the fake adapter is wired, whatever provider credential is exported", async () => {
-    const composed = await composedWith({
-      ANTHROPIC_API_KEY: "an-example-value",
-      API_ACCESS_KEY: undefined,
+  // The provider adapter bills, so the composition it builds is closed: a
+  // caller without the access key is turned away before any model call.
+  it("answers 401 to an anonymous caller while the provider adapter is wired", async () => {
+    const network = vi.fn(() => Promise.reject(new Error("network reached")));
+    vi.stubGlobal("fetch", network);
+    const { askHandler } = await composedWith({
+      OPENROUTER_API_KEY: "a-key",
+      API_ACCESS_KEY: "an-access-key",
     });
 
-    const response = await composed(
+    const response = await askHandler(
       postRequest(JSON.stringify({ prompt: "Which city was the old capital?" })),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(401);
+    expect(network).not.toHaveBeenCalled();
   });
 });

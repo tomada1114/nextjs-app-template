@@ -2,7 +2,6 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import * as z from "zod";
 
 import {
-  createAnthropicAdapter,
   createFakeLlmPort,
   createOpenRouterAdapter,
   LlmError,
@@ -22,7 +21,7 @@ import {
  *
  * @remarks
  * Exported because an adapter's harness has to produce data matching it — a
- * recorded fixture, in the Anthropic adapter's case — and a second copy of the
+ * recorded fixture, in the OpenRouter adapter's case — and a second copy of the
  * shape would drift from this one.
  */
 export const CONTRACT_SCHEMA = z.object({
@@ -121,10 +120,10 @@ function ask(
  * to.
  *
  * @remarks
- * Call it once per adapter. Issue #8's Anthropic adapter adds its own
- * `describeLlmPortContract("AnthropicLlmPort", ...)` call at the bottom of this
- * file, backed by recorded fixtures, so the identical assertions run against
- * both and the suite is still collected exactly once.
+ * Call it once per adapter, from this file, so the identical assertions run
+ * against the fake and every provider adapter and the suite is still collected
+ * exactly once. `tests/ai-vendor-swap.test.ts` asserts there is one call per
+ * factory `src/ai/index.ts` publishes.
  */
 export function describeLlmPortContract(
   name: string,
@@ -300,71 +299,16 @@ describeLlmPortContract("createFakeLlmPort", {
 });
 
 /**
- * The fixture each `LlmErrorCode` is provoked by.
- *
- * @remarks
- * Only `success` and `auth-401` are recordings of real exchanges — a `429` or a
- * `529` cannot be provoked on demand, so those two are written by hand against
- * the documented error shape. `ERR_LLM_TIMEOUT` has no fixture at all: a
- * deadline is a property of the connection rather than of a response, so it is
- * arranged with a `fetch` that never answers and a timeout short enough for a
- * unit budget.
- */
-const FIXTURE_FOR_CODE = {
-  ERR_LLM_AUTH: "auth-401",
-  ERR_LLM_RATE_LIMIT: "rate-limit-429",
-  ERR_LLM_UNAVAILABLE: "overloaded-529",
-  ERR_LLM_INVALID_OUTPUT: "invalid-output",
-} as const satisfies Partial<Record<LlmErrorCode, string>>;
-
-/**
- * The Anthropic adapter, wired to a fixture instead of to the network.
- *
- * @remarks
- * `apiKey` is a placeholder rather than a credential: `fetch` never reaches a
- * socket, so no key is authenticated, and the adapter needs a non-blank one
- * only to get past its own "nothing configured" branch.
- */
-function replaying(fixture: string): LlmPort {
-  return createAnthropicAdapter({
-    apiKey: "test-key",
-    maxRetries: 0,
-    fetch: replayFetch(fixture),
-  });
-}
-
-describeLlmPortContract("createAnthropicAdapter", {
-  succeeds: () => replaying("success"),
-  returnsInvalidOutput: () => replaying("invalid-output"),
-  failsWith: (code) =>
-    code === "ERR_LLM_TIMEOUT"
-      ? createAnthropicAdapter({
-          apiKey: "test-key",
-          maxRetries: 0,
-          // Short enough that the SDK's own deadline, not the test runner's,
-          // is what ends the request.
-          timeoutMs: 5,
-          fetch: neverResolvingFetch(),
-        })
-      : replaying(FIXTURE_FOR_CODE[code]),
-  neverAnswers: () =>
-    createAnthropicAdapter({
-      apiKey: "test-key",
-      maxRetries: 0,
-      // Far longer than the suite's budget, so only the caller's abort ends it.
-      timeoutMs: 60_000,
-      fetch: neverResolvingFetch(),
-    }),
-});
-
-/**
  * The fixture under `tests/fixtures/llm/openrouter/` each `LlmErrorCode` is
  * provoked by.
  *
  * @remarks
- * A subdirectory of its own, so `tests/ai-anthropic.test.ts`'s exact listing
- * of `tests/fixtures/llm/` does not see these. `ERR_LLM_TIMEOUT` has no fixture
- * for the same reason as above.
+ * Written by hand against OpenRouter's documented response shapes: a `429` or
+ * a `502` cannot be provoked on demand, and `success` and `auth-401` stay
+ * hand-written until someone records them with the block at the bottom of
+ * this file. `ERR_LLM_TIMEOUT` has no fixture at all: a deadline is a property
+ * of the connection rather than of a response, so it is arranged with a
+ * `fetch` that never answers and a deadline short enough for a unit budget.
  */
 const OPENROUTER_FIXTURE_FOR_CODE = {
   ERR_LLM_AUTH: "auth-401",
@@ -373,7 +317,14 @@ const OPENROUTER_FIXTURE_FOR_CODE = {
   ERR_LLM_INVALID_OUTPUT: "invalid-output",
 } as const satisfies Partial<Record<LlmErrorCode, string>>;
 
-/** The OpenRouter adapter, wired to a fixture instead of to the network. */
+/**
+ * The OpenRouter adapter, wired to a fixture instead of to the network.
+ *
+ * @remarks
+ * `apiKey` is a placeholder rather than a credential: `fetch` never reaches a
+ * socket, so no key is authenticated, and the adapter needs a non-blank one
+ * only to get past its own "nothing configured" branch.
+ */
 function replayingOpenRouter(fixture: string): LlmPort {
   return createOpenRouterAdapter({
     apiKey: "test-key",
@@ -489,67 +440,20 @@ describe("createFakeLlmPort", () => {
 });
 
 /**
- * Re-captures the two fixtures that are recordings of real exchanges.
- *
- * @remarks
- * Skipped unless `LLM_RECORD=1`, which is a local operation: it spends money
- * and needs a real credential, so it is never what CI runs. It lives here, next
- * to {@link CONTRACT_ANSWER}, because the recorded answer has to *be* that
- * value for the contract suite above to assert on it — building the prompt from
- * the constant is what stops the fixture and the assertion drifting apart.
- *
- * `ERR_LLM_RATE_LIMIT` and `ERR_LLM_UNAVAILABLE` have no entry here: neither a
- * 429 nor a 529 can be provoked on demand, so their fixtures are written by
- * hand against the documented error shape.
- */
-describe.runIf(isRecording())("recording the Anthropic fixtures", () => {
-  it("has a credential to record with", () => {
-    expect(process.env["ANTHROPIC_API_KEY"] ?? "").not.toBe("");
-  });
-
-  it("records a successful exchange", async () => {
-    const result = await createAnthropicAdapter({
-      apiKey: process.env["ANTHROPIC_API_KEY"],
-      maxRetries: 0,
-      fetch: recordingFetch("success", 200),
-    }).generate({
-      schema: CONTRACT_SCHEMA,
-      prompt: `Reply with exactly this JSON object, copied verbatim: ${JSON.stringify(CONTRACT_ANSWER)}`,
-      outputLanguage: "en",
-    });
-
-    // The recording is only usable if the real answer is the value the replayed
-    // contract suite asserts on, so that is checked at record time rather than
-    // discovered as a failure on the next run.
-    expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
-  });
-
-  it("records an authentication failure", async () => {
-    // Deliberately not the real credential: a rejected key is the whole point,
-    // and it is short enough not to look like one to the staged-content guard.
-    const error = failureOf(
-      await ask(
-        createAnthropicAdapter({
-          apiKey: "sk-ant-invalid",
-          maxRetries: 0,
-          fetch: recordingFetch("auth-401", 401),
-        }),
-      ),
-    );
-
-    expect(error.code).toBe("ERR_LLM_AUTH");
-  });
-});
-
-/**
  * Re-captures the two OpenRouter fixtures meant to be recordings of real
  * exchanges.
  *
  * @remarks
- * The same arrangement as the Anthropic block above, against
- * `OPENROUTER_API_KEY` from the process environment. Run it alone with
- * `-t OpenRouter`, so a session holding only this credential does not fail
- * the block above for lacking the other one.
+ * Skipped unless `LLM_RECORD=1`, which is a local operation: it spends money
+ * and needs a real `OPENROUTER_API_KEY` from the process environment, so it is
+ * never what CI runs. It lives here, next to {@link CONTRACT_ANSWER}, because
+ * the recorded answer has to *be* that value for the contract suite above to
+ * assert on it — building the prompt from the constant is what stops the
+ * fixture and the assertion drifting apart.
+ *
+ * `ERR_LLM_RATE_LIMIT` and `ERR_LLM_UNAVAILABLE` have no entry here: neither a
+ * 429 nor a 502 can be provoked on demand, so their fixtures are written by
+ * hand against the documented error shape.
  */
 describe.runIf(isRecording())("recording the OpenRouter fixtures", () => {
   it("has a credential to record with", () => {
@@ -566,6 +470,9 @@ describe.runIf(isRecording())("recording the OpenRouter fixtures", () => {
       outputLanguage: "en",
     });
 
+    // The recording is only usable if the real answer is the value the replayed
+    // contract suite asserts on, so that is checked at record time rather than
+    // discovered as a failure on the next run.
     expect(result).toStrictEqual({ ok: true, value: CONTRACT_ANSWER });
   });
 

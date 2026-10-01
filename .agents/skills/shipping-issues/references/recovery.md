@@ -7,11 +7,12 @@ few of them.
 
 ## Table of Contents
 
+- [After a context compaction](#after-a-context-compaction)
 - [A sub-agent returned without its report](#a-sub-agent-returned-without-its-report)
 - [A sub-agent stopped before pushing](#a-sub-agent-stopped-before-pushing)
 - [The implementation missed or widened the spec](#the-implementation-missed-or-widened-the-spec)
 - [`--fix` and why it is serial-mode only](#--fix-and-why-it-is-serial-mode-only)
-- [`/code-review` cannot be launched](#code-review-cannot-be-launched)
+- [A review with no second context](#a-review-with-no-second-context)
 - [CI reports the previous commit](#ci-reports-the-previous-commit)
 - [CI fails](#ci-fails)
 - [`NO_CHECKS`, `ERROR`, and other non-verdicts](#no_checks-error-and-other-non-verdicts)
@@ -19,6 +20,16 @@ few of them.
 - [A merge conflict](#a-merge-conflict)
 - [A red baseline](#a-red-baseline)
 - [A worktree that will not go away](#a-worktree-that-will-not-go-away)
+
+## After a context compaction
+
+A long run outlives its own context: the host compacts it, and what survives is a
+summary that may have dropped which PR is open, which attempt CI repair is on, or what
+is held for the final confirmation. **Re-read `<runstate>/run.md` before the next step
+that writes** — after any compaction, and whenever unsure what this run already did. It
+is append-only and written as each event happens ([run-record.md](run-record.md)), so it
+is the run's own account of itself; then confirm against GitHub and `git` before acting,
+never re-run a write the record already shows landed.
 
 ## A sub-agent returned without its report
 
@@ -53,32 +64,35 @@ directory reports on the wrong branch — plus the sub-agent's own `CHANGED` /
 `SCOPE-NOTES` / `UNRESOLVED`. Open the hunks only in the files the spec actually
 touches, not the whole diff by default.
 
-Missing part of the spec, or quietly widened: send a new run — on the same model as the
-first — naming only what is left. Don't re-run the whole task. Up to **2** resume/patch
-runs on top of the first; a third miss means the issue itself is underspecified, so
-record `--event blocked` and report `NEEDS-CLARIFICATION` instead of spawning again.
+Missing part of the spec, or quietly widened: send a patch round naming only what is
+left — continuing the same agent where the host allows, otherwise a new run on the same
+tier as the first. Don't re-run the whole task. Up to **2** resume/patch runs on top of
+the first; a third miss means the issue itself is underspecified, so record
+`--event blocked` and report `NEEDS-CLARIFICATION` instead of spawning again.
 
 ## `--fix` and why it is serial-mode only
 
-`/code-review … --fix` applies findings to _this session's_ working tree — the main
-checkout. In serial mode that is the branch under review, which is the point. In
-parallel mode the branch is checked out in a worktree and the main checkout is sitting
-on the default branch, so `--fix` would write another branch's repairs into the main
-checkout and leave it dirty — the exact state
+On Claude Code, `/code-review … --fix` applies findings to _this session's_ working tree
+— the main checkout. In serial mode that is the branch under review, which is the point.
+In parallel mode the branch is checked out in a worktree and the main checkout is
+sitting on the default branch, so `--fix` would write another branch's repairs into the
+main checkout and leave it dirty — the exact state
 [Stop conditions](../SKILL.md#stop-conditions) treats as someone else's work.
 
 The review itself reads `<base>...<branch>` from the shared object store and is safe
 from anywhere; only the writing half is not. So in parallel mode: review each branch
-without `--fix`, triage the whole batch, then spawn one `sonnet` fix run per branch with
-accepted findings, scoped to that branch's worktree, using
-[agents/review-fix.md](agents/review-fix.md).
+without `--fix`, triage the whole batch, then apply each branch's accepted findings in
+that branch's own worktree with [agent-review-fix.md](agent-review-fix.md) — inline, or
+by `executor`.
 
-## `/code-review` cannot be launched
+## A review with no second context
 
-Host won't let this session run the slash command → one independent, **read-only**
-`opus` sub-agent against the branch, using
-[agents/review-fallback.md](agents/review-fallback.md), triaged the same way. Never
-re-read your own diff and call that a review.
+On a host with no named sub-agents, the review brief
+([agent-review.md](agent-review.md)) runs inline. When this session also wrote the diff
+— an inline implementation — that is a self-review: run the brief anyway, as a separate
+pass that reads the diff as a change against the issue, and say in the step 10 report
+that the branch was self-reviewed. Never present re-reading your own diff as an
+independent review.
 
 ## CI reports the previous commit
 
@@ -89,10 +103,12 @@ branch's CI runs before starting `ci_watch.sh`.
 
 ## CI fails
 
-Fill and spawn a **`sonnet`** sub-agent — `opus` once the same failure has survived two
-attempts in a row — with [agents/ci-repair.md](agents/ci-repair.md), its work directory
-set to whichever checkout holds the branch: the main checkout in serial mode, that
-issue's worktree in parallel mode. Up to **3 attempts**. `PUSHED: no` ends the loop.
+Fill [agent-ci-repair.md](agent-ci-repair.md) and run it — inline, or by `executor` for
+attempts 1–2 and `architect` once the same failure has survived two attempts in a row
+(the second attempt continues the first agent where the host allows) — its work
+directory set to whichever checkout holds the branch: the main checkout in serial mode,
+that issue's worktree in parallel mode. Up to **3 attempts**. `PUSHED: no` ends the
+loop.
 
 A test deleted, skipped, or weakened to pass, or a "flaky" re-run without a diagnosis,
 is a **failed outcome**, not a green one.
@@ -102,9 +118,16 @@ is a **failed outcome**, not a green one.
 - `NO_CHECKS` → run the project's own verification command locally (the plan's `verify=`
   line names it) and merge on a local green. No such command at all → ask first; this is
   one of the run's two narrow pauses.
+- `verdict: TIMEOUT` → CI has not settled yet. Re-run `ci_watch.sh` until the watches
+  add up to 1800 s in total
+  ([pr-ci-merge.md#waiting-inside-the-command-timeout](pr-ci-merge.md#waiting-inside-the-command-timeout));
+  past that, treat it as `ERROR`.
 - `verdict: ERROR` → re-read the actual PR/CI state before treating it as a green. An
-  error is not a pass.
-- `land_pr.sh` has six possible results and one of them must never read as success:
+  error is not a pass. With `unsettled_checks:`, the watch ended while those checks were
+  still running, or a check came back `STALE` (its result is for an outdated state): run
+  the same watch once more. "head moved … during the watch" means a push landed
+  mid-watch: watch again, for the new head.
+- `land_pr.sh` has eleven possible results and two of them must never read as success:
   [landing-outcomes.md](landing-outcomes.md).
 
 ## Bringing the rest of a parallel batch up to date

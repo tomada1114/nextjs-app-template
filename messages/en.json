@@ -13,6 +13,11 @@
     "description": "The page you requested does not exist.",
     "homeLink": "Return to the home page"
   },
+  "ErrorBoundary": {
+    "title": "Something went wrong",
+    "description": "This page could not be displayed. Try again, or come back later.",
+    "retry": "Try again"
+  },
   "LocaleSwitcher": {
     "label": "Language",
     "en": "English",

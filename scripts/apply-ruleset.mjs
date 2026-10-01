@@ -19,13 +19,13 @@
 // call, so a malformed one applies nothing. `gh` comes from the caller's PATH
 // and must already be authenticated. Rulesets on a private repository need a
 // paid plan; that refusal is ERR_RULESET_PLAN_UNSUPPORTED rather than a raw 403.
-import { spawnSync } from "node:child_process";
 import console from "node:console";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { spawnGh } from "./lib/gh.mjs";
 import { parseJson, readString } from "./lib/json.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -71,42 +71,8 @@ export class RulesetError extends Error {
  * @property {string} target - The ruleset's `target` (`branch`, `tag`, …).
  */
 
-/**
- * Result of running one `gh` invocation.
- *
- * @typedef {object} GhResult
- * @property {number | null} status - Exit code, or null when the process never started.
- * @property {string} stdout - Captured standard output.
- * @property {string} stderr - Captured standard error.
- * @property {Error} [error] - Set when the process could not be spawned at all.
- */
-
-/**
- * A function able to run `gh`. Tests pass an in-memory fake instead of
- * mocking `node:child_process`.
- *
- * @typedef {(args: readonly string[]) => GhResult} GhRunner
- */
-
-/**
- * Run `gh` with the real CLI. The default {@link GhRunner} used by {@link main}.
- *
- * @param {readonly string[]} args - Arguments passed to `gh`.
- * @returns {GhResult} The raw result.
- */
-export function spawnGh(args) {
-  const result = spawnSync("gh", [...args], {
-    encoding: "utf8",
-    timeout: 120_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    ...(result.error === undefined ? {} : { error: result.error }),
-  };
-}
+/** @typedef {import("./lib/gh.mjs").GhResult} GhResult */
+/** @typedef {import("./lib/gh.mjs").GhRunner} GhRunner */
 
 /**
  * The `*.json` file names under the rulesets directory, sorted.

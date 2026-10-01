@@ -5,13 +5,13 @@ file is the procedure and the judgment around it.
 
 ## What a fixture is
 
-`tests/fixtures/llm/<name>.json` holds one recorded exchange as `{ status, body }` —
-never a whole `Response`. Dropping the headers is what makes a credential _structurally_
-unable to reach a committed file: the request, where the SDK puts `x-api-key`, is not
-written down at all, and neither is any response header a future API version might add.
-The body is verbatim, so a real message `id` or `request_id` is committed with it; those
-are opaque per-request identifiers, and keeping them is what makes the file a recording
-rather than a guess.
+`tests/fixtures/llm/<adapter>/<name>.json` holds one recorded exchange as
+`{ status, body }` — never a whole `Response`. Dropping the headers is what makes a
+credential _structurally_ unable to reach a committed file: the request, where the
+adapter puts its `authorization` header, is not written down at all, and neither is any
+response header a future API version might add. The body is verbatim, so a real
+generation `id` is committed with it; that is an opaque per-request identifier, and
+keeping it is what makes the file a recording rather than a guess.
 
 `headers` is an optional third field for a hand-written fixture that needs one (a
 `retry-after`, say). The recorder never writes it.
@@ -23,21 +23,20 @@ inspects every staged blob whatever its extension.
 
 ## Which fixtures exist, and which are real recordings
 
-`tests/ai-anthropic.test.ts` holds an `OUTCOMES` map naming every fixture and the result
-replaying it must produce, and asserts that the map and the directory agree exactly — a
-fixture nothing has an expectation for is a file that could decay into anything.
+The OpenRouter adapter's fixtures live in `tests/fixtures/llm/openrouter/` — one
+subdirectory per adapter, so each suite's exact listing sees only its own.
+`tests/ai-openrouter.test.ts` holds an `OUTCOMES` map naming every fixture and the
+result replaying it must produce, and asserts that the map and the directory agree
+exactly — a fixture nothing has an expectation for is a file that could decay into
+anything.
 
-Only `success` and `auth-401` are recordings of real exchanges. A `429` and a `529`
-cannot be provoked on demand, so those are written by hand against the documented error
-shape; `ERR_LLM_TIMEOUT` has no fixture at all, because a deadline is a property of the
-connection rather than of a response and is arranged with a `fetch` that never answers.
-Prefer a hand-written fixture over inventing a way to make a provider misbehave.
-
-The OpenRouter adapter's fixtures live in `tests/fixtures/llm/openrouter/`, a
-subdirectory so the exact listing above does not see them, and
-`tests/ai-openrouter.test.ts` holds their own `OUTCOMES` map. Its `success` and
-`auth-401` are hand-written from OpenRouter's documented response shape until someone
-records them; its `5xx` case is `unavailable-502`.
+`success` and `auth-401` are the two meant to be recordings of real exchanges; both are
+hand-written from OpenRouter's documented response shape until someone records them. A
+`429` and a `502` cannot be provoked on demand, so those stay written by hand against
+the documented error shape; `ERR_LLM_TIMEOUT` has no fixture at all, because a deadline
+is a property of the connection rather than of a response and is arranged with a `fetch`
+that never answers. Prefer a hand-written fixture over inventing a way to make a
+provider misbehave.
 
 ## Recording
 
@@ -51,10 +50,10 @@ LLM_RECORD=1 pnpm exec vitest run tests/ai-port.test.ts
 `describe.runIf(isRecording())` at the bottom of `tests/ai-port.test.ts` is the only
 block that reaches the provider — the replayed suites above it run either way — and
 without `LLM_RECORD=1` it is skipped entirely. The credential comes from your own
-environment (`ANTHROPIC_API_KEY`), which `.env.example` names and `src/server/env.ts`
+environment (`OPENROUTER_API_KEY`), which `.env.example` names and `src/server/env.ts`
 declares — never read a `.env` file to get one, and never put a key on a command line.
-The OpenRouter block beside it reads `OPENROUTER_API_KEY` the same way; record it alone
-with `-t OpenRouter`, so the Anthropic block does not fail for want of its own key.
+The recording asks the adapter's default model; it does not read `LLM_MODEL`, which only
+`src/server/composition.ts` hands on.
 
 Two properties of the recorder are worth knowing before you use it:
 
@@ -70,11 +69,11 @@ Two properties of the recorder are worth knowing before you use it:
 ## Replaying
 
 `replayFetch(name)` returns a `fetch` that answers from the fixture and never opens a
-socket, and it is handed to the adapter through `AnthropicClientOptions.fetch`. Nothing
-else about the adapter changes, which is the point: the request is still built, signed
-and sent, and the response still decoded, by the real SDK.
+socket, and it is handed to the adapter through `OpenRouterAdapterOptions.fetch`.
+Nothing else about the adapter changes, which is the point: the request is still built,
+signed and sent, and the response still decoded, by the real adapter.
 
-`tests/ai-anthropic.test.ts` stubs the global `fetch` with one that rejects and asserts
+`tests/ai-openrouter.test.ts` stubs the global `fetch` with one that rejects and asserts
 it was never called, so a replay that silently fell back to the network fails rather
 than passing slowly.
 

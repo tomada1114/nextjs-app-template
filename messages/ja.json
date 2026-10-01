@@ -13,6 +13,11 @@
     "description": "お探しのページは存在しません。",
     "homeLink": "ホームページに戻る"
   },
+  "ErrorBoundary": {
+    "title": "問題が発生しました",
+    "description": "このページを表示できませんでした。もう一度お試しいただくか、しばらくしてから再度アクセスしてください。",
+    "retry": "もう一度試す"
+  },
   "LocaleSwitcher": {
     "label": "言語",
     "en": "英語",

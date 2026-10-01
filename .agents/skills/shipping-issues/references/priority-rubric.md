@@ -43,7 +43,18 @@ a label, so the next run reads it instead of re-deriving it:
 Existing vocabularies are read as equivalents, so a repo with its own convention is
 never force-relabeled: `p0`/`critical`/`urgent`/`blocker` → P0, `priority: high` → P1,
 `priority: medium` → P2, `priority: low`/`nice to have` → P3. `apply_priority_labels.py`
-writes the canonical spelling and strips the older one when it re-tiers an issue.
+and `file_followup.py` write the spelling the repository already defines — the canonical
+name when it exists, else its shortest alias, matched without regard to case — and a
+re-tier strips any other tier label the issue carries.
+
+The scripts apply labels and never create a label definition — `.github/labels.yml`
+declares them and `pnpm repo:labels` creates them. A label a call would apply that the
+repository lacks stops the call before its first write with `verdict: MISSING_LABELS`
+and exit 4. Run `pnpm repo:labels` (one of the writes invoking this skill signs off),
+then re-run the same call once; a second exit 4 means the label is not in
+`.github/labels.yml` — report it and rank from the `~P<n>` suggestions.
+`apply_priority_labels.py --check-labels` asks the same question for the four tier
+labels without writing anything.
 
 Tier and design-readiness are orthogonal: `blocked: design` says the approach isn't
 settled, not how urgent the issue is once it is. Tier an issue even while it carries
@@ -89,11 +100,13 @@ so that judgment only has to correct the few it gets wrong. Write the correction
 - **Unblock edge is fake** — `#12` was mentioned as context, not as a prerequisite.
   Demote from P0; the ranking usually changes.
 - **Umbrella / epic** — an issue whose body is a checklist of other issues is not
-  implementable. Its tier is not wrong, so leave it: never select it, ship its
-  highest-priority child instead. Same for an issue that is really five issues — report
-  it as `NEEDS-CLARIFICATION`, do not demote it to hide it. Tiers answer "how much does
-  this matter", not "can I ship it"; readiness is the other axis, and it lives in the
-  dependency-triage reference.
+  implementable. Labelled `tracking` (or `epic`), `issue_digest.py` drops it before
+  ranking and reports it on a `tracking:` line, so it is never offered a tier;
+  unlabelled, it is this judgement call on every run, so propose the label instead of
+  tiering it. Never select it; ship its highest-priority child. An issue that is really
+  five issues is different — report it as `NEEDS-CLARIFICATION`, do not demote it to
+  hide it. Tiers answer "how much does this matter", not "can I ship it"; readiness is
+  the other axis, and it lives in the dependency-triage reference.
 - **Cheap unblock beats expensive damage** — when the top two are close, prefer the one
   that is smaller and touches fewer files. It lands sooner and shortens the window in
   which other branches drift.

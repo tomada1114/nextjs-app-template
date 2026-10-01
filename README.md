@@ -11,11 +11,12 @@ tree styled with Tailwind v4 and shadcn/ui, one JSON endpoint, and one language-
 call kept behind an interface rather than called directly. ESM-only TypeScript
 throughout.
 
-Two things follow from that last part, and they are most of why this template exists. A
-fake adapter is wired in by default, so `pnpm dev` answers a request before any
-credential exists — the first thing you do with a checkout is run it, not go and find an
-API key. And a project that wants no model at all deletes the layer in one piece instead
-of unpicking it, which a test keeps true rather than a convention.
+Two things follow from that last part, and they are most of why this template exists.
+Answers come from [OpenRouter](https://openrouter.ai) by default, and switching the
+model is one environment variable, `LLM_MODEL`, rather than a code change — while
+`LLM_ADAPTER=fake` swaps in a fake adapter that needs no key and bills nothing. And a
+project that wants no model at all deletes the layer in one piece instead of unpicking
+it, which a test keeps true rather than a convention.
 
 `AGENTS.md` describes the architecture and the rules; this file is the tour.
 
@@ -23,8 +24,16 @@ of unpicking it, which a test keeps true rather than a convention.
 
 ```sh
 pnpm install
+cp .env.example .env   # then set OPENROUTER_API_KEY and API_ACCESS_KEY in it
 pnpm dev
 ```
+
+Without both keys, `POST /api/ask` refuses to load: every request to it answers `500`
+and the server log names the missing variable, while the pages still render. To run it
+with neither — nothing billed, every answer a fixed sentence — start it as
+`LLM_ADAPTER=fake pnpm dev` instead, or set `LLM_ADAPTER=fake` in `.env`. That is never
+inferred from a missing key: a deployment that lost its key fails rather than quietly
+answering from the fake.
 
 Then open <http://localhost:3000>, which redirects to the locale your browser asks for —
 `/en` or `/ja`. The page it renders is `src/app/[locale]/page.tsx`, and the text on it
@@ -33,17 +42,17 @@ comes from `messages/en.json` and `messages/ja.json`.
 There is one API route, `POST /api/ask`, which takes
 `{ "prompt": "...", "locale": "en" }` and answers `{ "answer": "..." }`. The `locale` is
 a UI locale, and the handler is what maps it to the language the model writes in. The
-route runs against a fake language-model adapter, so it needs no credentials;
+route answers through the OpenRouter adapter, with `LLM_MODEL` naming any OpenRouter
+model id and the adapter's own default used when it is unset;
 `src/server/composition.ts` is the single place that decides which adapter is behind it.
-Copy `.env.example` to `.env` when you swap in one that needs a key.
 
-Swapping one in also closes the endpoint. `src/server/composition.ts` declares that the
-adapter it wires bills a provider, and `readServerEnv` then requires `API_ACCESS_KEY` —
-a deployment that pays for its answers refuses to start rather than serving anyone who
-finds the URL — after which the route answers `401` unless the request carries that key
-as `Authorization: Bearer <value>`. Exporting a provider credential does not on its own
-close anything: while the fake adapter answers, nothing is billed and nothing is
-required. That is authentication and nothing more: this template ships no rate limit.
+Because every answer is billed, the endpoint is closed. `src/server/composition.ts`
+declares that the adapter it wires bills a provider, and `readServerEnv` then requires
+`OPENROUTER_API_KEY` and `API_ACCESS_KEY` — a deployment that pays for its answers
+refuses to load the route rather than serving anyone who finds the URL — after which it
+answers `401` unless the request carries that key as `Authorization: Bearer <value>`.
+Under `LLM_ADAPTER=fake` nothing is billed and neither key is required. That is
+authentication and nothing more: this template ships no rate limit.
 
 What the route does bound is the size of a request. The `prompt` is trimmed and must be
 1 to 8000 characters, and the body is refused with `413` once it crosses 64 KiB while it

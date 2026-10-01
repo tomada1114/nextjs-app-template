@@ -19,10 +19,12 @@ export interface OpenRouterAdapterOptions {
    * The credential.
    *
    * @remarks
-   * A required property that may hold `undefined`: the template starts with
-   * nothing configured, so a missing or blank key is reported as
-   * `ERR_LLM_AUTH` on the request that needed one rather than as a server
-   * that refuses to boot.
+   * A required property that may hold `undefined`, so a caller can pass an
+   * optional setting straight through. A missing or blank key is reported as
+   * `ERR_LLM_AUTH` on every request, with no round trip. In this application
+   * that is a backstop rather than the expected path: `src/server/env.ts`
+   * refuses to load the composition root without `OPENROUTER_API_KEY` unless
+   * `LLM_ADAPTER=fake` replaces this adapter.
    */
   readonly apiKey: string | undefined;
 

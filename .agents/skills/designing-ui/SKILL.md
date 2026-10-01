@@ -16,8 +16,9 @@ description: >
 how a shadcn/ui component enters `src/components/`, and the craft rules every screen
 follows. **Does not own:** which zone a component may import from (`building-app-routes`
 and AGENTS.md's Architecture); the TypeScript inside a component (`writing-typescript`);
-the text a component renders (`localizing-ui`); settling the direction for a new app the
-first time (`starting-an-app`).
+the text a component renders (`localizing-ui`); the states a screen renders and its
+accessible names (`building-screens`); settling the direction for a new app the first
+time (`starting-an-app`).
 
 Nothing here is enforced by a config or a test. A drifted screen passes every gate, so
 the lock below is the check: read it before styling, and compare the rendered screen
@@ -144,11 +145,12 @@ No gate sees what a screen looks like. The agent's part comes first:
 - The diff read against the lock: tokens only, no raw color or arbitrary value, nothing
   the reject list rules out.
 
-The human's part, asked once: start a dev server on a free port
-(`pnpm dev --port <port>`), then ask the owner in a single message to open that URL and
-view the screen in light and in dark, at a mobile width, with reduced motion on, and by
-keyboard alone with the focus ring visible on every control — each compared against the
-lock. Stop the server once they have answered.
+The human's part, asked once: in a single message, give the owner the command that
+starts a dev server on a free port (`pnpm dev --port <port>`) and the URL to open, and
+ask them to view the screen in light and in dark, at a mobile width, with reduced motion
+on, and by keyboard alone with the focus ring visible on every control — each compared
+against the lock. Asking ends your turn, and a server of yours is stopped before it
+does, so the owner starts this one. **REQUIRED:** `running-the-app` for the procedure.
 
 The pull request carries what they saw, item by item, and "not reviewed" for any item
 nobody looked at — a green run never stands in for it.

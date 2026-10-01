@@ -6,9 +6,14 @@
 # Prints:
 #   verdict: PASS | FAIL | TIMEOUT | NO_CHECKS | ERROR
 #   check_source: checks | actions+statuses  (which API the verdict came from)
+#   head_sha: <sha>   the PR head commit the verdict is about, when readable;
+#                     land_pr.sh --head-sha pins the merge to it
 #   mergeable / merge_state / review_decision
 #   on FAIL: the failing check names plus the tail of each failing run's log
-#   ERROR means the check results could not be read at all — never a green
+#   ERROR means the check results could not be read at all, the watch ended
+#   while a check was still unsettled, or the PR head moved during the watch —
+#   never a green. A STALE check (or a `stale` run conclusion) counts as
+#   unsettled: its result is for an outdated state and says nothing either way.
 #
 # Two ways to read a PR's CI, because one of them needs a permission not every
 # token can hold. GitHub's fine-grained PATs have no Checks permission at all —
@@ -61,6 +66,14 @@ HEAD_SHA=""
 report_source() {
   echo "check_source: $CHECK_SOURCE"
   [[ -n "$HEAD_SHA" ]] && echo "head_sha: $HEAD_SHA"
+  return 0
+}
+
+# read_head_sha — the PR's head commit, or nothing when it cannot be read.
+read_head_sha() {
+  local sha
+  sha="$(gh pr view "$PR" --json headRefOid -q '.headRefOid' 2>/dev/null)"
+  [[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]] && printf '%s' "$sha"
   return 0
 }
 
@@ -120,6 +133,10 @@ if [[ "$CHECK_SOURCE" == "checks" ]]; then
     exit 3
   fi
 
+  # The commit the watch is about, read before it starts: compared again after
+  # the final read so a push mid-watch never passes as the commit CI verified.
+  HEAD_SHA="$(read_head_sha)"
+
   # --- wait for checks to settle -------------------------------------------
   # `gh pr checks --watch` blocks until all checks complete; wrap it in a hard
   # timeout so a hung workflow cannot stall the run forever.
@@ -175,16 +192,50 @@ if [[ "$CHECK_SOURCE" == "checks" ]]; then
   fi
 
   # --- final verdict --------------------------------------------------------
-  FAIL_STATES='["FAILURE","TIMED_OUT","CANCELLED","ACTION_REQUIRED","ERROR","STARTUP_FAILURE"]'
-  failed_names="$(gh pr checks "$PR" --json name,state,link \
-    -q "map(select(.state as \$s | $FAIL_STATES | index(\$s)))[] | [.name, .state, .link] | @tsv" \
-    2>/dev/null)" || {
+  # Every row is read, not only the failing ones: `gh pr checks --watch` can
+  # exit early (a network error, an API hiccup) with checks still running, and
+  # a verdict built from failures alone would call those green.
+  all_checks="$(gh pr checks "$PR" --json name,state,link \
+    -q '.[] | [.name, .state, .link] | @tsv' 2>/dev/null)" || {
     echo "verdict: ERROR"
     report_source
     echo "detail: could not read check results for PR #$PR"
     report_pr_state
     exit 4
   }
+  failed_names=""
+  unsettled=""
+  if [[ -n "$all_checks" ]]; then
+    failed_names="$(printf '%s\n' "$all_checks" | awk -F'\t' '
+      $2 == "FAILURE" || $2 == "TIMED_OUT" || $2 == "CANCELLED" ||
+      $2 == "ACTION_REQUIRED" || $2 == "ERROR" || $2 == "STARTUP_FAILURE" { print }')"
+    # Fail closed: a state that is neither a failure nor a known green
+    # completion (PENDING, QUEUED, IN_PROGRESS, or one gh adds later) is
+    # unsettled.
+    unsettled="$(printf '%s\n' "$all_checks" | awk -F'\t' '
+      $2 != "FAILURE" && $2 != "TIMED_OUT" && $2 != "CANCELLED" &&
+      $2 != "ACTION_REQUIRED" && $2 != "ERROR" && $2 != "STARTUP_FAILURE" &&
+      $2 != "SUCCESS" && $2 != "SKIPPED" && $2 != "NEUTRAL" { print }')"
+  fi
+
+  head_after="$(read_head_sha)"
+  if [[ -n "$HEAD_SHA" && -n "$head_after" && "$head_after" != "$HEAD_SHA" ]]; then
+    echo "verdict: ERROR"
+    report_source
+    echo "detail: PR #$PR head moved from $HEAD_SHA to $head_after during the watch — watch again"
+    report_pr_state
+    exit 4
+  fi
+
+  if [[ -z "$failed_names" && -n "$unsettled" ]]; then
+    echo "verdict: ERROR"
+    report_source
+    echo "detail: gh pr checks --watch exited $rc with checks still unsettled"
+    echo "unsettled_checks:"
+    printf '%s\n' "$unsettled" | awk -F'\t' '{print "  - " $1 " [" $2 "] " $3}'
+    report_pr_state
+    exit 4
+  fi
 
   if [[ -z "$failed_names" ]]; then
     echo "verdict: PASS"
@@ -230,8 +281,25 @@ fi
 #   statuses: context     state         target_url
 poll_runs() {
   gh run list --commit "$HEAD_SHA" --limit 100 \
-    --json databaseId,workflowName,status,conclusion,url \
-    -q '.[] | [.databaseId, .workflowName, .status, .conclusion, .url] | @tsv' 2>/dev/null
+    --json databaseId,workflowName,status,conclusion,url,event,headBranch \
+    -q '.[] | [.databaseId, .workflowName, .status, .conclusion, .url, .event, .headBranch] | @tsv' 2>/dev/null \
+    | newest_run_per_workflow
+}
+
+# A workflow with `cancel-in-progress` leaves a `cancelled` run behind every
+# time a newer one starts on the same commit, so only the newest run of each
+# workflow speaks for it. A workflow is its name, trigger event and head
+# branch together: the same workflow run by `push` and by `pull_request` on one
+# commit is two results, and neither supersedes the other. Newest is the
+# highest databaseId: GitHub assigns it in creation order, and a re-run keeps
+# its id, so it cannot be outranked by an older run the way a createdAt tie
+# could.
+newest_run_per_workflow() {
+  awk -F'\t' '
+    { key = $2 "\t" $6 "\t" $7 }
+    !(key in best) || $1 + 0 > id[key] + 0 { best[key] = $0; id[key] = $1 }
+    !(key in seen) { seen[key] = 1; order[++n] = key }
+    END { for (i = 1; i <= n; i++) print best[order[i]] }'
 }
 
 poll_statuses() {
@@ -304,16 +372,29 @@ while :; do
 done
 
 failed_runs=""
+stale_runs=""
 if [[ -n "$runs" ]]; then
-  # "neutral", "skipped" and "stale" are completions that do not fail a PR.
+  # "neutral" and "skipped" are completions that do not fail a PR; "stale" is
+  # unsettled, as in the checks path above.
   failed_runs="$(printf '%s\n' "$runs" | awk -F'\t' '
     $4 == "failure" || $4 == "timed_out" || $4 == "cancelled" ||
     $4 == "action_required" || $4 == "startup_failure" { print }')"
+  stale_runs="$(printf '%s\n' "$runs" | awk -F'\t' '$4 == "stale" { print }')"
 fi
 failed_statuses=""
 if [[ -n "$statuses" ]]; then
   failed_statuses="$(printf '%s\n' "$statuses" | awk -F'\t' '
     $2 == "failure" || $2 == "error" { print }')"
+fi
+
+if [[ -z "$failed_runs" && -z "$failed_statuses" && -n "$stale_runs" ]]; then
+  echo "verdict: ERROR"
+  report_source
+  echo "detail: a run concluded stale, so it verified nothing"
+  echo "unsettled_checks:"
+  print_check_table "$stale_runs" ""
+  report_pr_state
+  exit 4
 fi
 
 if [[ -z "$failed_runs" && -z "$failed_statuses" ]]; then

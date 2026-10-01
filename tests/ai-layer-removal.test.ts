@@ -51,7 +51,6 @@ const REMOVED_PATHS = [
   "src/app/api",
   "src/server/composition.ts",
   "src/server/handlers/ask.ts",
-  "tests/ai-anthropic.test.ts",
   "tests/ai-layer-removal.test.ts",
   "tests/ai-openrouter.test.ts",
   "tests/ai-port.test.ts",
@@ -65,15 +64,15 @@ const REMOVED_PATHS = [
  * Vendor product names that name the AI layer without naming one of its paths.
  *
  * @remarks
- * Both are deliberately specific. `Anthropic` on its own would match
- * `scripts/lib/guard/credentials.mjs`, whose `sk-ant-` rule detects a leaked
+ * Deliberately specific. `OpenRouter` on its own would match
+ * `scripts/lib/guard/credentials.mjs`, whose `sk-or-v1-` rule detects a leaked
  * key and stays whether or not this application calls a model. A name this
  * repository gives one of its own documents is not one of these —
  * `REMOVED_SKILL_NAMES` holds those, so an adapter author reading
- * `adding-an-adapter.md` adds a package and a credential here and nothing
- * else.
+ * `adding-an-adapter.md` adds a credential here (and a package, if the vendor
+ * ships an SDK) and nothing else.
  */
-const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai", "OPENROUTER_API_KEY"];
+const AI_LAYER_TOKENS = ["OPENROUTER_API_KEY"];
 
 /**
  * Names this repository gives the AI layer's own surface, which a document can
@@ -91,7 +90,8 @@ const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai", "OPENROUTER_API_K
  * also match the `LLM_API_KEY` sample line in `tests/guard-rules.test.ts` and
  * `tests/check-staged.test.ts`, where it stands for any secret-shaped
  * assignment and stays whether or not this application calls a model; the two
- * prefixes here name the port's error codes and the fixture recorder instead.
+ * prefixes and two names here name the port's error codes, the fixture
+ * recorder, and the two variables that choose the model and the adapter.
  * `ask`, `port`, `handler` and `adapter` are left out for the same reason —
  * each appears in this repository's prose about something that is not the AI
  * layer, and a needle matching a survivor that is not on the edited lists
@@ -110,6 +110,8 @@ const AI_LAYER_SYMBOLS = [
   "Llm",
   "ERR_LLM_",
   "LLM_RECORD",
+  "LLM_MODEL",
+  "LLM_ADAPTER",
   "outputLanguage",
   "askHandler",
   "/api/ask",
@@ -151,10 +153,9 @@ const REMOVED_SKILL_NAMES = [
  * @remarks
  * The two gate configs and the two boundary tests assert against the AI
  * layer's shape; `src/server/env.ts` is the only module that reads the
- * credential, and `.env.example` is where its name is published.
- * `package.json` declares the vendor SDK, which is the AI layer's one runtime
- * dependency and leaves with it — a manifest entry, not an application module,
- * which is why it can join this half without weakening what it claims.
+ * credential and the model and adapter choices, and `.env.example` is where
+ * their names are published. The layer has no runtime dependency of its own —
+ * the provider adapter speaks plain `fetch` — so `package.json` is not here.
  * `tests/server-smoke.test.ts` asks the running application for every route it
  * publishes, `POST /api/ask` among them, so the removal deletes those cases
  * the same way it deletes the route; it is a test of the composed application,
@@ -171,7 +172,6 @@ const REMOVED_SKILL_NAMES = [
 const EDITED_CODE_FILES = [
   ".env.example",
   "eslint.config.mjs",
-  "package.json",
   "src/server/env.ts",
   "tests/boundaries.test.ts",
   "tests/proxy.test.ts",

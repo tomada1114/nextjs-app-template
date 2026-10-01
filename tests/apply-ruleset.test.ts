@@ -14,8 +14,8 @@ import {
   loadRulesets,
   main,
   resolveRepo,
-  spawnGh,
 } from "../scripts/apply-ruleset.mjs";
+import { spawnGh } from "../scripts/lib/gh.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 

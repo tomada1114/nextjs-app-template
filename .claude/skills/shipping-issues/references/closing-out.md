@@ -1,20 +1,53 @@
 # Closing out: cleanup and report
 
-Read at step 9 (cleanup) and step 10 (report) — everything past the ordering and safety
-rules the SKILL.md body already states inline.
+Read at step 8c (re-queueing the run's own output), step 9 (cleanup) and step 10
+(report) — everything past the ordering and safety rules the SKILL.md body already
+states inline.
 
 ## Table of Contents
 
+- [Re-queueing the run's own output](#re-queueing-the-runs-own-output)
 - [Cleanup scope](#cleanup-scope)
 - [Approval-gated commands](#approval-gated-commands)
 - [What the report must not omit](#what-the-report-must-not-omit)
 
+## Re-queueing the run's own output
+
+Before cleanup, re-plan (`plan.py --mode <same> --refresh --allow-existing-worktrees`)
+and keep going through **what this run produced**: the follow-ups filed at step 8 and
+the issues step 8b unblocked. Each runs the same steps 3–8, one PR at a time. With an
+explicit issue number, the re-plan only ever looks at that number and prints
+`select: none` — so re-plan each candidate by its own number instead
+(`plan.py --mode <m> --refresh`). Take one on only when all three hold:
+
+1. **Depth 1** — it came from _this_ run's own work. A follow-up filed while shipping a
+   follow-up is recorded and left for the next run.
+2. **Shippable on the ordinary [readiness gate](dependency-triage.md#readiness-gate)**;
+   a `DEFERRED` design is not.
+3. **[Budget left](cost-discipline.md#run-budget).** Out of budget, or a design decision
+   still in flight once everything else is done → stop and name it at step 10 rather
+   than waiting.
+
+In `all` mode these join the existing queue with no privilege over the backlog's own
+issues. With no argument or an explicit number, this step is the _only_ thing that
+extends the run past its first merge.
+
 ## Cleanup scope
 
 ```bash
-.agents/skills/shipping-issues/scripts/cleanup_run.sh [--remote] [--dry-run] \
-    [--worktree-root <runstate>/worktrees] [--merged-only] [--force]
+.agents/skills/shipping-issues/scripts/cleanup_run.sh --branch <name> [--branch <name> ...] \
+    [--remote] [--dry-run] [--worktree-root <runstate>/worktrees] [--merged-only] [--force]
+.agents/skills/shipping-issues/scripts/preflight.sh \
+    --profile-cache <runstate>/repo-profile.json --set-worktree-viable <yes|no>
 ```
+
+Step 7 already left `HEAD` on the up-to-date default branch, which the branch deletion
+requires — it refuses to delete whatever is currently checked out, in the main checkout
+_or_ in a surviving worktree. Pass every branch this run created as `--branch <name>`.
+Without it the script deletes every merged-PR branch in the repository — other people's
+included — which is not this run's to decide. Pass `--worktree-root` only when this run
+created worktrees. The `preflight.sh` call runs only when this run actually probed
+worktree viability; it persists the answer so the next run's plan skips the probe.
 
 All deletion goes through `cleanup_run.sh`, in **one batch after the last merge** — not
 once per batch. Never run `rm`, `git worktree remove`, or `git branch -D` ad hoc in the
@@ -59,13 +92,12 @@ Record the cleanup outcome (`--event cleanup ...`) and report anything it left
 
 ## Approval-gated commands
 
-The user's permission settings put some commands behind an approval prompt
-(`permissions.ask` in `settings.json` — in practice the `rm -rf` family, and sometimes
-`wget` or a publish command). This skill runs unattended, so every such prompt raised
-mid-run parks the whole run until someone answers it, and several of them turn an
-unattended run into one the user has to sit through. The rule is not "never need
-approval" — it is **ask once, at the end, for everything that could wait**. Check each
-such command against three questions, in order:
+Some commands are ones your host's permission settings gate behind an approval prompt —
+in practice the `rm -rf` family, and sometimes `wget` or a publish command. This skill
+runs unattended, so every such prompt raised mid-run parks the whole run until someone
+answers it, and several of them turn an unattended run into one the user has to sit
+through. The rule is not "never need approval" — it is **ask once, at the end, for
+everything that could wait**. Check each such command against three questions, in order:
 
 1. **Is there an equivalent that raises no prompt?** Take it. Above all: **`mv` into the
    holding area instead of deleting.** A move needs no approval, is instant on the same
@@ -80,12 +112,11 @@ such command against three questions, in order:
 3. **Does the issue's goal require it now?** Then it may run mid-run — an issue whose
    acceptance criterion _is_ removing an existing directory, say. Even then, reach for
    step 1 first: moving the directory into the holding area achieves the same
-   working-tree result with no prompt and a copy kept. For tracked content,
-   `git rm -r <dir>` is equally prompt-free and the commit history is the backup; `mv`
-   is for what git does not hold (untracked or gitignored content, generated trees,
-   local data). Only a case neither covers — the content is too large to keep, or lives
-   where a move cannot reach — takes the prompt mid-run, and the step 10 report says
-   why.
+   working-tree result with no prompt and a copy kept. For tracked content, follow the
+   move with `git add -A -- <dir>` to stage the deletion — not `git rm -r`, which is not
+   on every allowlist and has stalled a background agent on a prompt nobody saw. Only a
+   case the move does not cover — the content is too large to keep, or lives where a
+   move cannot reach — takes the prompt mid-run, and the step 10 report says why.
 
 **The holding area** is `<runstate>/holding/<n>/` — `<n>` the issue being worked, `run`
 for anything not tied to one. It sits outside every checkout, so a moved-out directory
@@ -100,19 +131,20 @@ untracked work out of a dirty tree; that is a
 [stop condition](../SKILL.md#stop-conditions).
 
 Sub-agents follow the same rule and are handed the path as `{holding_dir}`
-([delegation-templates.md](delegation-templates.md#standing-prohibitions-for-every-spawn));
+([delegation-templates.md](delegation-templates.md#standing-prohibitions-for-every-brief));
 their reports name what they moved there.
 
 ### The final confirmation
 
-After `cleanup_run.sh` and after the step 10 report text, as the run's last tool call:
-one command covering every holding directory this run filled plus anything in
-`deferred.md` — e.g. `rm -rf <runstate>/holding/42 <runstate>/holding/57` — so the user
-answers one prompt, not one per issue. List exactly what it covers in the report just
-above it (each held path with its original location, each deferred command with its
-reason), so the user approves something they can see. Delete only this run's holding
-directories, never `<runstate>/holding/` wholesale — an earlier run's holdings are the
-user's to decide on.
+If `<runstate>/holding/` or `<runstate>/deferred.md` holds anything from this run, it is
+offered here — after `cleanup_run.sh` and after the step 10 report text, so the report
+is already on screen while the prompt waits, as the run's last tool call: one command
+covering every holding directory this run filled plus anything in `deferred.md` — e.g.
+`rm -rf <runstate>/holding/42 <runstate>/holding/57` — so the user answers one prompt,
+not one per issue. List exactly what it covers in the report just above it (each held
+path with its original location, each deferred command with its reason), so the user
+approves something they can see. Delete only this run's holding directories, never
+`<runstate>/holding/` wholesale — an earlier run's holdings are the user's to decide on.
 
 Declined, or the host refuses the call → leave everything where it is. The report
 already names the paths; that is the complete outcome, not a failure to retry. Nothing
@@ -128,10 +160,11 @@ not a stylistic choice.
 
 - **Any issue left open behind a merged PR.** This is the failure mode the skill exists
   to prevent; it can never be implied, only stated.
-- **How each merged PR was reviewed** — the local `/code-review` pass (effort used,
-  findings, what was fixed vs. rejected) or the fallback agent — and any `REJECTED`
+- **How each merged PR was reviewed** — by whom (an `architect` review, an inline
+  review, a self-review of a diff this session wrote, or on Claude Code `/code-review`
+  with its effort), the findings, what was fixed vs. rejected — and any `REJECTED`
   finding this session did not resolve. A run that shipped unreviewed must not read like
-  one that passed. Never present re-reading your own diff as a review.
+  one that passed. Never present re-reading your own diff as an independent review.
 - **Acceptance criteria that shipped `not-met`, and why that was accepted.** If none
   did, say the criteria were met. If the issue carried none, say that — rather than
   implying it passed a check it never had.

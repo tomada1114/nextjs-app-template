@@ -22,8 +22,11 @@ checked.
 
 A template for a Next.js application on the App Router, written in ESM-only TypeScript:
 a locale-prefixed page tree styled with Tailwind v4 and shadcn/ui, one JSON endpoint,
-and one language-model call behind a port that an adapter implements. It answers with a
-fake adapter out of the box, so `pnpm dev` works before any credential exists, and the
+and one language-model call behind a port that an adapter implements. It answers through
+a hosted provider's adapter by default, with the model chosen by `LLM_MODEL`, so the
+endpoint needs that provider's key and an `API_ACCESS_KEY` before it will load;
+`LLM_ADAPTER=fake` is the explicit, never-inferred switch to a fake adapter that needs
+neither and bills nothing — what the smoke test and a keyless `pnpm dev` run on. The
 whole AI layer is built to come out in one piece for a project that does not want one.
 
 It is private: nothing here is packed, published, or consumed as a tarball, so there is
@@ -44,10 +47,13 @@ taste to get a screen done.
 
 ## Quick reference
 
+The scripts are grouped by how they may be run: finite ones an agent runs to check its
+own work, servers that never end on their own, and the ones that write to GitHub.
+
+### Checks an agent runs
+
 ```sh
-pnpm dev           # start the Next.js development server on http://localhost:3000
 pnpm build         # production build; also type-checks the App Router entry points
-pnpm start         # serve the production build from `pnpm build`
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
 pnpm check:source  # the same gate plus the build and skill script tests, with coverage enforced
 pnpm fix           # ESLint autofix, then Prettier
@@ -57,8 +63,6 @@ pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts 
 pnpm test:skills   # the shipping-issues skill's Python script tests (needs python3; ~2 min)
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
-pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
-pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
@@ -83,6 +87,37 @@ check of its own; they all call these scripts.
 Development and source checks stay on Node 24, stated once in `.node-version` and once
 in `devEngines.runtime`. Never relax `devEngines.runtime`'s `onFail: error`, and never
 reach for `--config.runtime-on-fail=ignore`: nothing here runs on any other Node.
+
+### Long-running — run with the rules below
+
+```sh
+pnpm dev           # start the Next.js development server on http://localhost:3000
+pnpm start         # serve the production build from `pnpm build`
+```
+
+### Writes to GitHub
+
+```sh
+pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
+```
+
+These are listed apart because they write to the repository on GitHub, not because an
+agent may never run them: an agent may run `pnpm repo:labels` when its task needs the
+label set. `pnpm repo:ruleset` needs a token with admin rights on the repository and
+stays a human's step.
+
+### Running a server without taking over the developer's
+
+- To verify something only a running server shows, run `pnpm build && pnpm test:smoke`
+  first: the smoke suite starts `next start` on a free port and stops it itself. Start a
+  server yourself only when that cannot show it.
+- Start that server on a free port (`pnpm dev --port <free>` or
+  `pnpm start --port <free>`), verify against it, and always stop it before your turn
+  ends.
+- Never stop, restart or bind the developer's server on :3000.
+- Run no `open`, `gh … --web` or any other command that opens a browser window or takes
+  focus during a routine check; give the human the URL instead.
 
 ## Validating a change
 
@@ -144,7 +179,7 @@ three seams:
 - **The port.** `src/ai/port.ts` declares `LlmPort`, the vendor-neutral interface every
   model call goes through, and `src/ai/index.ts` is the AI layer's whole surface — the
   port, its error vocabulary, and whichever adapter that file chooses to publish.
-  `src/ai/adapters/` is private to the layer, so swapping the fake for a provider, or
+  `src/ai/adapters/` is private to the layer, so swapping the provider behind it, or
   deleting the layer outright, is a bounded edit; `tests/ai-layer-removal.test.ts` is
   what keeps the deletion bounded rather than trusting that it stays so.
 - **The Web-standard handler.** `src/server/handlers/ask.ts` exports
@@ -211,6 +246,7 @@ names its own boundary with its neighbours.
 | `integrating-llm`       | the `LlmPort`, an adapter under `src/ai/`, or a fixture under `tests/fixtures/llm/`                                                 |
 | `writing-typescript`    | a `.ts` module or a `.tsx` component under `src/`                                                                                   |
 | `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                                                                           |
+| `tdd`                   | the order of work on a behavior change under `src/` — the failing test first, then the code, then the refactor                      |
 | `writing-tests`         | the body of a test under `tests/`                                                                                                   |
 | `placing-tests`         | a new test file, a vitest project, or a coverage floor                                                                              |
 | `type-testing`          | an `expectTypeOf` assertion or a `@ts-expect-error` inside a test                                                                   |
@@ -221,8 +257,12 @@ names its own boundary with its neighbours.
 | `merge-dependabot`      | landing open Dependabot or Renovate pull requests                                                                                   |
 | `updating-docs`         | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, or whether a change owes a doc at all                                                  |
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
+| `building-screens`      | the states a screen renders (loading, failed, not found, empty, a failed action) and its accessible names, keyboard reach and focus |
 | `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
+| `running-the-app`       | evidence from a running server that no test asserts: a free port, `curl`, the next-devtools MCP server, asking a human to look      |
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
+| `create-pr`             | opening a pull request for the current branch, or updating the one already open for it, outside `shipping-issues`                   |
+| `smart-commit`          | grouping changes into commits and recovering when the pre-commit hook refuses one; follow it over a user-level skill of that name   |
 | `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
 ## Sub-agents
@@ -301,11 +341,17 @@ Stop and ask.
 
 ### Standing exceptions
 
-Invoking a skill that lists the remote writes it makes is the sign-off for exactly those
-writes, for that invocation only. `shipping-issues` is the case in this repository: the
-writes its `SKILL.md` lists — priority and status labels, pushing its own branches,
-creating the pull request, merging it once CI passes, filing and labelling follow-up
-issues and the comments it posts, and deleting the branches it created.
+Invoking a skill that lists the commits or remote writes it makes is the sign-off for
+exactly those, for that invocation only. Three skills in this repository are such cases.
+`shipping-issues`: the writes its `SKILL.md` lists — priority and status labels, syncing
+label definitions from `.github/labels.yml` with `pnpm repo:labels`, pushing its own
+branches, creating the pull request, merging it once CI passes, filing and labelling
+follow-up issues and the comments it posts, and deleting the branches it created.
+`create-pr`: pushing the current branch, `gh pr create` for it, and `gh pr edit` on its
+own open pull request — never a force-push and never a merge. `smart-commit`: the
+commits it makes on the current branch, and pushing that branch to `origin` only when
+the request asked for a push — never a force-push, never another branch, and never the
+default branch.
 
 One request is a standing exception too: the owner explicitly asking for an issue ("file
 an issue for this") is the sign-off for the `gh issue create` of each issue that request
@@ -438,7 +484,9 @@ starts with none of it, and its admin turns each on once:
   labelling workflow only applies a label that already exists.
 
 Each item is a write to the repository's settings, so it needs the owner's sign-off like
-any other remote write; an agent proposes it and does not run it.
+any other remote write; an agent proposes it and does not run it. The label set is the
+one exception: as the Quick reference's "Writes to GitHub" says, an agent may run
+`pnpm repo:labels` when its task needs the labels.
 
 ## Conventions
 
