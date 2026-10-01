@@ -225,6 +225,35 @@ names its own boundary with its neighbours.
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
+## Sub-agents
+
+A skill runs every step inline by default. On a host that can hand a step to a named
+sub-agent, a step marked for a tier may go to one of three:
+
+| Tier        | Effort | Takes                                                                                                                                |
+| ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `executor`  | low    | a settled spec with a clear pass/fail: implementing it, adding tests, getting a check green, bulk edits, research that only collects |
+| `architect` | high   | design judgment, review and bug finding, multi-file work, synthesis, a spec that still has holes                                     |
+| `worker`    | medium | single-shot, tool-free writing or checking from a complete brief                                                                     |
+
+Each tier is defined once per host, and both hosts must describe the same three:
+`.claude/agents/<tier>.md` for Claude Code, which pins a model alias (`opus` for
+`executor` and `architect`, `sonnet` for `worker` — never a dated model ID, which would
+go stale) and an `effort`; and `.codex/agents/<tier>.toml` for Codex CLI, which sets
+only `model_reasoning_effort` and omits `model`, so the session's model is inherited —
+Codex CLI runs a different vendor's models, where the Claude Code choice cannot be
+mirrored. The instructions themselves are the same text in both files.
+`tests/agent-tiers.test.ts` holds the two directories to those names, efforts and
+instructions.
+
+- Neither file declares a permission — no `sandbox_mode`, no tool list. A sub-agent's
+  limits are the host's and the spawning session's, not something a tier widens.
+- Codex CLI loads a project's `.codex/` layers only for a trusted project; in an
+  untrusted checkout the three definitions are absent, and a step marked for a tier runs
+  inline.
+- Codex CLI ships a built-in `worker`; `.codex/agents/worker.toml` replaces it inside
+  this repository. That is intended.
+
 ## Security and human approval
 
 - **Commit, push, and pull request need a human's sign-off** — given per request, or by
@@ -343,13 +372,17 @@ instructions in this file, not as blocks — reaching for either spelling is the
 being ruled out, not the spelling that happens to be caught.
 
 Some changes reach a pull request, or `main` itself, without passing any local gate at
-all: an edit made through GitHub's web UI or API, which runs no hook; and a commit made
-by another tool or from another clone where the hook was never installed or was skipped.
-Only CI and the `main` ruleset stand in their way, and CI does not cover the whole hook:
-no workflow re-runs the staged secret guard (`scripts/check-staged.mjs`) on a pull
-request. A secret in such a commit is found only after the fact, by
-`security-audit.yml`'s weekly `secret-scan` job over the full history — or at push time
-by GitHub's own secret scanning and push protection, where the repository has them on.
+all: an edit made through GitHub's web UI or API, which runs no hook; a commit made by
+another tool or from another clone where the hook was never installed or was skipped;
+and a conflict resolution concluded with `git rebase --continue`, which commits through
+git's sequencer without running pre-commit at all — unlike a plain `git commit` at the
+rebase stop or `git merge --continue`, where `check:staged` and `agents:check` still
+run. Only CI and the `main` ruleset stand in the way of these changes, and CI does not
+cover the whole hook: no workflow re-runs the staged secret guard
+(`scripts/check-staged.mjs`) on a pull request. A secret in such a commit is found only
+after the fact, by `security-audit.yml`'s weekly `secret-scan` job over the full history
+— or at push time by GitHub's own secret scanning and push protection, where the
+repository has them on.
 
 `scripts/lib/guard/` is the rule engine `scripts/check-staged.mjs` (the pre-commit
 layer) uses to decide whether a staged path or its content is secret-shaped. That is the

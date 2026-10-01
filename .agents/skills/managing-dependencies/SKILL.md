@@ -2,12 +2,13 @@
 name: managing-dependencies
 description: >
   Covers whether a package may be added to this repository and what happens at install
-  time: the review record a runtime dependency needs, verifying a change before it
-  lands, SemVer range versus exact pin, the minimumReleaseAge cooldown, the supply-chain
-  settings in pnpm-workspace.yaml, the typescript version ceiling, and the manual pin
-  for .mcp.json's MCP servers. Use when adding, bumping, or removing a package by hand,
-  editing package.json's dependencies or .mcp.json's MCP server version, an install
-  fails on a peer range or lifecycle script, or someone proposes raising typescript.
+  time: the sign-off and review record a new dependency needs, verifying a change before
+  it lands, SemVer range versus exact pin, the minimumReleaseAge cooldown, the
+  supply-chain settings in pnpm-workspace.yaml, the typescript version ceiling, and the
+  manual pin for .mcp.json's MCP servers. Use when adding, bumping, or removing a
+  package by hand, editing package.json's dependencies or .mcp.json's MCP server
+  version, an install fails on a peer range or lifecycle script, or someone proposes
+  raising typescript.
 ---
 
 # Managing Dependencies
@@ -19,11 +20,22 @@ This repository is a private application. Nothing here is packed, published, or 
 as a tarball, so a dependency is judged by what it costs to install and to run — never
 by what it would do to a published surface.
 
-## The review record a new runtime dependency needs
+## A dependency is a sign-off change
 
-Adding a runtime dependency is a permanent supply-chain commitment, so before adding
-one, record all of the following in the PR that adds it. Missing one item is not a
-detail to fill in later — it means the review has not actually happened yet.
+Any new package — runtime or dev, a direct `package.json` entry, or a new MCP server in
+`.mcp.json` — needs the review record below and the owner's sign-off **before**
+`pnpm add` runs or the `.mcp.json` entry is written. An agent writes the record,
+proposes the change, and stops: nothing is installed or committed until the owner says
+yes, and a decline ends the change. No standing exception covers a new dependency
+(`AGENTS.md` › "Standing exceptions"). Removing a package or bumping one is not a new
+package: "Removing one" and "Range vs. pin" below cover those.
+
+## The review record a new dependency needs
+
+Adding a dependency is a permanent supply-chain commitment, so the record is what the
+proposal above carries, and then what the PR that adds the package carries. Missing one
+item is not a detail to fill in later — it means the review has not actually happened
+yet, so the proposal is not ready to send.
 
 - Why a small hand-written helper or a Node builtin cannot replace it. `node:util`'s
   `parseArgs` covers subcommands (`allowPositionals`) and rejects unknown flags
@@ -48,6 +60,12 @@ A runtime entry is the expensive one: `dependencies` is what ships to the runnin
 application and what the weekly `security-audit.yml` job audits with
 `pnpm audit --prod`. A build- or test-only package belongs in `devDependencies`, where
 an advisory is handled by a bot PR instead of paging whoever reads that schedule.
+
+## Removing one
+
+Removing is routine and needs no sign-off: `pnpm remove <package>` drops the entry and
+regenerates `pnpm-lock.yaml`, and the change is verified by the steps below like any
+other.
 
 ## Verifying a dependency change before it lands
 
@@ -105,6 +123,13 @@ ships, not noise.
   with `pnpm install --lockfile-only` when you want the lockfile without the install.
 - Dev dependencies are kept current by bot PRs plus the lockfile, not by hand.
   **REQUIRED:** `merge-dependabot` to land one.
+
+## Families move together
+
+Some packages are released to be used at matching versions: `next` with
+`eslint-config-next`; and `react`, `react-dom`, `@types/react`, `@types/react-dom`. Bump
+a family in one change. A bump that would split one is completed — the rest of the
+family raised to match — or held, never landed half-way.
 
 ## The release-age cooldown
 
