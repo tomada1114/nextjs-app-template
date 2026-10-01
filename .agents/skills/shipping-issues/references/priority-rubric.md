@@ -45,6 +45,15 @@ never force-relabeled: `p0`/`critical`/`urgent`/`blocker` → P0, `priority: hig
 `priority: medium` → P2, `priority: low`/`nice to have` → P3. `apply_priority_labels.py`
 writes the canonical spelling and strips the older one when it re-tiers an issue.
 
+The scripts apply labels and never create a label definition — `.github/labels.yml`
+declares them and `pnpm repo:labels` creates them. A label a call would apply that the
+repository lacks stops the call before its first write with `verdict: MISSING_LABELS`
+and exit 4. Run `pnpm repo:labels` (one of the writes invoking this skill signs off),
+then re-run the same call once; a second exit 4 means the label is not in
+`.github/labels.yml` — report it and rank from the `~P<n>` suggestions.
+`apply_priority_labels.py --check-labels` asks the same question for the four tier
+labels without writing anything.
+
 Tier and design-readiness are orthogonal: `blocked: design` says the approach isn't
 settled, not how urgent the issue is once it is. Tier an issue even while it carries
 `blocked: design`, so it ranks correctly the instant the block is cleared — see

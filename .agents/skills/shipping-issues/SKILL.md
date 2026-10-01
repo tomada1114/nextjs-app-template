@@ -14,11 +14,12 @@ description: >-
 and nothing was deleted or weakened to get there.
 
 **Invoking this skill is the sign-off for exactly the remote writes it lists, for this
-invocation, up to and including the merge** — priority and status labels, pushing its
-own branches, creating the PR, merging it, filing and labelling follow-up issues, step
-8b's design comments, and deleting its own branches at cleanup. Anything outside that
-list stops and asks: a force-push, a hook bypass, a weakened gate, or a new dependency
-(proposed, then the run waits for sign-off). Green CI is the go-ahead: as soon as
+invocation, up to and including the merge** — priority and status labels, syncing label
+definitions from `.github/labels.yml` with `pnpm repo:labels`, pushing its own branches,
+creating the PR, merging it, filing and labelling follow-up issues, step 8b's design
+comments, and deleting its own branches at cleanup. Anything outside that list stops and
+asks: a force-push, a hook bypass, a weakened gate, or a new dependency (proposed, then
+the run waits for sign-off). Green CI is the go-ahead: as soon as
 [step 6](#6-ci-to-green) reports `PASS`, the merge happens in the same turn, with no
 "shall I merge?" and no summary-then-wait. Re-confirming per issue defeats `all` mode
 entirely. The only pauses are the [Stop conditions](#stop-conditions) and two narrow

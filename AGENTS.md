@@ -335,9 +335,10 @@ Stop and ask.
 
 Invoking a skill that lists the remote writes it makes is the sign-off for exactly those
 writes, for that invocation only. `shipping-issues` is the case in this repository: the
-writes its `SKILL.md` lists — priority and status labels, pushing its own branches,
-creating the pull request, merging it once CI passes, filing and labelling follow-up
-issues and the comments it posts, and deleting the branches it created.
+writes its `SKILL.md` lists — priority and status labels, syncing label definitions from
+`.github/labels.yml` with `pnpm repo:labels`, pushing its own branches, creating the
+pull request, merging it once CI passes, filing and labelling follow-up issues and the
+comments it posts, and deleting the branches it created.
 
 One request is a standing exception too: the owner explicitly asking for an issue ("file
 an issue for this") is the sign-off for the `gh issue create` of each issue that request
