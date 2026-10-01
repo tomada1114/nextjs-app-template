@@ -2,21 +2,38 @@
 
 ## Table of Contents
 
-- [Priority research and labeling](#priority-research-and-labeling-sonnet)
+- [Inline or by tier](#inline-or-by-tier)
+- [Standing prohibitions for every brief](#standing-prohibitions-for-every-brief)
+- [Priority research and labeling](#priority-research-and-labeling-executor)
 - [Implementation](#implementation-step-3)
-- [Review fix, parallel mode](#review-fix-parallel-mode)
-- [Review fallback](#review-fallback)
+- [Review](#review-step-4)
+- [Review fix](#review-fix-step-4)
 - [CI repair](#ci-repair-step-6-only-on-fail)
 - [Design decision](#design-decision-step-8b)
 
-Every sub-agent this skill spawns is a fully self-contained prompt: it cannot ask a
-question back, so a hole in it returns as a decision made alone rather than as a
-question. Leave nothing merge-gating unguessed. The parent — this session — owns every
-GitHub **write** (opening the PR, `link_check.sh`, `ci_watch.sh`, `land_pr.sh`, labels,
-comments) and every merge-gating judgment; a sub-agent only touches code inside the
+Every brief this skill hands off is a fully self-contained prompt: whoever runs it
+cannot ask a question back, so a hole in it returns as a decision made alone rather than
+as a question. Leave nothing merge-gating unguessed. The parent — this session — owns
+every GitHub **write** (opening the PR, `link_check.sh`, `ci_watch.sh`, `land_pr.sh`,
+labels, comments) and every merge-gating judgment; a brief only touches code inside the
 checkout.
 
-**Reading its own issue is the one GitHub call a sub-agent makes.** Pasting a full issue
+## Inline or by tier
+
+Every brief below runs **inline by default**: this session fills it and follows it
+itself, in the same `{workdir}`, under the same prohibitions and the same return
+contract. On a host with named sub-agents — the tiers AGENTS.md's "Sub-agents" defines —
+a brief may instead be handed to the tier its section names. Spawn by the tier's
+**name**, never by a bare model name or a per-spawn `model` parameter: the tier carries
+its effort with it, and a bare model runs at whatever effort the session has. Which tier
+takes which brief, and why:
+[cost-discipline.md#tier-assignment](cost-discipline.md#tier-assignment).
+
+A patch round or a repeat CI repair on the same tier **continues the same agent** where
+the host allows it; spawn a fresh one only on a tier change — a fresh spawn re-reads the
+whole repository the first run already learned.
+
+**Reading its own issue is the one GitHub call a brief makes.** Pasting a full issue
 body into the prompt means the parent must first pull it into _this_ context — the exact
 cost `cost-discipline.md` exists to avoid, paid once per issue and again on every resume
 run. So every template below that reads an issue hands over its _number_ and lets the
@@ -31,19 +48,19 @@ merge-gating judgment.
 
 `{workdir}` below is the one thing every template must get right: the repo's main
 checkout in serial mode, that issue's worktree (`<runstate>/worktrees/<n>`) in parallel
-mode. **Two sub-agents never share a working directory** — that invariant is what makes
+mode. **Two writers never share a working directory** — that invariant is what makes
 parallel mode safe, and filling `{workdir}` with the main checkout for two concurrent
 runs breaks it silently rather than loudly. `{holding_dir}` is `<runstate>/holding/<n>/`
-for that issue — create it (`mkdir -p`) before spawning. The read-only templates are the
-exception, and only because they write nothing: the review fallback and the design agent
-read a checkout others are working in without disturbing it. Everything downstream of
-implementation still runs one PR at a time in the parent.
+for that issue — create it (`mkdir -p`) before handing a brief off. The read-only
+templates are the exception, and only because they write nothing: the review and the
+design brief read a checkout others are working in without disturbing it. Everything
+downstream of implementation still runs one PR at a time in the parent.
 
-## Standing prohibitions for every spawn
+## Standing prohibitions for every brief
 
 Two things stay off-limits in every template below unless it says otherwise. This is the
-full statement; each per-agent file restates it compactly in its own prompt text, so the
-prompt stays self-contained when pasted on its own — a spawned sub-agent cannot follow a
+full statement; each brief restates it compactly in its own prompt text, so the prompt
+stays self-contained when pasted on its own — a spawned sub-agent cannot follow a
 cross-reference back to this file.
 
 - **No GitHub write.** No `gh pr`, no `gh issue edit/comment/close`, no label change, no
@@ -51,7 +68,7 @@ cross-reference back to this file.
   every label and comment — a sub-agent only reads, and only its own issue.
 - **No deletion.** No `rm`, no branch deletion, no worktree removal — including a
   scratch fixture or throwaway repository created under a temp directory: leave it
-  exactly where it is and name it in the report. `rm` triggers an approval prompt that
+  exactly where it is and name it in the report. `rm` raises an approval prompt that
   stalls the run, and a disposable temp directory costs nothing to keep. Revert a probe
   inside the checkout with `git checkout --`, or move it out of the way with `mv` into
   `{holding_dir}` (`<runstate>/holding/<n>/`, keeping its relative path). When the issue
@@ -60,81 +77,101 @@ cross-reference back to this file.
   raises an approval prompt is not run: name it under `UNRESOLVED` and the parent defers
   it ([closing-out.md#approval-gated-commands](closing-out.md#approval-gated-commands)).
 
-The design agent is the one named exception to the first rule: it writes two specific
+The design brief is the one named exception to the first rule: it writes two specific
 things to GitHub (a design comment, a label clear) as its whole purpose, spelled out in
 its own template.
 
-## Priority research and labeling (`sonnet`)
+## Priority research and labeling (`executor`)
 
-Spawned only when more than ~3 open issues still lack a `priority:` label, or when the
-top rows of a labeled backlog are close enough that the pick needs evidence. On a fully
-labeled backlog, the plan's `select:` line is the answer and no spawn is warranted.
+Used only when more than ~3 open issues still lack a `priority:` label, or when the top
+rows of a labeled backlog are close enough that the pick needs evidence. On a fully
+labeled backlog, the plan's `select:` line is the answer and no research is warranted.
 
-The worker writes the labels itself — that is the point of the handoff. What comes back
+The agent writes the labels itself — that is the point of the handoff. What comes back
 is the pick with its evidence, the order behind it, and the blocked/unclear lists; the
 issue prose and the raw digest table never cross back. In `all` mode it also returns
 proposed parallel-safe groups — a proposal, not a decision:
 [step 2c](../SKILL.md#2c-confirm-the-proposed-batch) still has to clear the repository's
 own viability gate before any of it runs.
 
-Prompt body: [references/agents/priority-research.md](agents/priority-research.md). Fill
-its `{brace}` placeholders from the current repo and run count, then spawn a `sonnet`
-sub-agent with it.
+Prompt body: [agent-priority-research.md](agent-priority-research.md). Fill its
+`{brace}` placeholders from the current repo and run count.
 
 ## Implementation (step 3)
 
-Spawn one sub-agent per issue. **`sonnet` is the default; `opus` when the issue is
+One brief per issue. **`executor` is the default; `architect` when the issue is
 foundational** — architecture or a skeleton, an interface/port/schema, or a skill,
 instruction file, or gate whose shape the rest of the backlog copies. The test is blast
 radius, not difficulty:
-[cost-discipline.md#the-foundation-exception-opus-for-what-the-backlog-builds-on](cost-discipline.md#the-foundation-exception-opus-for-what-the-backlog-builds-on).
-A resume/patch run stays on the model its first run used. In parallel mode issue every
-prompt in the batch **in one message** — spawned one after another they run one after
-another, which is the whole thing this mode exists to avoid.
+[cost-discipline.md#the-foundation-exception-architect-for-what-the-backlog-builds-on](cost-discipline.md#the-foundation-exception-architect-for-what-the-backlog-builds-on).
+A resume/patch run stays on the tier its first run used. In parallel mode hand off every
+brief in the batch **before waiting on any** — in one message where the host batches
+spawns; started one after another they run one after another, which is the whole thing
+this mode exists to avoid.
 
-Prompt body: [references/agents/implementation.md](agents/implementation.md).
+Prompt body: [agent-implementation.md](agent-implementation.md).
 
-## Review fix, parallel mode
+## Review (step 4)
 
-Only for findings this session has already read and accepted, in parallel mode at
-step 4. `/code-review --fix` writes to the session's own working tree, which in parallel
-mode is the main checkout sitting on the default branch — the wrong tree — so the review
-runs read-only and the writing is delegated here instead. See
-[SKILL.md step 4](../SKILL.md#4-review-the-branch). Zero accepted findings → no spawn.
-Spawn one **`sonnet`** sub-agent per branch that has any.
+The standing review: one independent, **read-only** pass against the branch, in a
+context that did not write it — **`architect`** where tiers exist, otherwise followed
+inline. See [implement-and-review.md#review](implement-and-review.md#review), which also
+holds the optional Claude Code path.
 
-Prompt body: [references/agents/review-fix.md](agents/review-fix.md).
+Prompt body: [agent-review.md](agent-review.md).
 
-## Review fallback
+## Review fix (step 4)
 
-Only when this session's host will not let it launch `/code-review` directly — see
-[SKILL.md step 4](../SKILL.md#4-review-the-branch). Spawn one independent, **read-only**
-`opus` sub-agent against the branch.
+Only for findings this session has already read and accepted. Zero accepted findings →
+nothing to run. One brief per branch that has any, handed to **`executor`** or followed
+inline, always inside that branch's own `{workdir}` — in parallel mode never the main
+checkout, which sits on the default branch.
 
-Prompt body: [references/agents/review-fallback.md](agents/review-fallback.md).
+Prompt body: [agent-review-fix.md](agent-review-fix.md).
 
 ## CI repair (step 6, only on `FAIL`)
 
 Only after `ci_watch.sh` returns `FAIL`. Write the failing log to a file **outside** the
 working directory first (`<runstate>/ci/<pr>.log`) — a stray untracked file inside it
 makes cleanup skip the directory as dirty, and a commit convention that stages
-everything would land the log in the change. Spawn a **`sonnet`** sub-agent (escalate to
-**`opus`** once the same failure has survived two attempts in a row), one PR at a time.
+everything would land the log in the change. **`executor`** for attempts 1–2 (the second
+continues the first agent where the host allows); **`architect`** from attempt 3, once
+the same failure has survived two attempts in a row. One PR at a time.
 
-Prompt body: [references/agents/ci-repair.md](agents/ci-repair.md).
+Prompt body: [agent-ci-repair.md](agent-ci-repair.md).
 
 ## Design decision (step 8b)
 
-Spawned at [SKILL.md step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background),
-one **`opus`** sub-agent per design-blocked issue, **in the background** — this session
-spawns a round in one message and goes straight back to shipping.
+Used at [SKILL.md step 8b](../SKILL.md#8b-unblock-held-designs-in-the-background), one
+brief per design-blocked issue: **`architect` in the background** on a host that reports
+background completion — this session hands a round off and goes straight back to
+shipping — otherwise inline, at the point described there.
 
-This is the only sub-agent in this skill that writes to GitHub, and only two writes: one
+This is the only brief in this skill that writes to GitHub, and only two writes: one
 comment on the issue and one label clear. It writes nothing in the checkout, so
 `{workdir}` is the repo's main checkout even while a parallel batch is running — it
 reads there, it never touches the tree.
 
-Prompt body: [references/agents/design-decision.md](agents/design-decision.md).
+Prompt body: [agent-design-decision.md](agent-design-decision.md).
+
+**The queue.** One decision per issue, never batched into one brief. In the background,
+cap **3 in flight** and queue the rest — this run's own filings first, then backlog
+issues highest tier first; a round is handed off in one message where the host batches
+spawns. **The queue drains on each completion report, not at a step**: when one returns,
+record it and start the next queued one in the same turn, whatever step the shipping
+path is on. Hand off this run's own filings as soon as `file_followup.py` returns their
+numbers. Inline, take the same queue one decision at a time, between issues — after a
+merge and before the next step 3 — never in the middle of one issue's steps 3–7.
+
+Sweep the backlog's held designs **once per run, right after step 1** — in every mode,
+single included — and never again per issue shipped. Anything still queued or in flight
+when the run ends is a step 10 line; nothing ever waits on it.
+
+Record each return
+(`--event design --field issue=<n> --field mode=<background|inline> --field verdict=<DECIDED|DEFERRED>`).
+`LABEL: left-on` alongside `VERDICT: DECIDED` means only the label write failed — clear
+it from this session before treating the issue as ready. An issue returned `DECIDED` is
+ordinary backlog from that moment: ready for the next run, or for this one at step 8c.
 
 `VERDICT: DEFERRED` is a result, not a failure — it is the run declining to invent a
 product decision, and its `OPEN-QUESTION` is what the step 10 report puts in front of

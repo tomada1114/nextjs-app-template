@@ -1,8 +1,8 @@
-# Review fallback (sub-agent prompt)
+# Review (brief)
 
-Spawned at [SKILL.md step 4](../../SKILL.md#4-review-the-branch), only when this
-session's host will not let it launch `/code-review` directly. One independent,
-**read-only** `opus` sub-agent against the branch.
+The standing review at [SKILL.md step 4](../SKILL.md#4-review-the-branch): a read-only
+diff review in a context that did not write the change. Handed to **`architect`** where
+the host has named sub-agents; otherwise followed inline by this session.
 
 ```
 Read-only review only — do not edit, create, or delete any file (no `rm`, no
@@ -14,8 +14,8 @@ What no one has done is read the change as a change. That is your job, and
 you are reading it in a context that did not write it.
 
 The branch {branch} is checked out at {workdir}. Read the project's own
-conventions first — {workdir}/CLAUDE.md and {workdir}/AGENTS.md — then
-the specification and the diff against {base}:
+conventions first — {workdir}/AGENTS.md (and the host's own instruction
+file, if any) — then the specification and the diff against {base}:
 
   GIT_OPTIONAL_LOCKS=0 git -C {workdir} diff {base}...HEAD
 
@@ -61,5 +61,5 @@ INTENT-MATCH: <does the diff implement the spec as written — yes / no + what
 
 `INTENT-MATCH: no` is read before the findings — it says the diff is not issue #{n}'s
 change and can arrive with an empty `FINDINGS:` list; send the missing part back through
-the Implementation request. Triage every finding in this session before fixing anything,
-the same way `--fix`'s output is triaged.
+the Implementation request. Triage every finding in this session before fixing anything
+([implement-and-review.md#triage-and-fixes](implement-and-review.md#triage-and-fixes)).
