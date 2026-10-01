@@ -103,3 +103,10 @@ jobs:
       - name: Run tests without coverage
         if: matrix.os != 'ubuntu-latest'
         run: pnpm run test
+
+      # The shipping-issues skill's Python unittest suite, against the runner's
+      # own python3: no setup-python and no package, since the suite imports
+      # only the standard library. `-B` in the script keeps bytecode out of the
+      # skill tree, whose generated mirror would otherwise drift.
+      - name: Run skill script tests
+        run: pnpm run test:skills
