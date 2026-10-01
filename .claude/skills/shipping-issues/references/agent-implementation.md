@@ -1,11 +1,13 @@
-# Implementation (sub-agent prompt)
+# Implementation (brief)
 
-Spawned at [SKILL.md step 3](../../SKILL.md#3-implement), one issue at a time.
-**`sonnet` is the default; `opus` when the issue is foundational** — architecture or a
-skeleton, an interface/port/schema, or a skill, instruction file, or gate whose shape
-the rest of the backlog copies. The test is blast radius, not difficulty:
-[cost-discipline.md#the-foundation-exception-opus-for-what-the-backlog-builds-on](../cost-discipline.md#the-foundation-exception-opus-for-what-the-backlog-builds-on).
-A resume/patch run stays on the model its first run used.
+Used at [SKILL.md step 3](../SKILL.md#3-implement), one issue per brief. Handed to
+**`executor`** by default and to **`architect`** when the issue is foundational —
+architecture or a skeleton, an interface/port/schema, or a skill, instruction file, or
+gate whose shape the rest of the backlog copies. The test is blast radius, not
+difficulty:
+[cost-discipline.md#the-foundation-exception-architect-for-what-the-backlog-builds-on](cost-discipline.md#the-foundation-exception-architect-for-what-the-backlog-builds-on).
+A resume/patch run stays on the tier its first run used, continuing the same agent where
+the host allows.
 
 ```
 Implement GitHub issue #{n} in {owner}/{repo}. Once you return, your branch is
@@ -47,8 +49,8 @@ Branch: {branch_name}             <- already created and checked out; do not
 Likely files: {paths from step 2's triage, or — when step 2 was skipped on a
                labeled backlog — a short grep/glob the parent runs against
                the issue's own keywords right before spawning; never blank}
-Project conventions: read {workdir}/CLAUDE.md and
-{workdir}/AGENTS.md before writing code.
+Project conventions: read {workdir}/AGENTS.md (and the host's own
+instruction file, if any) before writing code.
 Decisions already made: {anything step 2/2b resolved, so it is not re-opened}
 Verification command: {verify_command, from step 3's smoke run — if that
                         smoke run found none, say so explicitly here rather
@@ -156,6 +158,6 @@ parallel mode the worktree itself is temporary, so an unpushed commit is one cle
 away from gone. It never deletes anything — that happens once, in the parent's cleanup
 step (step 9), and only after the branch is merged.
 
-In parallel mode, issue every implementation prompt in the batch **in one message**.
-Spawned one after another they run one after another, which is the whole thing this mode
-exists to avoid.
+In parallel mode, hand off every implementation in the batch **before waiting on any of
+them** — in one message where the host batches spawns. Spawned and awaited one after
+another they run one after another, which is the whole thing this mode exists to avoid.

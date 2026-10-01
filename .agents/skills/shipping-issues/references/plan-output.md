@@ -39,7 +39,14 @@ that carry a duty for the calling session.
   edges alone · `SERIAL` means one issue at a time, no worktrees.
 - `select:` / `batch A:` / `branch:` — the pick, everything that can be worked beside
   it, and the branch name already derived for each. Use those names.
-- `needs-design:` — the input to SKILL.md step 8b's background sweep.
+- `needs-design:` — the input to SKILL.md step 8b's sweep. Start that round at step 1,
+  before step 3: in the background it costs the shipping path nothing to wait on, and
+  starting now is what gets those issues unblocked while the run is still going.
+- `stale-labels:` — issues still labeled `blocked: dependency` although every dependency
+  is closed. Readiness already ignores that label, but a human reading the backlog does
+  not — run the `--clear-dependency` command the line prints, without asking. The same
+  line after a merge (the re-plan at step 8c) is how the issues that merge just
+  unblocked get cleared.
 - `next:` — the exact command step 3 starts with.
 
 `--record` writes `run-start`, `selection` and (in parallel mode) `parallel-group` to
