@@ -256,6 +256,7 @@ names its own boundary with its neighbours.
 | `triaging-issues`       | filing, labelling, or ranking a GitHub issue                                                                                        |
 | `building-screens`      | the states a screen renders (loading, failed, not found, empty, a failed action) and its accessible names, keyboard reach and focus |
 | `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
+| `running-the-app`       | evidence from a running server that no test asserts: a free port, `curl`, the next-devtools MCP server, asking a human to look      |
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `create-pr`             | opening a pull request for the current branch, or updating the one already open for it, outside `shipping-issues`                   |
 | `smart-commit`          | grouping changes into commits and recovering when the pre-commit hook refuses one; follow it over a user-level skill of that name   |
