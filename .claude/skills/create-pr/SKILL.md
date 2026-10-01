@@ -43,9 +43,9 @@ gh pr list --head <branch> --state open --json number,url,title
 - **On the default branch, or detached:** stop. A PR needs a branch of its own, and
   creating one is the requester's call.
 - **Uncommitted or untracked changes:** stop. The PR would carry only what is committed,
-  so the gate would judge a tree the reviewer never sees. Commit first, following the
-  repository's commit conventions — a commit needs its own sign-off, which this skill
-  does not grant — then start again.
+  so the gate would judge a tree the reviewer never sees. Commit first with
+  `smart-commit` — a commit needs its own sign-off, the request that invokes that skill,
+  which this skill does not grant — then start again.
 - **No commits ahead of the default branch:** stop; there is nothing to propose.
 - **A PR already open for the branch:** update it in step 6 with `gh pr edit`. Never
   open a second PR for the same branch — the first one's review and CI history would be

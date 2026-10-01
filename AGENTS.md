@@ -257,6 +257,7 @@ names its own boundary with its neighbours.
 | `designing-ui`          | the design direction, the theme tokens in `src/app/globals.css`, a shadcn/ui component, or styling any screen                       |
 | `shipping-issues`       | ranking open issues and shipping the top one (or all) through PR, CI, and merge                                                     |
 | `create-pr`             | opening a pull request for the current branch, or updating the one already open for it, outside `shipping-issues`                   |
+| `smart-commit`          | grouping changes into commits and recovering when the pre-commit hook refuses one; follow it over a user-level skill of that name   |
 | `starting-an-app`       | turning this template into a new app: the rename, the AI layer, the locales, the design direction                                   |
 
 ## Sub-agents
@@ -335,13 +336,16 @@ Stop and ask.
 
 ### Standing exceptions
 
-Invoking a skill that lists the remote writes it makes is the sign-off for exactly those
-writes, for that invocation only. `shipping-issues` is one case in this repository: the
-writes its `SKILL.md` lists — priority and status labels, pushing its own branches,
-creating the pull request, merging it once CI passes, filing and labelling follow-up
-issues and the comments it posts, and deleting the branches it created. `create-pr` is
-the other: pushing the current branch, `gh pr create` for it, and `gh pr edit` on its
-own open pull request — never a force-push and never a merge.
+Invoking a skill that lists the commits or remote writes it makes is the sign-off for
+exactly those, for that invocation only. Three skills in this repository are such cases.
+`shipping-issues`: the writes its `SKILL.md` lists — priority and status labels, pushing
+its own branches, creating the pull request, merging it once CI passes, filing and
+labelling follow-up issues and the comments it posts, and deleting the branches it
+created. `create-pr`: pushing the current branch, `gh pr create` for it, and
+`gh pr edit` on its own open pull request — never a force-push and never a merge.
+`smart-commit`: the commits it makes on the current branch, and pushing that branch to
+`origin` only when the request asked for a push — never a force-push, never another
+branch, and never the default branch.
 
 One request is a standing exception too: the owner explicitly asking for an issue ("file
 an issue for this") is the sign-off for the `gh issue create` of each issue that request
