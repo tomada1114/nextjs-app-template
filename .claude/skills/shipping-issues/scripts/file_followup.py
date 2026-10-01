@@ -64,9 +64,9 @@ from typing import Any
 # there, which `pnpm agents:check` reports as drift.
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from issue_digest import (DEPENDENCY_BLOCK_LABELS, TIER_ALIASES, TIER_LABELS,
+from issue_digest import (DEPENDENCY_BLOCK_LABELS, TIER_LABELS,
                           TIER_ORDER, normalize_label, resolve_design_label,
-                          unclosed_fence)
+                          resolve_existing, resolve_tier_label, unclosed_fence)
 
 DEPENDENCY_LABEL = "blocked: dependency"
 MISSING_LABEL_EXIT = 4
@@ -104,30 +104,6 @@ def gh(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
 def repo_labels() -> list[str]:
     raw = gh(["label", "list", "--limit", "500", "--json", "name"]).stdout or "[]"
     return [lbl["name"] for lbl in json.loads(raw)]
-
-
-def resolve_existing(canonical: str, alias_keys: set[str],
-                     existing: list[str]) -> str | None:
-    """The name this repo uses for `canonical`, or None when it has neither
-    the canonical name nor an alias (`alias_keys` are normalize_label() keys).
-
-    Picking an alias the repo already carries is the whole point —
-    `issue_digest.py` ranks by whatever spelling is present, so introducing a
-    second one would leave half the backlog ranked by a label nobody else
-    writes. Shortest alias wins: `p2` over `priority: medium` when a repo has
-    drifted into carrying both, since the shorter form is the one being typed.
-    """
-    by_norm = {normalize_label(name): name for name in existing}
-    if normalize_label(canonical) in by_norm:
-        return by_norm[normalize_label(canonical)]
-    aliases = [name for norm, name in by_norm.items() if norm in alias_keys]
-    return min(aliases, key=lambda n: (len(n), n)) if aliases else None
-
-
-def resolve_tier_label(tier: str, existing: list[str]) -> str | None:
-    """The label name this repo uses for `tier`, or None when it has none."""
-    keys = {norm for norm, t in TIER_ALIASES.items() if t == tier}
-    return resolve_existing(TIER_LABELS[tier][0], keys, existing)
 
 
 def dependency_section(args: Any) -> str:
