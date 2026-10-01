@@ -23,7 +23,3 @@ only records what Claude Code adds on top of them.
   permissions, a deny list you configure for yourself) belongs in your own
   `~/.claude/settings.json` or the gitignored `.claude/settings.local.json`, never
   committed to this repository.
-
-When an instruction in AGENTS.md would block something that looks necessary, the answer
-is to fix what made the bypass look necessary, or to ask. It is not to find another
-spelling.
