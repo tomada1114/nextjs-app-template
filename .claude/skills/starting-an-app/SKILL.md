@@ -69,10 +69,10 @@ remain against the sites the list expects. Replace one site, delete its row from
 is green: an empty inventory means no identity string of this template survived anywhere
 in the tree, not merely in the files someone remembered to open.
 
-The suite's second block, over the CI badge and the security-advisory link, checks those
-two URLs by their _shape_ — the path segments and the workflow filename — and leaves the
-owner and the repository unconstrained. It passes on your slug exactly as it did on the
-template's, so it needs no edit during the rename; what pins the slug itself is the
+The suite's second block, over the CI badge and the two security-advisory links, checks
+those URLs by their _shape_ — the path segments and the workflow filename — and leaves
+the owner and the repository unconstrained. It passes on your slug exactly as it did on
+the template's, so it needs no edit during the rename; what pins the slug itself is the
 inventory row for each of those files.
 
 What goes into each site:
@@ -81,9 +81,13 @@ What goes into each site:
   stays: nothing here is published, so the name only has to be one you recognise, not
   one that is free on the registry.
 - **The repository slug**, wherever a URL names a GitHub repository — the README's CI
-  badge and the security-advisory contact link in `.github/ISSUE_TEMPLATE/`. A slug left
-  behind renders a broken badge and sends a vulnerability reporter to a stranger's
-  advisory form.
+  badge, the security-advisory contact link in `.github/ISSUE_TEMPLATE/`, and the
+  reporting link in `SECURITY.md`. A slug left behind renders a broken badge and sends a
+  vulnerability reporter to a stranger's advisory form.
+- **The security policy's commitments** — `SECURITY.md`'s "Response" section speaks for
+  the template's maintainer. Replace it with what the new app's owner will actually
+  promise, and keep "Supply-chain posture" true as the app's gates change: it states
+  only what the repository does.
 - **The copyright holder** in `LICENSE`, and the same name wherever the README repeats
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
 - **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
@@ -267,8 +271,10 @@ The template ships shadcn/ui's stock `neutral` tokens and an unsettled lock in
 one row for `src/app/globals.css` and one per copy of `designing-ui`'s `SKILL.md`.
 
 Settle it before the first real screen, and research it rather than choosing by taste:
-the user-level `refero-design` skill is the method when it is installed, and the choice
-is the human's either way — present the options and let them pick. Then:
+the user-level `refero-design` skill is the method when it is installed; without it,
+`designing-ui` points at its `references/design-lock.md`, whose research procedure needs
+no other skill. The choice is the human's either way — present the options and let them
+pick. Then:
 
 - Fill `designing-ui`'s lock and ledger in the shape that section gives, and replace the
   marker sentence and the paragraph under it with the settled direction. Edit the
