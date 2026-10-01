@@ -33,6 +33,12 @@ shape; `ERR_LLM_TIMEOUT` has no fixture at all, because a deadline is a property
 connection rather than of a response and is arranged with a `fetch` that never answers.
 Prefer a hand-written fixture over inventing a way to make a provider misbehave.
 
+The OpenRouter adapter's fixtures live in `tests/fixtures/llm/openrouter/`, a
+subdirectory so the exact listing above does not see them, and
+`tests/ai-openrouter.test.ts` holds their own `OUTCOMES` map. Its `success` and
+`auth-401` are hand-written from OpenRouter's documented response shape until someone
+records them; its `5xx` case is `unavailable-502`.
+
 ## Recording
 
 Recording reaches the real provider and spends money. It is a local operation and never
@@ -47,6 +53,8 @@ block that reaches the provider — the replayed suites above it run either way 
 without `LLM_RECORD=1` it is skipped entirely. The credential comes from your own
 environment (`ANTHROPIC_API_KEY`), which `.env.example` names and `src/server/env.ts`
 declares — never read a `.env` file to get one, and never put a key on a command line.
+The OpenRouter block beside it reads `OPENROUTER_API_KEY` the same way; record it alone
+with `-t OpenRouter`, so the Anthropic block does not fail for want of its own key.
 
 Two properties of the recorder are worth knowing before you use it:
 
