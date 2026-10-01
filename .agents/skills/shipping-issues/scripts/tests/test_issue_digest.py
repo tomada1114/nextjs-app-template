@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -352,6 +353,33 @@ class ResolveDesignLabelTest(unittest.TestCase):
         self.assertTrue(needs_create)
 
 
+# The repository root, five levels above this file in either skill tree
+# (.agents/skills/... or its .claude/skills/... mirror).
+LABELS_YML = Path(__file__).resolve().parents[5] / ".github" / "labels.yml"
+
+
+def declared_labels() -> dict[str, tuple[str, str]]:
+    """name -> (color, description) from .github/labels.yml, read with a regex
+    so the test stays stdlib-only."""
+    text = LABELS_YML.read_text(encoding="utf-8")
+    entries = re.findall(
+        r'^- name: "?([^"\n]+?)"?\n\s+color: (\w+)\n\s+description: "([^"]*)"',
+        text, re.MULTILINE)
+    return {name: (color, desc) for name, color, desc in entries}
+
+
+@unittest.skipUnless(LABELS_YML.is_file(), "no .github/labels.yml above this skill")
+class LabelDefinitionsMatchLabelsYmlTest(unittest.TestCase):
+    """The scripts never create a label, so the constants only name what
+    `pnpm repo:labels` defines; they must not drift from it."""
+
+    def test_tier_and_design_labels_match_labels_yml(self):
+        declared = declared_labels()
+        for name, color, desc in [*idg.TIER_LABELS.values(), idg.DESIGN_LABEL]:
+            with self.subTest(label=name):
+                self.assertEqual(declared.get(name), (color, desc))
+
+
 class DigestRunner:
     """Runs main() in-process (not via subprocess) against a fake `gh` on
     PATH, so coverage sees the code these tests exercise. Only the external
@@ -631,6 +659,46 @@ class ShipContractTest(unittest.TestCase):
     def test_numbers_parse_with_or_without_hash(self):
         c = idg.parse_ship_contract("<!-- ship: blocked-by=12,#13 -->")
         self.assertEqual(c["depends_on"], [12, 13])
+
+
+class ShipContractInCodeTest(unittest.TestCase):
+    """A ship block quoted inside a fenced code block or inline code is an
+    example, not the contract."""
+
+    EXAMPLE = "<!-- ship: tier=P0 blocked-by=#1 touches=* design=open -->"
+
+    def test_fenced_example_before_the_real_contract_is_ignored(self):
+        for fence in ("```", "~~~", "````"):
+            with self.subTest(fence=fence):
+                body = (f"Quoted:\n\n{fence}\n{self.EXAMPLE}\n{fence}\n\n"
+                        f"Prose.\n\n{CONTRACT}\n")
+                c = idg.parse_ship_contract(body)
+                self.assertEqual(c["tier"], "P1")
+                self.assertEqual(c["design"], "settled")
+                self.assertEqual(len(idg.find_ship_contracts(body)), 1)
+
+    def test_fenced_example_after_the_real_contract_is_ignored(self):
+        # Last-real-block-wins: a later quoted example must not win.
+        body = f"{CONTRACT}\n\n~~~md\n{self.EXAMPLE}\n~~~\n"
+        self.assertEqual(idg.parse_ship_contract(body)["tier"], "P1")
+
+    def test_a_shorter_fence_line_does_not_close_the_block(self):
+        body = f"{CONTRACT}\n````\n```\n{self.EXAMPLE}\n````\n"
+        self.assertEqual(idg.parse_ship_contract(body)["tier"], "P1")
+
+    def test_inline_code_example_is_ignored(self):
+        for tick in ("`", "``"):
+            with self.subTest(tick=tick):
+                body = f"{CONTRACT}\n\nWrite {tick}{self.EXAMPLE}{tick} like so."
+                self.assertEqual(idg.parse_ship_contract(body)["tier"], "P1")
+
+    def test_only_a_fenced_example_means_no_contract(self):
+        self.assertIsNone(idg.parse_ship_contract(f"```\n{self.EXAMPLE}\n```\n"))
+        self.assertIsNone(idg.parse_ship_contract(f"~~~\n{self.EXAMPLE}\n"))
+
+    def test_an_unmatched_backtick_does_not_hide_the_contract(self):
+        body = f"A stray ` backtick.\n\n{CONTRACT}"
+        self.assertEqual(idg.parse_ship_contract(body)["tier"], "P1")
 
 
 class ContractIntegrationTest(DigestRunner, unittest.TestCase):
