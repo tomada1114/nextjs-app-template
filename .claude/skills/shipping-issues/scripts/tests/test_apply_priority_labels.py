@@ -99,6 +99,22 @@ class ApplyTest(unittest.TestCase):
         self.assertIn("critical", args)
 
 
+    def test_case_variant_of_the_target_is_not_removed(self):
+        # GitHub matches label names without regard to case, so removing
+        # "Priority: P2" while adding "priority: P2" would strip the tier.
+        with patch("apply_priority_labels.gh") as mock_gh:
+            changed = apl.apply(12, "P2", ["Priority: P2"], dry_run=False,
+                                target="Priority: P2")
+        self.assertFalse(changed)
+        mock_gh.assert_not_called()
+
+    def test_writes_the_repos_own_spelling(self):
+        with patch("apply_priority_labels.gh") as mock_gh:
+            apl.apply(12, "P2", ["P3"], dry_run=False, target="p2")
+        mock_gh.assert_called_once_with(
+            ["issue", "edit", "12", "--add-label", "p2", "--remove-label", "P3"])
+
+
 class MissingTierLabelsTest(unittest.TestCase):
     """missing_tier_labels() shells out to the real `gh` on PATH — route PATH
     at a fake one instead of mocking subprocess, so the real subprocess.run
@@ -117,6 +133,13 @@ class MissingTierLabelsTest(unittest.TestCase):
         with FakeGh({("label", "list"): json.dumps([{"name": "priority: P2"}])}) as fake:
             with patch.dict("os.environ", fake.env, clear=False):
                 missing = apl.missing_tier_labels(["P2", "P2"])
+        self.assertEqual(missing, [])
+
+    def test_alias_only_repo_is_not_missing_its_tiers(self):
+        aliases = json.dumps([{"name": n} for n in ("p0", "p1", "p2", "p3")])
+        with FakeGh({("label", "list"): aliases}) as fake:
+            with patch.dict("os.environ", fake.env, clear=False):
+                missing = apl.missing_tier_labels(apl.TIER_ORDER)
         self.assertEqual(missing, [])
 
 
@@ -515,6 +538,52 @@ class MainEndToEndTest(unittest.TestCase):
         self.assertIn(["label", "list"], [c[:2] for c in calls])
         mutating = [c for c in calls if c[:2] == ["issue", "edit"]]
         self.assertEqual(mutating + label_writes(calls), [])
+
+    def test_backfill_on_an_alias_only_repo_writes_the_alias(self):
+        aliases = json.dumps([{"name": n} for n in ("p0", "p1", "p2", "p3")])
+        rc, out, err, calls = self._run(
+            ["--backfill", "--json"],
+            {
+                ("label", "list"): aliases,
+                ("issue", "list"): json.dumps([issue(12, [])]),
+                ("pr", "list"): "[]",
+                ("issue", "edit"): "",
+            },
+        )
+        self.assertEqual(rc, 0, err)
+        edits = [c for c in calls if c[:2] == ["issue", "edit"]]
+        self.assertEqual(edits, [["issue", "edit", "12", "--add-label", "p3"]])
+
+    def test_backfill_on_a_case_variant_label_keeps_the_label_it_adds(self):
+        variant = json.dumps([{"name": "Priority: P2"}])
+        body = "<!-- ship: tier=P2 -->"
+        rc, out, err, calls = self._run(
+            ["--backfill", "--json"],
+            {
+                ("label", "list"): variant,
+                ("issue", "list"): json.dumps([issue(12, [], body=body)]),
+                ("pr", "list"): "[]",
+                ("issue", "edit"): "",
+            },
+        )
+        self.assertEqual(rc, 0, err)
+        edits = [c for c in calls if c[:2] == ["issue", "edit"]]
+        self.assertEqual(edits, [["issue", "edit", "12", "--add-label", "Priority: P2"]])
+
+    def test_set_on_an_issue_carrying_a_case_variant_is_a_no_op(self):
+        variant = json.dumps([{"name": "Priority: P2"}])
+        rc, out, err, calls = self._run(
+            ["--set", "12=P2", "--json"],
+            {
+                ("label", "list"): variant,
+                ("issue", "list"): json.dumps([issue(12, ["Priority: P2"])]),
+                ("pr", "list"): "[]",
+                ("issue", "edit"): "",
+            },
+        )
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([c for c in calls if c[:2] == ["issue", "edit"]], [])
+        self.assertEqual(json.loads(out)["unchanged"], [12])
 
     def test_no_arguments_is_a_usage_error(self):
         rc, out, err, calls = self._run([], {})

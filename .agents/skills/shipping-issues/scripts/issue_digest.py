@@ -380,6 +380,30 @@ TIER_ALIASES = {
     "nice to have": "P3", "nice-to-have": "P3", "someday": "P3",
 }
 
+def resolve_existing(canonical: str, alias_keys: set[str],
+                     existing: list[str]) -> str | None:
+    """The name this repo uses for `canonical`, or None when it has neither
+    the canonical name nor an alias (`alias_keys` are normalize_label() keys).
+
+    Picking an alias the repo already carries is the whole point —
+    `issue_digest.py` ranks by whatever spelling is present, so introducing a
+    second one would leave half the backlog ranked by a label nobody else
+    writes. Shortest alias wins: `p2` over `priority: medium` when a repo has
+    drifted into carrying both, since the shorter form is the one being typed.
+    """
+    by_norm = {normalize_label(name): name for name in existing}
+    if normalize_label(canonical) in by_norm:
+        return by_norm[normalize_label(canonical)]
+    aliases = [name for norm, name in by_norm.items() if norm in alias_keys]
+    return min(aliases, key=lambda n: (len(n), n)) if aliases else None
+
+
+def resolve_tier_label(tier: str, existing: list[str]) -> str | None:
+    """The label name this repo uses for `tier`, or None when it has none."""
+    keys = {norm for norm, t in TIER_ALIASES.items() if t == tier}
+    return resolve_existing(TIER_LABELS[tier][0], keys, existing)
+
+
 # Leverage: work whose value spills over onto other issues. Matched against
 # title + body. Contributions are summed then capped by LEVERAGE_CAP, so an
 # issue that name-drops every keyword cannot outrank a genuine blocker.

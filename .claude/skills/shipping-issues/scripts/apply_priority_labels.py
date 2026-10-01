@@ -81,7 +81,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from issue_digest import (CONTRACT_FIELD_RE, DEPENDENCY_BLOCK_LABELS, DESIGN_BLOCK_LABELS,
                           TIER_ALIASES, TIER_LABELS, TIER_ORDER,
                           find_ship_contracts, normalize_label, parse_ship_contract,
-                          resolve_design_label)
+                          resolve_design_label, resolve_tier_label)
 
 DIGEST = Path(__file__).resolve().parent / "issue_digest.py"
 
@@ -128,12 +128,26 @@ def load_digest() -> dict[str, Any]:
 MISSING_LABEL_EXIT = 4
 
 
+def tier_label_names(tiers: list[str]) -> tuple[dict[str, str], list[str]]:
+    """(tier -> the label name this repo uses for it, the canonical names of
+    the tiers it has no label for). Resolved through resolve_tier_label(), the
+    same lookup file_followup.py uses, so an alias-only or case-variant repo
+    is written in its own spelling."""
+    existing = repo_labels()
+    names: dict[str, str] = {}
+    missing: list[str] = []
+    for tier in dict.fromkeys(tiers):
+        name = resolve_tier_label(tier, existing)
+        if name is None:
+            missing.append(TIER_LABELS[tier][0])
+        else:
+            names[tier] = name
+    return names, missing
+
+
 def missing_tier_labels(tiers: list[str]) -> list[str]:
-    """The canonical tier labels among `tiers` this repo does not define.
-    GitHub matches label names without regard to case, and so does this."""
-    existing = {name.lower() for name in repo_labels()}
-    return [TIER_LABELS[t][0] for t in dict.fromkeys(tiers)
-            if TIER_LABELS[t][0].lower() not in existing]
+    """The canonical tier labels among `tiers` this repo has no label for."""
+    return tier_label_names(tiers)[1]
 
 
 def stop_on_missing(missing: list[str]) -> None:
@@ -293,15 +307,19 @@ def clear_dependency(number: int, dry_run: bool) -> list[str]:
     return clear_labels_in(number, DEPENDENCY_BLOCK_LABELS, dry_run)
 
 
-def apply(number: int, tier: str, current_labels: list[str], dry_run: bool) -> bool:
-    """Add the tier label to an issue and strip any other tier it carries.
+def apply(number: int, tier: str, current_labels: list[str], dry_run: bool,
+          target: str | None = None) -> bool:
+    """Add the tier label (`target`, the repo's own spelling; the canonical
+    name by default) to an issue and strip any other tier it carries.
 
+    Names compare without regard to case, as GitHub matches them: a case
+    variant of `target` is the same label, never one to remove.
     Returns False when the issue already carries exactly that label.
     """
-    target = TIER_LABELS[tier][0]
+    target = target or TIER_LABELS[tier][0]
     stale = [lbl for lbl in current_labels
-             if normalize_label(lbl) in TIER_ALIASES and lbl != target]
-    if target in current_labels and not stale:
+             if normalize_label(lbl) in TIER_ALIASES and lbl.lower() != target.lower()]
+    if any(lbl.lower() == target.lower() for lbl in current_labels) and not stale:
         return False
     args = ["issue", "edit", str(number), "--add-label", target]
     for lbl in stale:
@@ -419,8 +437,10 @@ def main() -> int:
 
     # Checked before the first write, so a missing label never leaves the
     # backlog half-labeled.
+    names: dict[str, str] = {}
     if plan:
-        stop_on_missing(missing_tier_labels([tier for _, tier, _ in plan]))
+        names, absent = tier_label_names([tier for _, tier, _ in plan])
+        stop_on_missing(absent)
 
     changed, unchanged, missing = [], [], []
     for number, tier, why in sorted(plan):
@@ -429,10 +449,10 @@ def main() -> int:
             # Not in the open-issue digest: closed, or filtered out. Still label
             # it — an explicit --set on a just-closed issue is not an error.
             missing.append(number)
-            if apply(number, tier, [], args.dry_run):
+            if apply(number, tier, [], args.dry_run, names[tier]):
                 changed.append((number, tier, why, "not-open"))
             continue
-        if apply(number, tier, rec["labels"], args.dry_run):
+        if apply(number, tier, rec["labels"], args.dry_run, names[tier]):
             changed.append((number, tier, why, rec["priority_tier"] or "none"))
         else:
             unchanged.append(number)
@@ -453,7 +473,7 @@ def main() -> int:
 
     if not args.quiet:
         for number, tier, why, was in changed:
-            print(f"#{number}: {was} -> {TIER_LABELS[tier][0]}  ({why})")
+            print(f"#{number}: {was} -> {names[tier]}  ({why})")
 
     coverage = payload["label_coverage"]
     # Only issues that had no tier at all move the coverage number; a re-tier of
