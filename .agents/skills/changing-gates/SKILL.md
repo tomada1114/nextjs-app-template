@@ -135,8 +135,9 @@ lists in that file are exact and only a human edits them.
   compared with `toEqual`, so a new workflow file fails the suite until it is added
   there. That failure is the review prompt, not an obstacle to route around.
 - The writers list in "grants a write scope only where the job cannot do its work
-  without one" is `["pr-label.yml"]` today. A workflow carrying any `: write` scope has
-  to join it — a deploy workflow that pushes, tags, or comments included.
+  without one" is `["codeql.yml", "pr-label.yml"]` today. A workflow carrying any
+  `: write` scope has to join it — a deploy workflow that pushes, tags, or comments
+  included.
 
 The judgment half no test encodes:
 
