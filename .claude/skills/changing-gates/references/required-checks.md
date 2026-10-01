@@ -28,4 +28,4 @@ body and does not run it. Timing matters. A context the pull request _adds_ is a
 after merge. A context it _renames or drops_ blocks that same pull request, because the
 live ruleset still waits for the old name, which no longer reports — so the owner
 applies the new file from the branch just before merging, and other open pull requests
-then wait on the new name until they are rebased.
+then wait on the new name until they merge the default branch in.
