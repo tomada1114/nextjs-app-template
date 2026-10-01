@@ -44,20 +44,22 @@ taste to get a screen done.
 
 ## Quick reference
 
+The scripts are grouped by how they may be run: finite ones an agent runs to check its
+own work, servers that never end on their own, and the ones that write to GitHub.
+
+### Checks an agent runs
+
 ```sh
-pnpm dev           # start the Next.js development server on http://localhost:3000
 pnpm build         # production build; also type-checks the App Router entry points
-pnpm start         # serve the production build from `pnpm build`
 pnpm check:quick   # format check, lint, typecheck, tests — the everyday gate
-pnpm check:source  # the same gate plus the build, with coverage thresholds enforced
+pnpm check:source  # the same gate plus the build and skill script tests, with coverage enforced
 pnpm fix           # ESLint autofix, then Prettier
 pnpm test          # tests only
 pnpm test:coverage # tests with the coverage thresholds enforced
 pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts over HTTP
+pnpm test:skills   # the shipping-issues skill's Python script tests (needs python3; ~2 min)
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
-pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
-pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
@@ -71,40 +73,71 @@ target list is reviewable in `package.json` instead of retyped at a prompt each 
 
 Run a single test file with `pnpm exec vitest run tests/<name>.test.ts`.
 
-`pnpm check:quick` is the everyday local gate; `pnpm check:source` adds the build and
-the coverage floors on top of it. CI runs those same checks as separate steps, so a
-green `pnpm check:source` here means those are green too. `lefthook`'s pre-commit hook
-runs a staged-file-scoped version of the same tools — format applied rather than merely
-checked, tests limited to the ones reachable from the staged files — before every
-commit. Nothing — not a hook, not a workflow — defines a check of its own; they all call
-these scripts.
+`pnpm check:quick` is the everyday local gate; `pnpm check:source` adds the build, the
+coverage floors and the skill script tests on top of it. CI runs those same checks as
+separate steps, so a green `pnpm check:source` here means those are green too.
+`lefthook`'s pre-commit hook runs a staged-file-scoped version of the same tools —
+format applied rather than merely checked, tests limited to the ones reachable from the
+staged files — before every commit. Nothing — not a hook, not a workflow — defines a
+check of its own; they all call these scripts.
 
 Development and source checks stay on Node 24, stated once in `.node-version` and once
 in `devEngines.runtime`. Never relax `devEngines.runtime`'s `onFail: error`, and never
 reach for `--config.runtime-on-fail=ignore`: nothing here runs on any other Node.
+
+### Long-running — run with the rules below
+
+```sh
+pnpm dev           # start the Next.js development server on http://localhost:3000
+pnpm start         # serve the production build from `pnpm build`
+```
+
+### Writes to GitHub
+
+```sh
+pnpm repo:labels   # create/update GitHub labels from .github/labels.yml
+pnpm repo:ruleset  # create/update the main ruleset from .github/rulesets/ (admin token)
+```
+
+These are listed apart because they write to the repository on GitHub, not because an
+agent may never run them: an agent may run `pnpm repo:labels` when its task needs the
+label set. `pnpm repo:ruleset` needs a token with admin rights on the repository and
+stays a human's step.
+
+### Running a server without taking over the developer's
+
+- To verify something only a running server shows, run `pnpm build && pnpm test:smoke`
+  first: the smoke suite starts `next start` on a free port and stops it itself. Start a
+  server yourself only when that cannot show it.
+- Start that server on a free port (`pnpm dev --port <free>` or
+  `pnpm start --port <free>`), verify against it, and always stop it before your turn
+  ends.
+- Never stop, restart or bind the developer's server on :3000.
+- Run no `open`, `gh … --web` or any other command that opens a browser window or takes
+  focus during a routine check; give the human the URL instead.
 
 ## Validating a change
 
 Run the narrowest check that can fail, then the gate. Reaching for `pnpm check:source`
 on every edit is slow enough that it stops being run at all.
 
-| What you changed                                       | The narrowest check that can fail                    |
-| ------------------------------------------------------ | ---------------------------------------------------- |
-| A module under `src/core/` or `src/ai/`                | `pnpm exec vitest run tests/<module>.test.ts`        |
-| A handler or the composition root under `src/server/`  | `pnpm exec vitest run tests/server-handler.test.ts`  |
-| `src/server/env.ts` or `.env.example`                  | `pnpm exec vitest run tests/server-env.test.ts`      |
-| A page, layout or route handler under `src/app/`       | `pnpm build`, then `pnpm test:smoke`                 |
-| A component with a rendered test                       | `pnpm exec vitest run tests/<name>.test.tsx`         |
-| A catalog under `messages/`, or `src/i18n/messages.ts` | `pnpm exec vitest run tests/messages.test.ts`        |
-| `src/proxy.ts` or the locale routing behind it         | `pnpm exec vitest run tests/proxy.test.ts`           |
-| Anything only a running server shows                   | `pnpm build`, then `pnpm test:smoke`                 |
-| `src/app/globals.css` or `postcss.config.mjs`          | `pnpm build`, then `pnpm test:smoke`                 |
-| An import that crosses a zone boundary                 | `pnpm exec vitest run tests/boundaries.test.ts`      |
-| A test                                                 | `pnpm exec vitest run tests/<name>.test.ts`          |
-| A script under `scripts/`                              | `pnpm exec vitest run tests/<script>.test.ts`        |
-| A skill under `.agents/skills/`                        | `pnpm agents:sync && pnpm agents:check && pnpm test` |
-| `package.json`, `pnpm-workspace.yaml`                  | `pnpm install`, then `pnpm check:source`             |
-| Markdown                                               | `pnpm fix`                                           |
+| What you changed                                       | The narrowest check that can fail                                        |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| A module under `src/core/` or `src/ai/`                | `pnpm exec vitest run tests/<module>.test.ts`                            |
+| A handler or the composition root under `src/server/`  | `pnpm exec vitest run tests/server-handler.test.ts`                      |
+| `src/server/env.ts` or `.env.example`                  | `pnpm exec vitest run tests/server-env.test.ts`                          |
+| A page, layout or route handler under `src/app/`       | `pnpm build`, then `pnpm test:smoke`                                     |
+| A component with a rendered test                       | `pnpm exec vitest run tests/<name>.test.tsx`                             |
+| A catalog under `messages/`, or `src/i18n/messages.ts` | `pnpm exec vitest run tests/messages.test.ts`                            |
+| `src/proxy.ts` or the locale routing behind it         | `pnpm exec vitest run tests/proxy.test.ts`                               |
+| Anything only a running server shows                   | `pnpm build`, then `pnpm test:smoke`                                     |
+| `src/app/globals.css` or `postcss.config.mjs`          | `pnpm build`, then `pnpm test:smoke`                                     |
+| An import that crosses a zone boundary                 | `pnpm exec vitest run tests/boundaries.test.ts`                          |
+| A test                                                 | `pnpm exec vitest run tests/<name>.test.ts`                              |
+| A script under `scripts/`                              | `pnpm exec vitest run tests/<script>.test.ts`                            |
+| A skill under `.agents/skills/`                        | `pnpm agents:sync && pnpm agents:check && pnpm test && pnpm test:skills` |
+| `package.json`, `pnpm-workspace.yaml`                  | `pnpm install`, then `pnpm check:source`                                 |
+| Markdown                                               | `pnpm fix`                                                               |
 
 ## Architecture
 
@@ -437,7 +470,9 @@ starts with none of it, and its admin turns each on once:
   labelling workflow only applies a label that already exists.
 
 Each item is a write to the repository's settings, so it needs the owner's sign-off like
-any other remote write; an agent proposes it and does not run it.
+any other remote write; an agent proposes it and does not run it. The label set is the
+one exception: as the Quick reference's "Writes to GitHub" says, an agent may run
+`pnpm repo:labels` when its task needs the labels.
 
 ## Conventions
 
