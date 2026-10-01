@@ -236,11 +236,25 @@ class LinkCheckTest(unittest.TestCase):
 BODY_WITH_KEYWORD = "## Summary\n\nCloses #7\n\nA long body.\n\n## Test Plan\n\n- ran it\n"
 
 
+# Bodies whose only closing keyword for #7 is one GitHub does not link: hidden
+# in an HTML comment or code, or naming another repository than acme/widgets.
+UNLINKED_KEYWORD_BODIES = (
+    "## Summary\n\n<!-- Closes #7 -->\n",
+    "<!--\nFixes #7\n-->\nBody.\n",
+    "Run `closes #7` later.\n",
+    "```\nCloses #7\n```\n",
+    "~~~md\nResolves #7\n~~~\n",
+    "Closes other/repo#7\n",
+    "Fixes https://github.com/other/repo/issues/7\n",
+)
+
+
 def resave_responses(pr, body, base="main"):
     return {
         base_prefix(pr): base,
         ("repo", "view", "--json", "defaultBranchRef"): "main",
         ("pr", "view", pr, "--json", "body"): body,
+        ("repo", "view", "--json", "nameWithOwner"): "acme/widgets",
     }
 
 
@@ -431,6 +445,11 @@ class ResaveTest(unittest.TestCase):
                 "detail: the PR body has no Closes/Fixes/Resolves keyword\n",
             "prefixes #7\n":
                 "detail: the PR body has no Closes/Fixes/Resolves keyword\n",
+            "Closes ACME/Widgets#7\n":
+                "detail: the PR body has a closing keyword for #7, but GitHub has "
+                "not linked it (--fix re-saves the body)\n",
+            **{body: "detail: the PR body has no Closes/Fixes/Resolves keyword\n"
+               for body in UNLINKED_KEYWORD_BODIES},
         }
         for body, detail in cases.items():
             with self.subTest(body=body):
@@ -443,6 +462,22 @@ class ResaveTest(unittest.TestCase):
                 self.assertEqual(run.proc.returncode, 1)
                 self.assertIn(detail, run.proc.stdout)
                 self.assertEqual(run.body_edits, [])
+
+    def test_keyword_github_does_not_link_gets_a_real_one_appended(self):
+        pr = "46"
+        for body in UNLINKED_KEYWORD_BODIES:
+            with self.subTest(body=body):
+                run = run_resave(
+                    [pr, "--issue", "7", "--fix"],
+                    resave_responses(pr, body),
+                    sequences={closing_prefix(pr): ["", "7"]},
+                )
+
+                self.assertEqual(run.proc.returncode, 0, run.proc.stdout)
+                self.assertIn("fix: appended 'Closes #7' to the PR body\n", run.proc.stdout)
+                self.assertNotIn("re-save", run.proc.stdout)
+                self.assertEqual(run.saved_bodies, [body + "\n\nCloses #7\n"])
+                self.assertIn("verdict: LINKED\n", run.proc.stdout)
 
     def test_without_issue_detail_reports_unlinked_keyword(self):
         pr = "46"

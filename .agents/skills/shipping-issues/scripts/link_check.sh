@@ -88,15 +88,74 @@ is_linked() {
   [[ -n "$ISSUE" ]] && printf ',%s,' "$closes" | grep -q ",$ISSUE,"
 }
 
+# current_repo — owner/repo of the current repository, looked up once and only
+# when a body is read; empty when gh cannot say or answers with anything but
+# an owner/repo name, which goes into a grep pattern.
+repo_name=""
+repo_looked_up=0
+current_repo() {
+  if [[ $repo_looked_up -eq 0 ]]; then
+    repo_name="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)" || repo_name=""
+    [[ "$repo_name" =~ ^[[:alnum:]_.-]+/[[:alnum:]_.-]+$ ]] || repo_name=""
+    repo_looked_up=1
+  fi
+}
+
+# linkable_text < body — the body without what GitHub never links a keyword
+# in: HTML comments, fenced code blocks (``` or ~~~) and inline code spans.
+linkable_text() {
+  awk '
+    BEGIN { comment = 0; fence = "" }
+    {
+      line = $0
+      if (fence == "" && !comment && match(line, /^ {0,3}(```+|~~~+)/)) {
+        fence = substr(line, RSTART, RLENGTH)
+        sub(/^ +/, "", fence); next
+      }
+      if (fence != "") {
+        if (match(line, /^ {0,3}(```+|~~~+)[[:space:]]*$/)) {
+          close_ = line; sub(/^ +/, "", close_); sub(/[[:space:]]+$/, "", close_)
+          if (substr(close_, 1, 1) == substr(fence, 1, 1) && length(close_) >= length(fence)) fence = ""
+        }
+        next
+      }
+      out = ""
+      while (line != "") {
+        if (comment) {
+          i = index(line, "-->")
+          if (i == 0) { line = ""; break }
+          line = substr(line, i + 3); comment = 0
+        } else {
+          i = index(line, "<!--")
+          if (i == 0) { out = out line; line = ""; break }
+          out = out substr(line, 1, i - 1) " "; line = substr(line, i + 4); comment = 1
+        }
+      }
+      gsub(/`+[^`]*`+/, " ", out)
+      print out
+    }
+  '
+}
+
 # has_closing_keyword <number-pattern> < body — a keyword GitHub reads as
 # closing (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved, any
-# case, an optional colon) followed by #<number>, owner/repo#<number>, or
-# https://github.com/owner/repo/issues/<number>, the number ending at a
-# non-word character. Reads stdin rather than a pipe from printf: under
-# pipefail, grep -q exiting early would fail the pipe.
+# case, an optional colon) followed by #<number>, or by owner/repo#<number> or
+# https://github.com/owner/repo/issues/<number> naming the current repository,
+# the number ending at a non-word character — outside an HTML comment or code,
+# where GitHub does not link it. A keyword GitHub would not link to this
+# repository's issue counts as absent, so --fix appends a real one.
 has_closing_keyword() {
-  local repo='[[:alnum:]_.-]+/[[:alnum:]_.-]+'
-  grep -Eiq "(^|[^[:alnum:]_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(($repo)?#|https?://github\.com/$repo/issues/)$1([^[:alnum:]_]|\$)"
+  local repo='' text
+  current_repo
+  if [[ -n "$repo_name" ]]; then
+    repo="$(printf '%s' "$repo_name" | sed 's/[.]/\\./g')"
+  fi
+  text="$(linkable_text)"
+  if [[ -n "$repo" ]]; then
+    grep -Eiq "(^|[^[:alnum:]_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(($repo)?#|https?://github\.com/$repo/issues/)$1([^[:alnum:]_]|\$)" <<< "$text"
+  else
+    grep -Eiq "(^|[^[:alnum:]_])(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+#$1([^[:alnum:]_]|\$)" <<< "$text"
+  fi
 }
 
 # read_body <file> — write the PR body to <file> exactly: `gh -q` prints a
