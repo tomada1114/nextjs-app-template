@@ -243,6 +243,7 @@ names its own boundary with its neighbours.
 | `integrating-llm`       | the `LlmPort`, an adapter under `src/ai/`, or a fixture under `tests/fixtures/llm/`                                                 |
 | `writing-typescript`    | a `.ts` module or a `.tsx` component under `src/`                                                                                   |
 | `designing-errors`      | an error type or an `ERR_*` code, in `src/` or `scripts/`                                                                           |
+| `tdd`                   | the order of work on a behavior change under `src/` — the failing test first, then the code, then the refactor                      |
 | `writing-tests`         | the body of a test under `tests/`                                                                                                   |
 | `placing-tests`         | a new test file, a vitest project, or a coverage floor                                                                              |
 | `type-testing`          | an `expectTypeOf` assertion or a `@ts-expect-error` inside a test                                                                   |
