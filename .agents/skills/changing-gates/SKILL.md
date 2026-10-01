@@ -150,6 +150,12 @@ The judgment half no test encodes:
   block, `persist-credentials: false`, a timeout) must say in its own body why the
   removed protection no longer applies here. Silence is not review for that.
 
+Renaming a job that is a required context, gating one with `if:` or `paths:`, or adding
+a job that should block merges also edits `.github/rulesets/main.json` in the same pull
+request (`tests/ruleset-contexts.test.ts` catches a stale context locally), and the live
+ruleset only follows once the owner re-runs `pnpm repo:ruleset`:
+[references/required-checks.md](references/required-checks.md).
+
 ## `lefthook.yml`
 
 The hook is deliberately narrow, and AGENTS.md's "Enforcement layers" holds the argument
