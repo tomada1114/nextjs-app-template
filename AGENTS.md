@@ -22,8 +22,11 @@ checked.
 
 A template for a Next.js application on the App Router, written in ESM-only TypeScript:
 a locale-prefixed page tree styled with Tailwind v4 and shadcn/ui, one JSON endpoint,
-and one language-model call behind a port that an adapter implements. It answers with a
-fake adapter out of the box, so `pnpm dev` works before any credential exists, and the
+and one language-model call behind a port that an adapter implements. It answers through
+a hosted provider's adapter by default, with the model chosen by `LLM_MODEL`, so the
+endpoint needs that provider's key and an `API_ACCESS_KEY` before it will load;
+`LLM_ADAPTER=fake` is the explicit, never-inferred switch to a fake adapter that needs
+neither and bills nothing — what the smoke test and a keyless `pnpm dev` run on. The
 whole AI layer is built to come out in one piece for a project that does not want one.
 
 It is private: nothing here is packed, published, or consumed as a tarball, so there is
@@ -176,7 +179,7 @@ three seams:
 - **The port.** `src/ai/port.ts` declares `LlmPort`, the vendor-neutral interface every
   model call goes through, and `src/ai/index.ts` is the AI layer's whole surface — the
   port, its error vocabulary, and whichever adapter that file chooses to publish.
-  `src/ai/adapters/` is private to the layer, so swapping the fake for a provider, or
+  `src/ai/adapters/` is private to the layer, so swapping the provider behind it, or
   deleting the layer outright, is a bounded edit; `tests/ai-layer-removal.test.ts` is
   what keeps the deletion bounded rather than trusting that it stays so.
 - **The Web-standard handler.** `src/server/handlers/ask.ts` exports

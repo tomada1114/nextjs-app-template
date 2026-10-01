@@ -124,9 +124,13 @@ not checked. Two consequences, and they are answered differently.
 **Authentication is a startup rule, not a per-request decision, and the adapter is what
 triggers it.** `src/server/composition.ts` declares whether the adapter it wires bills a
 provider (`ADAPTER_BILLS_A_PROVIDER`) and passes that to `readServerEnv` as
-`requiresAccessKey`; `src/server/env.ts` then refuses an environment with no
-`API_ACCESS_KEY`, so a deployment that pays for its answers cannot boot with the
-endpoint open — `readServerEnv` throws and the server stops as it starts.
+`billsAProvider`; `src/server/env.ts` then refuses an environment with no
+`API_ACCESS_KEY` — or no `OPENROUTER_API_KEY` — so a deployment that pays for its
+answers cannot serve the endpoint open. `readServerEnv` throws at the composition root's
+module load, and since Next.js loads a route module lazily, that is the first request to
+`POST /api/ask`: it answers 500 and the log names the variable. `next build` evaluates
+the same module while collecting page data, so `readServerEnv` defers the rule while
+`NEXT_PHASE` is the production-build phase — a build, and CI, need no credential.
 `src/server/composition.ts` passes the value down and `src/server/handlers/ask.ts`
 compares it, in constant time and with the scheme matched case-insensitively (RFC 9110
 §11.1), against the caller's `Authorization: Bearer` credential **before** the body is
@@ -134,16 +138,16 @@ read and before the port is reached; a mismatch is `401 ERR_UNAUTHORIZED` with a
 `WWW-Authenticate: Bearer` challenge and a fixed sentence.
 
 Key any gate of this kind off what the composition root wires, never off whether a
-credential is present in `process.env`. The two are not the same question: a machine
-exports `ANTHROPIC_API_KEY` for all sorts of reasons — recording the LLM fixtures under
-`LLM_RECORD=1` is one — while this application still answers from the fake adapter and
-bills no one, and a presence-based gate would refuse to start, build, or load a test
-suite there for nothing. A second provider changes one field of that one declaration and
-nothing else.
+credential is present in `process.env`. The two are not the same question: a missing key
+says nothing about which adapter answers, and a gate that read it that way would turn a
+deployment that lost its secret into one answering from somewhere else. A second
+provider changes one field of that one declaration and nothing else.
 
-The zero-credential quick start is untouched by all of this: with the fake adapter
-wired, nothing is required and the endpoint answers anyone, which is the promise
-`pnpm dev` makes.
+The one environment value that lifts the rule is `LLM_ADAPTER=fake`, because it replaces
+the billed adapter rather than merely omitting its key: with it, nothing is required and
+the endpoint answers anyone, which is what the smoke test and a keyless `pnpm dev` run
+on. It is explicit and accepts only `fake`; it is never inferred from a missing key, and
+any other value fails `readServerEnv` rather than falling through to either adapter.
 
 **This template ships no rate limit and no concurrency limit, and that is deliberate.**
 A paid-adapter deployment must enforce its caller-throughput policy in an edge or
