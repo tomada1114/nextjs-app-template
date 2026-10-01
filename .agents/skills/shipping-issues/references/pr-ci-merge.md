@@ -65,7 +65,7 @@ and a stale PASS is worse than a stale FAIL. Then:
 
 ```bash
 .agents/skills/shipping-issues/scripts/ci_watch.sh <pr> --timeout <seconds> > <runstate>/ci/<pr>.log
-grep -E '^(verdict|waited_seconds|mergeable|merge_state|review_decision):' <runstate>/ci/<pr>.log
+grep -E '^(verdict|waited_seconds|head_sha|mergeable|merge_state|review_decision):' <runstate>/ci/<pr>.log
 ```
 
 Redirected — raw output carries failing-run log tails that must stay out of this
@@ -106,8 +106,15 @@ run.
 ## Merging
 
 ```bash
-.agents/skills/shipping-issues/scripts/land_pr.sh <pr> --issue <n>
+.agents/skills/shipping-issues/scripts/land_pr.sh <pr> --issue <n> --head-sha <head_sha>
 ```
+
+`<head_sha>` is the `head_sha:` line of the `PASS` in `<runstate>/ci/<pr>.log` — the
+commit CI verified. The merge is pinned to it (`gh pr merge --match-head-commit`), so a
+push that landed after the watch makes GitHub refuse the merge instead of merging an
+unverified commit (`MERGE_REFUSED`: watch CI again). When the log has no `head_sha:`
+line, omit the flag: the script then pins to the head it reads just before it checks the
+merge state.
 
 Merge as soon as CI reports `verdict: PASS` — call `land_pr.sh` in that same turn. Do
 not ask whether to merge, and do not report the green CI and wait: green CI is the

@@ -117,40 +117,60 @@ _FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 _BACKTICK_RUN_RE = re.compile(r"`+")
 
 
+# An HTML comment block (CommonMark HTML block type 2): a line that starts,
+# after up to three spaces, with `<!--`. It runs to the line holding `-->`.
+_HTML_COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
+
+
 def _code_spans(body: str) -> list[tuple[int, int]]:
     """The [start, end) offsets of `body`'s fenced code blocks and inline code
     spans, so a quoted ship-contract example is not read as the contract.
 
     A fence closes on a line of the same character at least as long as the
-    opener (an unclosed fence runs to the end); an inline span is a backtick
-    run closed by the next run of the same length, searched only outside fences
-    (an unmatched run is literal text). Indented code blocks, HTML blocks, and
-    backslash-escaped backticks are not modelled."""
+    opener (an unclosed fence runs to the end). An inline span is a backtick
+    run closed by the next run of the same length within one paragraph: a
+    blank line, a fence, or an HTML comment block ends the paragraph, so a
+    stray backtick before a contract block cannot pair with one after it (an
+    unmatched run is literal text). Indented code blocks, other HTML blocks,
+    and backslash-escaped backticks are not modelled."""
     spans: list[tuple[int, int]] = []
-    prose: list[tuple[int, int]] = []
+    paragraphs: list[tuple[int, int]] = []
     pos = 0
     fence: tuple[str, int, int] | None = None  # (char, length, start)
-    prose_start = 0
+    in_comment = False
+    para_start: int | None = None
+
+    def end_paragraph(at: int) -> None:
+        nonlocal para_start
+        if para_start is not None:
+            paragraphs.append((para_start, at))
+            para_start = None
+
     for line in body.splitlines(keepends=True):
         stripped = line.rstrip("\r\n")
-        if fence is None:
-            m = _FENCE_OPEN_RE.match(stripped)
-            if m:
-                prose.append((prose_start, pos))
-                fence = (m.group(1)[0], len(m.group(1)), pos)
-        else:
+        if fence is not None:
             char, length, start = fence
             close = re.fullmatch(r" {0,3}(%s{%d,})\s*" % (re.escape(char), length), stripped)
             if close:
                 spans.append((start, pos + len(line)))
                 fence = None
-                prose_start = pos + len(line)
+        elif in_comment:
+            in_comment = "-->" not in stripped
+        elif m := _FENCE_OPEN_RE.match(stripped):
+            end_paragraph(pos)
+            fence = (m.group(1)[0], len(m.group(1)), pos)
+        elif _HTML_COMMENT_OPEN_RE.match(stripped):
+            end_paragraph(pos)
+            in_comment = "-->" not in stripped[stripped.index("<!--") + 4:]
+        elif not stripped.strip():
+            end_paragraph(pos)
+        elif para_start is None:
+            para_start = pos
         pos += len(line)
     if fence is not None:
         spans.append((fence[2], len(body)))
-    else:
-        prose.append((prose_start, len(body)))
-    for start, end in prose:
+    end_paragraph(len(body))
+    for start, end in paragraphs:
         runs = list(_BACKTICK_RUN_RE.finditer(body, start, end))
         i = 0
         while i < len(runs):
@@ -163,6 +183,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             spans.append((runs[i].start(), runs[closer].end()))
             i = closer + 1
     return spans
+
+
+def unclosed_fence(body: str) -> str | None:
+    """The fence line that would close a code block `body` leaves open at its
+    end, or None when every fence is closed. Text appended after an open fence
+    is code, so a ship contract written there would never be read."""
+    fence: tuple[str, int] | None = None
+    for line in (body or "").splitlines():
+        if fence is None:
+            m = _FENCE_OPEN_RE.match(line)
+            if m:
+                fence = (m.group(1)[0], len(m.group(1)))
+        elif re.fullmatch(r" {0,3}(%s{%d,})\s*" % (re.escape(fence[0]), fence[1]), line):
+            fence = None
+    return fence[0] * fence[1] if fence else None
 
 
 def find_ship_contracts(body: str) -> list[re.Match[str]]:
@@ -1037,7 +1072,8 @@ def main() -> int:
         if needs_design:
             print("needs-design: " + ", ".join(
                 f"#{r['number']}[{tier_cell(r)}]" for r in needs_design)
-                + " — 設計未確定のため保留(明示指定 / --include-design で着手可)")
+                + " — held until the design is settled (take one on by number or "
+                "with --include-design)")
         # Held issues explain why the pick is what it is; the top of that list
         # is where a merge will free something up, so 10 is plenty.
         held = [r for r in ranked

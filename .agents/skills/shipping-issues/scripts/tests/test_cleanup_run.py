@@ -50,7 +50,34 @@ def add_local_origin(repo, parent):
     git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
 
+def branch_tip(repo, name):
+    """The commit `name` points at: the local branch, else origin's, else
+    nothing — which is what a merged PR's headRefOid is compared against."""
+    local = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],
+                           cwd=repo, text=True, capture_output=True)
+    if local.returncode == 0:
+        return local.stdout.strip()
+    remote = subprocess.run(["git", "ls-remote", "origin", f"refs/heads/{name}"],
+                            cwd=repo, text=True, capture_output=True)
+    return remote.stdout.split("\t")[0].strip() if remote.returncode == 0 else ""
+
+
+def with_merged_tips(repo, responses):
+    """A merged-PR list written as bare branch names gets each name's current
+    tip as its headRefOid — "this branch is exactly what merged". A line that
+    already carries a TAB states its own headRefOid."""
+    out = {}
+    for prefix, stdout in responses.items():
+        if prefix[:4] == ("pr", "list", "--state", "merged") and stdout:
+            stdout = "\n".join(
+                line if "\t" in line or not line else f"{line}\t{branch_tip(repo, line)}"
+                for line in stdout.split("\n"))
+        out[prefix] = stdout
+    return out
+
+
 def run_script(args, repo, responses, *, exits=None, stderrs=None, env=None):
+    responses = with_merged_tips(repo, responses)
     with FakeGh(responses, exits=exits, stderrs=stderrs) as fake:
         proc = subprocess.run(
             ["bash", str(SCRIPT), *args],
@@ -65,7 +92,7 @@ def run_script(args, repo, responses, *, exits=None, stderrs=None, env=None):
 
 MERGED_LIST = (
     "pr", "list", "--state", "merged", "--limit", "5001", "--json",
-    "headRefName", "-q", ".[].headRefName",
+    "headRefName,headRefOid", "-q", ".[] | [.headRefName, .headRefOid] | @tsv",
 )
 OPEN_LIST = (
     "pr", "list", "--state", "open", "--limit", "5001", "--json",
@@ -182,6 +209,56 @@ class CleanupRunTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("cleanup: done\n", proc.stdout)
         self.assertNotIn("feat/1-merged", branches)
+
+    def test_a_merged_branch_with_new_commits_is_kept(self):
+        # The PR merged at one commit; the branch name has moved on since.
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo)
+            add_local_origin(repo, Path(td))
+            git(repo, "branch", "feat/1-reused")
+            merged_at = branch_tip(repo, "feat/1-reused")
+            git(repo, "switch", "-q", "feat/1-reused")
+            git(repo, "commit", "-q", "--allow-empty", "-m", "new work")
+            git(repo, "switch", "-q", "main")
+
+            proc, _ = run_script(
+                [], repo,
+                {MERGED_LIST: f"feat/1-reused\t{merged_at}", OPEN_LIST: ""})
+            branches = git(repo, "branch", "--format=%(refname:short)").stdout.splitlines()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("feat/1-reused", branches)
+        self.assertIn("SKIPPED (tip ", proc.stdout)
+        self.assertIn("is not the merged PR's head", proc.stdout)
+        self.assertNotIn("deleted local branch: feat/1-reused", proc.stdout)
+
+    def test_a_remote_branch_whose_tip_moved_after_the_merge_is_kept(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td).resolve()
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            origin = td / "origin.git"
+            git(td, "init", "--bare", "-q", str(origin))
+            git(repo, "remote", "add", "origin", str(origin))
+            git(repo, "branch", "feat/3-merged")
+            merged_at = branch_tip(repo, "feat/3-merged")
+            git(repo, "switch", "-q", "feat/3-merged")
+            git(repo, "commit", "-q", "--allow-empty", "-m", "pushed after merge")
+            git(repo, "switch", "-q", "main")
+            git(repo, "push", "-q", "origin", "main", "feat/3-merged")
+            git(repo, "branch", "-D", "feat/3-merged")
+            git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+            proc, _ = run_script(
+                ["--remote"], repo,
+                {MERGED_LIST: f"feat/3-merged\t{merged_at}", OPEN_LIST: ""})
+            remote_branches = git(origin, "branch", "--list").stdout
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("feat/3-merged", remote_branches)
+        self.assertNotIn("deleted remote branch: origin/feat/3-merged", proc.stdout)
 
     def test_removes_merged_and_internal_branches_keeps_unmerged(self):
         with tempfile.TemporaryDirectory() as td:

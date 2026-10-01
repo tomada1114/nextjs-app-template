@@ -65,7 +65,8 @@ from typing import Any
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from issue_digest import (DEPENDENCY_BLOCK_LABELS, TIER_ALIASES, TIER_LABELS,
-                          TIER_ORDER, normalize_label, resolve_design_label)
+                          TIER_ORDER, normalize_label, resolve_design_label,
+                          unclosed_fence)
 
 DEPENDENCY_LABEL = "blocked: dependency"
 MISSING_LABEL_EXIT = 4
@@ -228,6 +229,12 @@ def main() -> int:
     if not body:
         print(f"error: --body-file is empty: {args.body_file}", file=sys.stderr)
         return 3
+    # A body that ends inside a code fence would swallow everything appended
+    # below — the dependency lines and the ship contract would be code, read by
+    # neither the digest nor a human skimming the issue. Close it.
+    closer = unclosed_fence(body)
+    if closer:
+        body += "\n" + closer
     dependencies = dependency_section(args)
     if dependencies:
         body += "\n\n" + dependencies

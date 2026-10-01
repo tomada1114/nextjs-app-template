@@ -21,7 +21,18 @@ from _fakegh import FakeGh  # noqa: E402
 SCRIPT = Path(__file__).resolve().parent.parent / "land_pr.sh"
 
 
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def with_head(args, responses):
+    """`responses` plus the PR's head commit, which every merge pins to."""
+    if args and not args[0].startswith("-"):
+        return {head_prefix(args[0]): SHA + "\n", **responses}
+    return responses
+
+
 def run_script(args, responses, *, exits=None, stderrs=None, sequences=None):
+    responses = with_head(args, responses)
     with FakeGh(responses, exits=exits, stderrs=stderrs, sequences=sequences) as fake:
         proc = subprocess.run(
             ["bash", str(SCRIPT), *args],
@@ -36,6 +47,7 @@ def run_script(args, responses, *, exits=None, stderrs=None, sequences=None):
 def run_script_with_sleep_stub(args, responses, *, sequences=None):
     """Like run_script, with `sleep` stubbed on PATH: it logs its argument and
     returns at once, so the merge-state retry is counted without being waited."""
+    responses = with_head(args, responses)
     with FakeGh(responses, sequences=sequences) as fake, \
             tempfile.TemporaryDirectory() as td:
         stub_dir = Path(td)
@@ -67,6 +79,10 @@ def inspect_prefix(pr):
 
 def merge_state_prefix(pr):
     return ("pr", "view", pr, "--json", "mergeStateStatus")
+
+
+def head_prefix(pr):
+    return ("pr", "view", pr, "--json", "headRefOid")
 
 
 def issue_view_prefix(issue):
@@ -175,10 +191,36 @@ class LandPrTest(unittest.TestCase):
         )
         self.assertNotIn("link| fix:", proc.stdout)
         self.assertIn("result: NOT_LINKED\n", proc.stdout)
+        # The result's detail is link_check's own, not a blanket "--fix".
+        self.assertIn(
+            "detail: merging now would leave issue #62 open — the PR body has a "
+            "closing keyword for #62, but GitHub has not linked it", proc.stdout)
         self.assertNotIn("--fix", [arg for call in calls for arg in call])
         self.assertEqual(
             [call for call in calls if call[:2] in (["pr", "edit"], ["pr", "merge"])], []
         )
+
+    def test_not_linked_without_a_keyword_says_so(self):
+        pr = "57"
+        issue = "64"
+        proc, calls = run_script(
+            [pr, "--issue", issue],
+            {
+                state_prefix(pr): "OPEN\n",
+                draft_prefix(pr): "false\n",
+                ("pr", "view", pr, "--json", "baseRefName"): "main\n",
+                ("repo", "view", "--json", "defaultBranchRef"): "main\n",
+                ("pr", "view", pr, "--json", "closingIssuesReferences"): "\n",
+                ("pr", "view", pr, "--json", "body"): "See #64\n",
+            },
+        )
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("result: NOT_LINKED\n", proc.stdout)
+        self.assertIn(
+            "detail: merging now would leave issue #64 open — the PR body has no "
+            "Closes/Fixes/Resolves keyword\n", proc.stdout)
+        self.assertEqual([c for c in calls if c[:2] in (["pr", "edit"], ["pr", "merge"])], [])
 
     def test_link_check_error_is_reported_as_error_and_never_merges(self):
         pr = "58"
@@ -290,10 +332,85 @@ class LandPrTest(unittest.TestCase):
         self.assertIn("link| verdict: LINKED\n", proc.stdout)
         self.assertIn("result: MERGED\n", proc.stdout)
         self.assertIn(f"issue: CLOSED (#{issue})\n", proc.stdout)
-        self.assertIn(list(merge), calls)
+        self.assertIn(list(merge) + ["--match-head-commit", SHA], calls)
+        self.assertIn(f"head_sha: {SHA}\n", proc.stdout)
         self.assertNotIn("--fix", [arg for call in calls for arg in call])
         self.assertNotIn("--auto", [arg for call in calls for arg in call])
         self.assertEqual([c for c in calls if c[:2] == ["pr", "edit"]], [])
+
+    def test_a_given_head_sha_is_the_commit_merged(self):
+        pr = "33"
+        given = "fedcba9876543210fedcba9876543210fedcba98"
+        merge = ("pr", "merge", pr, "--squash", "--delete-branch")
+        proc, calls = run_script(
+            [pr, "--method", "squash", "--no-link-check", "--head-sha", given],
+            {
+                draft_prefix(pr): "false\n",
+                merge_state_prefix(pr): "CLEAN\n",
+                merge: "",
+            },
+            sequences={state_prefix(pr): ["OPEN\n", "MERGED\n"]},
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(list(merge) + ["--match-head-commit", given], calls)
+        # The caller's SHA is the one CI verified; the live head is not re-read.
+        self.assertEqual([c for c in calls if c[:5] == list(head_prefix(pr))], [])
+
+    def test_the_head_is_read_before_the_merge_state(self):
+        pr = "34"
+        proc, calls = run_script(
+            [pr, "--method", "squash", "--no-link-check"],
+            {
+                draft_prefix(pr): "false\n",
+                merge_state_prefix(pr): "CLEAN\n",
+                ("pr", "merge", pr): "",
+            },
+            sequences={state_prefix(pr): ["OPEN\n", "MERGED\n"]},
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        order = [c[4] for c in calls if c[:2] == ["pr", "view"] and
+                 c[4] in ("headRefOid", "mergeStateStatus")]
+        self.assertEqual(order, ["headRefOid", "mergeStateStatus"])
+
+    def test_an_unreadable_head_is_an_error_and_never_merges(self):
+        pr = "35"
+        proc, calls = run_script(
+            [pr, "--method", "squash", "--no-link-check"],
+            {
+                state_prefix(pr): "OPEN\n",
+                draft_prefix(pr): "false\n",
+                head_prefix(pr): "",
+                merge_state_prefix(pr): "CLEAN\n",
+            },
+            exits={head_prefix(pr): 1},
+        )
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("result: ERROR\n", proc.stdout)
+        self.assertIn("cannot read the head commit", proc.stdout)
+        self.assertEqual([c for c in calls if c[:2] == ["pr", "merge"]], [])
+
+    def test_a_malformed_head_sha_is_a_usage_error(self):
+        proc, calls = run_script(["36", "--head-sha", "not-a-sha"], {})
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--head-sha needs a commit SHA", proc.stderr)
+        self.assertEqual(calls, [])
+
+    def test_dry_run_on_a_merged_pr_never_closes_the_issue(self):
+        pr = "37"
+        issue = "65"
+        proc, calls = run_script(
+            [pr, "--issue", issue, "--dry-run"],
+            {state_prefix(pr): "MERGED\n", issue_view_prefix(issue): "OPEN\n"},
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("result: ALREADY_MERGED\n", proc.stdout)
+        self.assertIn(f"issue: WOULD_CLOSE (#{issue}", proc.stdout)
+        self.assertEqual([c for c in calls if c[:2] == ["issue", "close"]], [])
 
     def test_a_lazily_computed_merge_state_is_read_once_more(self):
         pr = "32"

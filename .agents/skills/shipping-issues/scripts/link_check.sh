@@ -163,6 +163,24 @@ on_interrupt() {
 }
 trap on_interrupt INT TERM HUP
 
+# same_body <a> <b> — the two files hold the same body, ignoring carriage
+# returns and trailing newlines (a round trip through GitHub may differ in
+# both without anyone having edited the text).
+same_body() {
+  [[ "$(tr -d '\r' < "$1")" == "$(tr -d '\r' < "$2")" ]]
+}
+
+# body_unchanged — the live PR body still matches the snapshot in body_file.
+# A body that changed (someone edited it while --fix ran) or cannot be read
+# must never be overwritten by a minimal save and a restore of the old text.
+body_unchanged() {
+  local live ok=1
+  live="$(mktemp "${TMPDIR:-/tmp}/link_check_live.XXXXXX")" || return 1
+  if read_body "$live" && same_body "$live" "$body_file"; then ok=0; fi
+  rm -f "$live"
+  return $ok
+}
+
 # resave_body — save a minimal "Closes #N" body, then the full body again, up
 # to RESAVES times, stopping once GitHub lists the issue as closed by the PR.
 resave_body() {
@@ -171,8 +189,16 @@ resave_body() {
     resave_note=" (re-save skipped: mktemp failed)"; minimal_file=""; return; }
   printf 'Closes #%s\n' "$ISSUE" > "$minimal_file"
   echo "fix: the body has a closing keyword for #$ISSUE that GitHub has not linked — re-saving it (a minimal 'Closes #$ISSUE' body, then the full body) up to $RESAVES times"
+  # Named up front: a run killed outright (no trap fires) leaves this file as
+  # the only full copy of the body outside GitHub's edit history.
+  echo "fix: full body snapshot: $body_file (restore with: gh pr edit $PR --body-file $body_file)"
   while [[ $attempt -lt $RESAVES ]] && ! is_linked; do
     attempt=$((attempt + 1))
+    if ! body_unchanged; then
+      echo "fix: the PR body changed (or could not be re-read) since --fix read it — re-save stopped, nothing restored over it"
+      resave_note=" (re-save stopped: the body changed while --fix ran)"
+      break
+    fi
     # Marked live before the call: a failed edit may still have landed, and
     # putting back the same body is harmless.
     minimal_live=1

@@ -3,7 +3,7 @@
 # that the issue it was supposed to close actually closed.
 #
 # Usage: land_pr.sh <pr-number> [--issue N] [--method squash|merge|rebase]
-#                   [--dry-run] [--no-link-check] [--no-ready]
+#                   [--head-sha SHA] [--dry-run] [--no-link-check] [--no-ready]
 #
 # Without --method the script picks the first method the repository allows,
 # preferring squash. It always merges now: it never arms GitHub auto-merge, so
@@ -30,6 +30,15 @@
 # guard, and a repository cut from this template has none until its owner
 # adds one.
 #
+# The merge is pinned to one commit (`gh pr merge --match-head-commit`), so a
+# push that lands after CI was read cannot be merged unverified: GitHub refuses
+# it and the result is MERGE_REFUSED. Pass --head-sha with the `head_sha:` line
+# ci_watch.sh printed for its PASS; without it the script pins to the head it
+# reads just before it checks the merge state.
+#
+# With --dry-run nothing is written: on an already-merged PR whose issue is
+# still open it reports `issue: WOULD_CLOSE` instead of closing the issue.
+#
 # Exit codes: 0 = merged, 1 = merge refused, 2 = usage
 
 set -uo pipefail
@@ -54,6 +63,7 @@ fi
 PR="${1:-}"
 ISSUE=""
 METHOD=""
+HEAD_SHA=""
 DRY=0
 LINK_CHECK=1
 READY=1
@@ -62,6 +72,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --issue) [[ $# -ge 2 ]] || { echo "--issue needs a value" >&2; exit 2; }; ISSUE="$2"; ISSUE="${ISSUE#\#}"; shift 2 ;;
     --method) [[ $# -ge 2 ]] || { echo "--method needs a value" >&2; exit 2; }; METHOD="$2"; shift 2 ;;
+    --head-sha) [[ $# -ge 2 ]] || { echo "--head-sha needs a value" >&2; exit 2; }; HEAD_SHA="$2"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     --no-link-check) LINK_CHECK=0; shift ;;
     --no-ready) READY=0; shift ;;
@@ -70,7 +81,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$PR" ]]; then
-  echo "Usage: land_pr.sh <pr-number> [--issue N] [--method squash|merge|rebase] [--dry-run]" >&2
+  echo "Usage: land_pr.sh <pr-number> [--issue N] [--method squash|merge|rebase] [--head-sha SHA] [--dry-run]" >&2
+  exit 2
+fi
+if [[ -n "$HEAD_SHA" && ! "$HEAD_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+  echo "--head-sha needs a commit SHA, got: $HEAD_SHA" >&2
   exit 2
 fi
 
@@ -103,8 +118,12 @@ if [[ -n "$ISSUE" && $LINK_CHECK -eq 1 && "$state" == "OPEN" ]]; then
     echo "detail: retarget the PR at the default branch (gh pr edit $PR --base <default>), or issue #$ISSUE stays open"
     exit 1
   elif [[ $link_rc -ne 0 ]]; then
+    # link_check's own detail says which case it is: no closing keyword
+    # (`--fix` appends one), or a keyword GitHub has not linked (step 5's
+    # `--fix` already re-saved it; the PR is held for a human).
     echo "result: NOT_LINKED"
-    echo "detail: merging now would leave issue #$ISSUE open — fix the link (link_check.sh $PR --issue $ISSUE --fix) and retry"
+    link_detail="$(printf '%s\n' "$link_out" | sed -n 's/^detail: //p' | head -n 1)"
+    echo "detail: merging now would leave issue #$ISSUE open — ${link_detail:-link_check.sh gave no detail}"
     exit 1
   fi
 fi
@@ -148,6 +167,19 @@ if [[ "$state" == "OPEN" ]]; then
     exit 0
   fi
 
+  # --- 1.7 the commit to merge -------------------------------------------------
+  # Read BEFORE the merge state, so the CLEAN below is about this commit or a
+  # newer one; a push after this read makes GitHub refuse the pinned merge.
+  if [[ -z "$HEAD_SHA" ]]; then
+    HEAD_SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid 2>/dev/null)"
+    if [[ ! "$HEAD_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+      echo "result: ERROR"
+      echo "detail: cannot read the head commit of PR #$PR — nothing was merged"
+      exit 1
+    fi
+  fi
+  echo "head_sha: $HEAD_SHA"
+
   # --- 1.8 merge state (merge precondition) ----------------------------------
   # GitHub's own answer to "can this merge right now".
   merge_state="$(gh pr view "$PR" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null)"
@@ -180,6 +212,10 @@ confirm_issue() {
     echo "issue: UNKNOWN (#$ISSUE — could not read state)"
     return 0
   fi
+  if [[ $DRY -eq 1 ]]; then
+    echo "issue: WOULD_CLOSE (#$ISSUE — still open; dry run, nothing closed)"
+    return 0
+  fi
   # GitHub did not auto-close it. Close it here rather than leaving a merged
   # change with an open issue behind it.
   if gh issue close "$ISSUE" \
@@ -196,7 +232,7 @@ if [[ "$state" == "MERGED" ]]; then
   exit 0
 fi
 
-if out="$(gh pr merge "$PR" "--$METHOD" --delete-branch 2>&1)"; then
+if out="$(gh pr merge "$PR" "--$METHOD" --delete-branch --match-head-commit "$HEAD_SHA" 2>&1)"; then
   final="$(gh pr view "$PR" --json state -q .state 2>/dev/null)"
   if [[ "$final" == "MERGED" ]]; then
     echo "result: MERGED"

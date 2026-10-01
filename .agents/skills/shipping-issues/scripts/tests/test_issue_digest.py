@@ -460,6 +460,8 @@ class MainEndToEndTest(DigestRunner, unittest.TestCase):
         self.assertIn("select: #4", out)
         self.assertNotIn("select: #3", out)
         self.assertIn("needs-design: #3", out)
+        self.assertIn("held until the design is settled (take one on by number or "
+                      "with --include-design)", out)
         # Not duplicated into `held:` alongside genuinely blocked issues.
         self.assertNotIn("held:", out)
 
@@ -695,6 +697,23 @@ class ShipContractInCodeTest(unittest.TestCase):
     def test_only_a_fenced_example_means_no_contract(self):
         self.assertIsNone(idg.parse_ship_contract(f"```\n{self.EXAMPLE}\n```\n"))
         self.assertIsNone(idg.parse_ship_contract(f"~~~\n{self.EXAMPLE}\n"))
+
+    def test_backticks_never_pair_across_a_contract_paragraph(self):
+        # A lone backtick before the contract and an inline span after it are
+        # in different paragraphs; pairing them hid the real contract.
+        body = ("Press the ` key.\n\n"
+                "<!-- ship: tier=P1 blocked-by=#5 touches=src/a.ts design=open -->\n\n"
+                "Then run `pnpm test`.\n")
+        c = idg.parse_ship_contract(body)
+        self.assertIsNotNone(c)
+        self.assertEqual(c["tier"], "P1")
+        self.assertEqual(c["depends_on"], [5])
+
+    def test_a_contract_comment_block_ends_the_paragraph_without_blank_lines(self):
+        body = ("Press the ` key.\n"
+                "<!-- ship: tier=P2 blocked-by=none touches=* -->\n"
+                "Then run `pnpm test`.\n")
+        self.assertEqual(idg.parse_ship_contract(body)["tier"], "P2")
 
     def test_an_unmatched_backtick_does_not_hide_the_contract(self):
         body = f"A stray ` backtick.\n\n{CONTRACT}"

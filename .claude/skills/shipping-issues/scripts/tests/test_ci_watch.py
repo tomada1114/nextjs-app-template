@@ -63,8 +63,8 @@ def STATUSES(sha):
     return ("api", "repos/{owner}/{repo}/commits/%s/status" % sha)
 
 
-def run_script(args, responses, *, exits=None, stderrs=None):
-    with FakeGh(responses, exits=exits, stderrs=stderrs) as fake:
+def run_script(args, responses, *, exits=None, stderrs=None, sequences=None):
+    with FakeGh(responses, exits=exits, stderrs=stderrs, sequences=sequences) as fake:
         proc = subprocess.run(
             ["bash", str(SCRIPT), *args],
             env=fake.env,
@@ -334,6 +334,61 @@ class CiWatchTest(unittest.TestCase):
                     self.assertNotIn("lint [SUCCESS]", proc.stdout)
                     self.assertIn("merge_state: BLOCKED\n", proc.stdout)
 
+    def test_pass_names_the_head_commit_it_verified(self):
+        pr = "41"
+        proc, calls = run_script(
+            [pr, "--timeout", "600"],
+            {
+                ROLLUP(pr): "1\n",
+                HEAD_OID(pr): SHA,
+                ("pr", "checks", pr, "--watch", "--interval", "20"): "",
+                ("pr", "checks", pr, "--json", "name,state,link"): "lint\tSUCCESS\t\n",
+                STATE(pr): STATE_JSON,
+            },
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("verdict: PASS\n", proc.stdout)
+        self.assertIn("check_source: checks\n", proc.stdout)
+        self.assertIn(f"head_sha: {SHA}\n", proc.stdout)
+
+    def test_a_head_that_moves_during_the_watch_is_never_a_pass(self):
+        pr = "42"
+        newer = "b" * 40
+        proc, calls = run_script(
+            [pr, "--timeout", "600"],
+            {
+                ROLLUP(pr): "1\n",
+                ("pr", "checks", pr, "--watch", "--interval", "20"): "",
+                ("pr", "checks", pr, "--json", "name,state,link"): "lint\tSUCCESS\t\n",
+                STATE(pr): STATE_JSON,
+            },
+            sequences={HEAD_OID(pr): [SHA, newer]},
+        )
+
+        self.assertEqual(proc.returncode, 4)
+        self.assertNotIn("verdict: PASS", proc.stdout)
+        self.assertIn("verdict: ERROR\n", proc.stdout)
+        self.assertIn(f"head moved from {SHA} to {newer}", proc.stdout)
+
+    def test_a_stale_check_is_unsettled_not_green(self):
+        pr = "43"
+        proc, calls = run_script(
+            [pr, "--timeout", "600"],
+            {
+                ROLLUP(pr): "2\n",
+                ("pr", "checks", pr, "--watch", "--interval", "20"): "",
+                ("pr", "checks", pr, "--json", "name,state,link"): (
+                    "lint\tSUCCESS\t\nbuild\tSTALE\thttps://example.test/9\n"
+                ),
+                STATE(pr): STATE_JSON,
+            },
+        )
+
+        self.assertEqual(proc.returncode, 4)
+        self.assertIn("verdict: ERROR\n", proc.stdout)
+        self.assertIn("  - build [STALE] https://example.test/9\n", proc.stdout)
+
     def test_green_completions_other_than_success_still_pass(self):
         pr = "25"
         proc, calls = run_script(
@@ -534,6 +589,48 @@ class CiWatchFallbackTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("verdict: PASS\n", proc.stdout)
         self.assertEqual([c for c in calls if c[:2] == ["run", "view"]], [])
+
+    def test_runs_of_one_workflow_from_different_events_are_both_read(self):
+        # A push run and a pull_request run of the same workflow on one commit
+        # are two results: the newer push run must not hide the failed PR run.
+        pr = "44"
+        self.args = [pr]
+        proc, _ = self.forbidden(pr, {
+            RUNS(SHA): (
+                "21\tCI\tcompleted\tfailure\thttps://x/actions/runs/21\tpull_request\tfeat/1\n"
+                "22\tCI\tcompleted\tsuccess\thttps://x/actions/runs/22\tpush\tfeat/1\n"
+            ),
+            ("run", "view", "21", "--log-failed"): "boom\n",
+        })
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("verdict: FAIL\n", proc.stdout)
+        self.assertIn("  - CI [completed/failure] https://x/actions/runs/21\n", proc.stdout)
+
+    def test_a_superseded_run_of_the_same_event_and_branch_is_ignored(self):
+        pr = "45"
+        self.args = [pr]
+        proc, calls = self.forbidden(pr, {
+            RUNS(SHA): (
+                "31\tPR Title\tcompleted\tcancelled\thttps://x/actions/runs/31\tpull_request\tfeat/1\n"
+                "32\tPR Title\tcompleted\tsuccess\thttps://x/actions/runs/32\tpull_request\tfeat/1\n"
+            ),
+        })
+
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertIn("verdict: PASS\n", proc.stdout)
+        self.assertEqual([c for c in calls if c[:2] == ["run", "view"]], [])
+
+    def test_a_stale_run_conclusion_is_an_error_not_a_pass(self):
+        pr = "46"
+        self.args = [pr]
+        proc, _ = self.forbidden(pr, {
+            RUNS(SHA): "41\tCI\tcompleted\tstale\thttps://x/actions/runs/41\n",
+        })
+
+        self.assertEqual(proc.returncode, 4)
+        self.assertIn("verdict: ERROR\n", proc.stdout)
+        self.assertIn("unsettled_checks:\n  - CI [completed/stale]", proc.stdout)
 
     def test_a_cancelled_run_that_is_the_newest_of_its_workflow_fails(self):
         pr = "38"

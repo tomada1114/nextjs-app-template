@@ -147,6 +147,34 @@ class MainEndToEndTest(unittest.TestCase):
         self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
         self.assertEqual(label_writes(calls), [])
 
+    def test_a_body_ending_inside_a_code_fence_is_closed_before_appending(self):
+        for fence in ("```", "~~~~"):
+            with self.subTest(fence=fence):
+                with tempfile.TemporaryDirectory() as td:
+                    body = Path(td) / "body.txt"
+                    body.write_text(f"Repro at foo.py:12:\n\n{fence}sh\npnpm test\n")
+                    rc, out, err, calls, filed = self._run_capturing_calls(
+                        ["--title", "t", "--body-file", str(body), "--tier", "P2",
+                         "--blocked-by", "12", "--repo", "acme/widgets"],
+                        {
+                            ("repo", "view"): "acme/widgets\n",
+                            ("label", "list"): json.dumps(
+                                [{"name": n} for n in ("priority: P2",
+                                                       "blocked: dependency")]),
+                            ("issue", "create"): "https://github.com/acme/widgets/issues/99\n",
+                        },
+                    )
+                self.assertEqual(rc, 0, err)
+                self.assertIn(f"pnpm test\n{fence}\n\n## Dependencies", filed)
+                self.assertIsNone(idg.unclosed_fence(filed))
+                # Both the prose edge and the contract are read, not swallowed as code.
+                self.assertEqual(idg.parse_ship_contract(filed)["depends_on"], [12])
+                self.assertEqual(idg.extract_deps(filed.split("<!--")[0], "t", 99)["depends_on"], [12])
+
+    def test_a_closed_fence_is_left_as_it_is(self):
+        self.assertIsNone(idg.unclosed_fence("a\n```\ncode\n```\nb"))
+        self.assertEqual(idg.unclosed_fence("a\n````\n```\n"), "````")
+
     def test_blocked_by_writes_depends_on_lines_and_the_dependency_label(self):
         with tempfile.TemporaryDirectory() as td:
             body = Path(td) / "body.txt"

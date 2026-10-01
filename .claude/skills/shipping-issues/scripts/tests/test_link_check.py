@@ -319,13 +319,15 @@ class ResaveTest(unittest.TestCase):
     def test_keyword_absent_append_not_linked_resaves_the_appended_body(self):
         pr = "43"
         body = "## Summary\n\nNo keyword here.\n"
+        appended = body + "\n\nCloses #7\n"
         run = run_resave(
             [pr, "--issue", "7", "--fix"],
             resave_responses(pr, body),
-            sequences={closing_prefix(pr): [""]},
+            # GitHub holds the appended body once the append has saved.
+            sequences={closing_prefix(pr): [""],
+                       ("pr", "view", pr, "--json", "body"): [body, appended]},
         )
 
-        appended = body + "\n\nCloses #7\n"
         self.assertEqual(run.proc.returncode, 1)
         self.assertEqual(run.saved_bodies[0], appended)
         self.assert_body_intact(run, appended)
@@ -334,6 +336,55 @@ class ResaveTest(unittest.TestCase):
             "detail: the PR body has a closing keyword for #7, but GitHub has not linked it",
             run.proc.stdout,
         )
+
+    def test_a_body_edited_during_fix_is_never_overwritten(self):
+        pr = "47"
+        edited = "## Summary\n\nCloses #7\n\nRewritten by a human meanwhile.\n"
+        run = run_resave(
+            [pr, "--issue", "7", "--fix"],
+            resave_responses(pr, BODY_WITH_KEYWORD),
+            sequences={closing_prefix(pr): [""],
+                       ("pr", "view", pr, "--json", "body"): [BODY_WITH_KEYWORD, edited]},
+        )
+
+        self.assertEqual(run.proc.returncode, 1)
+        self.assertIn("re-save stopped, nothing restored over it", run.proc.stdout)
+        self.assertEqual(run.body_edits, [])
+        self.assertIn(
+            "detail: the PR body has a closing keyword for #7, but GitHub has not "
+            "linked it (re-save stopped: the body changed while --fix ran)\n",
+            run.proc.stdout)
+        self.assertEqual(run.leftovers, {})
+
+    def test_a_body_edited_between_re_saves_stops_the_next_one(self):
+        pr = "48"
+        edited = "Closes #7\n\nEdited between the two re-saves.\n"
+        run = run_resave(
+            [pr, "--issue", "7", "--fix"],
+            resave_responses(pr, BODY_WITH_KEYWORD),
+            sequences={closing_prefix(pr): [""],
+                       ("pr", "view", pr, "--json", "body"):
+                           [BODY_WITH_KEYWORD, BODY_WITH_KEYWORD, edited]},
+        )
+
+        self.assertEqual(run.proc.returncode, 1)
+        self.assertIn("fix: re-save 1/2: not linked yet\n", run.proc.stdout)
+        self.assertNotIn("re-save 2/2", run.proc.stdout)
+        # One minimal save and its restore, then nothing over the newer body.
+        self.assertEqual(run.saved_bodies, ["Closes #7\n", BODY_WITH_KEYWORD])
+
+    def test_the_snapshot_file_is_named_before_any_re_save(self):
+        pr = "49"
+        run = run_resave(
+            [pr, "--issue", "7", "--fix"],
+            resave_responses(pr, BODY_WITH_KEYWORD),
+            sequences={closing_prefix(pr): ["", "7"]},
+        )
+
+        out = run.proc.stdout
+        self.assertIn("fix: full body snapshot: ", out)
+        self.assertIn(f"(restore with: gh pr edit {pr} --body-file ", out)
+        self.assertLess(out.index("full body snapshot"), out.index("re-save 1/2"))
 
     def test_no_keyword_and_edit_fails_reports_no_keyword(self):
         pr = "44"
