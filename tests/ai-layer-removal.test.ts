@@ -53,6 +53,7 @@ const REMOVED_PATHS = [
   "src/server/handlers/ask.ts",
   "tests/ai-anthropic.test.ts",
   "tests/ai-layer-removal.test.ts",
+  "tests/ai-openrouter.test.ts",
   "tests/ai-port.test.ts",
   "tests/ai-vendor-swap.test.ts",
   "tests/fixtures/llm",
@@ -72,7 +73,7 @@ const REMOVED_PATHS = [
  * `adding-an-adapter.md` adds a package and a credential here and nothing
  * else.
  */
-const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai"];
+const AI_LAYER_TOKENS = ["ANTHROPIC_API_KEY", "@anthropic-ai", "OPENROUTER_API_KEY"];
 
 /**
  * Names this repository gives the AI layer's own surface, which a document can

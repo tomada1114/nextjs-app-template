@@ -1,0 +1,29 @@
+{
+  "status": 200,
+  "body": {
+    "id": "gen-fixture-handwritten-success",
+    "provider": "DeepSeek",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "object": "chat.completion",
+    "created": 1790812800,
+    "choices": [
+      {
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"answer\":\"The Answer to the Ultimate Question of Life, the Universe, and Everything is 42.\",\"confidence\":0.42}",
+          "refusal": null,
+          "reasoning": null
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 118,
+      "completion_tokens": 31,
+      "total_tokens": 149
+    }
+  }
+}
