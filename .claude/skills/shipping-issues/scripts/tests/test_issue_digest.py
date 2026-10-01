@@ -373,6 +373,12 @@ class LabelDefinitionsMatchLabelsYmlTest(unittest.TestCase):
     """The scripts never create a label, so the constants only name what
     `pnpm repo:labels` defines; they must not drift from it."""
 
+    def test_tracking_label_is_declared_in_labels_yml(self):
+        # The digest drops an issue by this name, so the label it reads must be
+        # one `pnpm repo:labels` actually creates.
+        self.assertIn("tracking", declared_labels())
+        self.assertIn(idg.normalize_label("tracking"), idg.TRACKING_LABELS)
+
     def test_tier_and_design_labels_match_labels_yml(self):
         declared = declared_labels()
         for name, color, desc in [*idg.TIER_LABELS.values(), idg.DESIGN_LABEL]:
@@ -431,6 +437,44 @@ class MainEndToEndTest(DigestRunner, unittest.TestCase):
         payload = json.loads(out)
         self.assertEqual(payload["ranking"][0]["number"], 2)
         self.assertEqual(payload["ranking"][0]["tier"], "P0")
+
+    def test_tracking_issue_is_never_ranked_selected_or_offered_a_tier(self):
+        issues = [
+            gh_issue(96, title="back-port harness (tracking)", labels=["tracking"],
+                     body="- [ ] #97\n- [ ] #98"),
+            gh_issue(95, title="old umbrella", labels=["Epic", "priority: P0"]),
+            gh_issue(97, title="the work", labels=["priority: P2"]),
+            gh_issue(98, title="untiered work"),
+        ]
+        rc, out, err = self._run(["--select", "--json"], issues)
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertEqual(payload["tracking_issues"], [95, 96])
+        self.assertEqual(payload["open_issue_count"], 2)
+        for key in ("ranking", "issues"):
+            self.assertNotIn(96, [r["number"] for r in payload[key]])
+            self.assertNotIn(95, [r["number"] for r in payload[key]])
+        self.assertEqual(payload["label_coverage"]["unlabeled"], [98])
+
+        rc, out, err = self._run(["--select"], issues)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("select: #97", out)
+        self.assertIn("tracking: #95, #96", out)
+
+        rc, out, err = self._run([], issues)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("tracking: #95, #96", out)
+        self.assertNotIn("back-port harness", out)
+
+    def test_on_hold_issue_keeps_its_tier_unlike_a_tracking_issue(self):
+        issues = [gh_issue(5, title="parked work", labels=["on hold", "priority: P1"])]
+        rc, out, err = self._run(["--json"], issues)
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertEqual(payload["tracking_issues"], [])
+        row = payload["ranking"][0]
+        self.assertEqual((row["number"], row["tier"], row["readiness"]),
+                         (5, "P1", "LABEL:on hold"))
 
     def test_select_text_output_names_the_pick(self):
         issues = [gh_issue(2, title="ship now", labels=["priority: P0"])]

@@ -60,7 +60,8 @@ def rank_row(number, tier="P1", readiness="READY", touches=None, title=None,
     }
 
 
-def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None):
+def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None,
+                   tracking=()):
     """`stale_dependency`, when given, maps issue number -> the stale label
     names it carries, and only affects the default `issues` records built
     here (an explicit `issues=` overrides it entirely, same as it does with
@@ -75,6 +76,7 @@ def digest_payload(rows, needs_design=(), issues=None, stale_dependency=None):
                               "missing": [r["number"] for r in rows],
                               "incomplete": {}},
         "needs_design": list(needs_design),
+        "tracking_issues": sorted(tracking),
         "stale_dependency_labels": sorted(stale_dependency),
         "ranking": rows,
         "issues": issues if issues is not None else [
@@ -197,14 +199,15 @@ class MainTest(unittest.TestCase):
 
     def _run(self, argv, rows, preflight=PREFLIGHT, preflight_rc=0,
              needs_design=(), issues=None, worktrees=(), worktree_paths=(),
-             stale_dependency=None):
+             stale_dependency=None, tracking=()):
         self.recorded: list[list[str]] = []
         paths = [f"/state/acme__widgets/worktrees/{n}" for n in worktrees]
         paths += list(worktree_paths)
         self.worktree_list = "".join(
             f"worktree {path}\nHEAD abc\n\n" for path in paths)
         payload = json.dumps(
-            digest_payload(rows, needs_design, issues, stale_dependency))
+            digest_payload(rows, needs_design, issues, stale_dependency,
+                           tracking))
 
         self.preflight_calls: list[list[str]] = []
 
@@ -343,6 +346,29 @@ class MainTest(unittest.TestCase):
         self.assertEqual(rc, 0, err)
         self.assertIn("select: none — #9 is not an open, shippable issue", out)
         self.assertNotIn("select: #1", out)
+
+    def test_explicit_tracking_issue_is_not_selected_and_says_why(self):
+        rc, out, err = self._run(["--mode", "9", "--json"],
+                                 [rank_row(1, touches=["a/"])], tracking=[9])
+        self.assertEqual(rc, 0, err)
+        payload = json.loads(out)
+        self.assertIsNone(payload["select"])
+        self.assertEqual(payload["tracking_issues"], [9])
+        self.assertEqual(payload["select_hold"],
+                         "#9 is a tracking issue — ship one of its sub-issues "
+                         "instead")
+
+    def test_tracking_issues_are_listed_beside_the_pick(self):
+        rc, out, err = self._run([], [rank_row(1, touches=["a/"])],
+                                 tracking=[9, 4])
+        self.assertEqual(rc, 0, err)
+        self.assertIn("select: #1", out)
+        self.assertIn("tracking: #4,#9 → never ranked; ship their sub-issues",
+                      out)
+
+    def test_no_tracking_issue_prints_no_tracking_line(self):
+        rc, out, err = self._run([], [rank_row(1, touches=["a/"])])
+        self.assertNotIn("tracking:", out)
 
     def test_explicit_design_held_issue_is_still_selectable(self):
         # The digest is asked --include-design for a named issue, so its row

@@ -65,8 +65,10 @@ phrasings. These edges only appear on reading:
   (the same rename, the same missing guard) produce the same hunks independently. If two
   shortlisted issues name the same symbol or the same failure, ship one first and start
   the other from the result — or report them as one issue.
-- **Umbrella issues** — an epic listing `- [ ] #12 #13 #14` is not itself implementable.
-  Treat it as a container: ship the children, leave the epic.
+- **Umbrella issues** — a tracking issue listing `- [ ] #12 #13 #14` is not itself
+  implementable: ship the children, leave the parent. A `tracking` (or `epic`) label
+  makes `issue_digest.py` drop it mechanically; `on hold` does not, because that label
+  means real work parked on purpose and keeps its tier.
 
 When two issues could reasonably go either order, prefer the one that is smaller and
 touches fewer files first — it shortens the window in which the other's branch can

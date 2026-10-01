@@ -53,6 +53,10 @@ startup's calls are seconds apart; anything reading the backlog after this run
 has changed it should not. That is the safe default: a stale digest can re-select
 an issue this run already merged, and nothing downstream would notice.
 
+An issue labelled `tracking` (or `epic`) is a checklist of sub-issues, not work:
+it is dropped before ranking, never tiered, and listed on a `tracking:` line
+(`tracking_issues` in --json) so the caller ships its sub-issues instead.
+
 Exit codes:
     0 = digest printed (may contain zero issues)
     1 = gh invocation failed
@@ -309,6 +313,12 @@ DEPENDENCY_BLOCK_LABELS = {
     ("blocked: dependency", "blocked-by-dependency", "blocked: dependencies",
      "waiting on dependency")
 }
+
+# A tracking issue is a checklist of sub-issues, never work in itself. Unlike
+# READY_NEGATIVE_LABELS (which still ranks and tiers the issue, only holds it),
+# an issue carrying one of these is dropped from the records entirely: it is
+# never ranked, never selected, and never offered a priority tier to backfill.
+TRACKING_LABELS = {normalize_label(n) for n in ("tracking", "epic")}
 
 
 def resolve_design_label(existing: list[str]) -> tuple[str, bool]:
@@ -810,11 +820,15 @@ def main() -> int:
 
     wanted = set(args.issue)
     records = []
+    tracking = []
     for it in issues:
         num = it["number"]
         if wanted and num not in wanted:
             continue
         labels = [lbl["name"] for lbl in it.get("labels", [])]
+        if any(normalize_label(lbl) in TRACKING_LABELS for lbl in labels):
+            tracking.append(num)
+            continue
         body = it.get("body") or ""
         deps = all_deps[num]
         blockers = [lbl for lbl in labels
@@ -904,6 +918,7 @@ def main() -> int:
     stale_dependency = [r for r in records if r["stale_dependency_labels"]]
     payload = {
         "open_issue_count": len(records),
+        "tracking_issues": sorted(tracking),
         "open_pr_count": len(prs),
         "cache": cache_status,
         "label_coverage": {
@@ -979,6 +994,12 @@ def main() -> int:
             f"{shown}{more} "
             "(~P<n> = suggested; write them with apply_priority_labels.py --backfill)"
         )
+
+    tracking_line = (
+        "tracking: " + ", ".join(f"#{n}" for n in sorted(tracking))
+        + " — tracking issues, never ranked; ship their sub-issues"
+        if tracking else ""
+    )
 
     if args.audit:
         print(f"contract: {ccov['full']}/{ccov['total']} complete · "
@@ -1065,6 +1086,8 @@ def main() -> int:
                   f"(score {r['priority_score']} · {' · '.join(r['score_reasons']) or '—'})")
         if not picks:
             print("select: none — no READY issue matches the filter")
+        if tracking_line:
+            print(tracking_line)
         # Design-not-settled issues get their own line, not buried in `held:`
         # with dependency/label blocks — the reason to unblock them is
         # different (decide the design, not wait on something else).
@@ -1101,6 +1124,8 @@ def main() -> int:
         return 0
 
     print(f"# Open issues ({len(records)}) · open PRs ({len(prs)})\n")
+    if tracking_line:
+        print(tracking_line + "\n")
     if not records:
         print("_No open issues match the filter._")
         return 0

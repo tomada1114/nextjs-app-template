@@ -52,7 +52,13 @@
   description: "Needs a step only a person can take (console sign-in, purchase, signing identity); agents skip it."
 - name: "on hold"
   color: cccccc
-  description: "Not implementable as filed, or parked pending something outside the tracker."
+  description: "Parked on purpose; the reason is in a comment."
+
+# Tracking label: an issue that is a checklist of sub-issues, never work itself.
+# The shipping-issues digest drops it before ranking, so it is never tiered.
+- name: tracking
+  color: bfdadc
+  description: "A tracking issue: its sub-issues carry the work; never implemented itself."
 
 # Labels applied by .github/workflows/pr-label.yml from a PR's Conventional
 # Commit type. Never used for issue triage.
