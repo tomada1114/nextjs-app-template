@@ -77,7 +77,7 @@ export default function HomePage({
                   href="/"
                   locale={candidate}
                   hrefLang={candidate}
-                  lang={candidate}
+                  lang={locale}
                   aria-current={candidate === locale ? "page" : undefined}
                 >
                   {switcher(candidate)}

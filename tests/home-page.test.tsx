@@ -49,8 +49,10 @@ describe("HomePage", () => {
         "page",
       );
       expect(locale === "en" ? japanese : english).not.toHaveAttribute("aria-current");
-      expect(english).toHaveAttribute("lang", "en");
-      expect(japanese).toHaveAttribute("lang", "ja");
+      expect(english).toHaveAttribute("lang", locale);
+      expect(japanese).toHaveAttribute("lang", locale);
+      expect(english).toHaveAttribute("hreflang", "en");
+      expect(japanese).toHaveAttribute("hreflang", "ja");
     },
   );
   it("renders under jsdom", () => {
