@@ -73,6 +73,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const FINISH_REASONS: ReadonlySet<unknown> = new Set([
+  "stop",
+  "length",
+  "content_filter",
+  "tool_calls",
+  "function_call",
+  "error",
+]);
+
 /**
  * Reads the answer out of a chat completions body.
  *
@@ -99,7 +108,8 @@ export function readCompletion(body: unknown): Completion {
     return { kind: "malformed" };
   }
   const finish = choice["finish_reason"];
-  const finishReason = typeof finish === "string" ? finish : "unknown";
+  const finishReason =
+    typeof finish === "string" && FINISH_REASONS.has(finish) ? finish : "unknown";
   if (finishReason === "error") {
     return { kind: "error", status: undefined };
   }

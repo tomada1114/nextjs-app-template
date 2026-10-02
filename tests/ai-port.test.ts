@@ -185,41 +185,100 @@ export function describeLlmPortContract(
       expect(failureOf(result).code).toBe("ERR_LLM_INVALID_OUTPUT");
     });
 
-    it("reports ERR_LLM_TIMEOUT for an abort that lands during async schema validation", async () => {
-      // The gap #90 closes: `safeParseAsync` keeps the call open after the raw
-      // answer has already arrived, so a caller's abort can land while that
-      // validation is still running. `notifyStarted`/`releaseRefinement` pin
-      // the ordering — abort only after the refinement has actually started,
-      // release it only after the abort — so this cannot pass by the parse
-      // simply finishing before the signal is ever checked.
-      let notifyStarted: () => void = () => undefined;
-      const started = new Promise<void>((resolve) => {
-        notifyStarted = resolve;
-      });
-      let releaseRefinement: (valid: boolean) => void = () => undefined;
-      const refinement = new Promise<boolean>((resolve) => {
-        releaseRefinement = resolve;
-      });
-      const schema = CONTRACT_SCHEMA.refine(() => {
-        notifyStarted();
-        return refinement;
-      });
-      const controller = new AbortController();
+    it.each([true, false])(
+      "reports ERR_LLM_TIMEOUT when validation returns %s after cancellation",
+      async (valid) => {
+        // The gap #90 closes: `safeParseAsync` keeps the call open after the raw
+        // answer has already arrived, so a caller's abort can land while that
+        // validation is still running. `notifyStarted`/`releaseRefinement` pin
+        // the ordering — abort only after the refinement has actually started,
+        // release it only after the abort — so this cannot pass by the parse
+        // simply finishing before the signal is ever checked.
+        let notifyStarted: () => void = () => undefined;
+        const started = new Promise<void>((resolve) => {
+          notifyStarted = resolve;
+        });
+        let releaseRefinement: (valid: boolean) => void = () => undefined;
+        const refinement = new Promise<boolean>((resolve) => {
+          releaseRefinement = resolve;
+        });
+        const schema = CONTRACT_SCHEMA.refine(() => {
+          notifyStarted();
+          return refinement;
+        });
+        const controller = new AbortController();
 
-      const pending = harness.succeeds().generate({
-        schema,
-        prompt: "What is the answer?",
-        outputLanguage: "en",
-        signal: controller.signal,
-      });
-      await started;
-      controller.abort();
-      releaseRefinement(true);
+        const pending = harness.succeeds().generate({
+          schema,
+          prompt: "What is the answer?",
+          outputLanguage: "en",
+          signal: controller.signal,
+        });
+        await started;
+        controller.abort();
+        releaseRefinement(valid);
 
-      const error = failureOf(await pending);
+        const error = failureOf(await pending);
 
-      expect(error.code).toBe("ERR_LLM_TIMEOUT");
-    });
+        expect(error.code).toBe("ERR_LLM_TIMEOUT");
+      },
+    );
+
+    it.each(["resolves", "rejects"] as const)(
+      "settles a cancelled call before its refinement %s",
+      async (completion) => {
+        vi.useFakeTimers();
+        let started: () => void = () => undefined;
+        const refining = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        let release: (valid: boolean) => void = () => undefined;
+        let reject: (reason: Error) => void = () => undefined;
+        const refinement = new Promise<boolean>((resolve, rejectPromise) => {
+          release = resolve;
+          reject = rejectPromise;
+        });
+        const schema = CONTRACT_SCHEMA.refine(() => {
+          started();
+          return refinement;
+        });
+        const controller = new AbortController();
+        const reason = new Error("cancelled while validating");
+        let outcome: Result<z.infer<typeof CONTRACT_SCHEMA>, LlmError> | undefined;
+        const pending = harness.succeeds().generate({
+          schema,
+          prompt: "Question",
+          outputLanguage: "en",
+          signal: controller.signal,
+        });
+        void pending.then((result) => {
+          outcome = result;
+        });
+        try {
+          await refining;
+          controller.abort(reason);
+          await vi.advanceTimersByTimeAsync(0);
+          expect(outcome).toMatchObject({
+            ok: false,
+            error: { code: "ERR_LLM_TIMEOUT", cause: reason },
+          });
+          if (completion === "rejects") {
+            reject(new Error("late refinement rejection"));
+          } else {
+            release(true);
+          }
+          await vi.advanceTimersByTimeAsync(0);
+          expect(outcome).toMatchObject({
+            ok: false,
+            error: { code: "ERR_LLM_TIMEOUT", cause: reason },
+          });
+        } finally {
+          release(true);
+          await pending;
+          vi.useRealTimers();
+        }
+      },
+    );
 
     it("reports ERR_LLM_INVALID_OUTPUT when the answer does not match the schema", async () => {
       const error = failureOf(await ask(harness.returnsInvalidOutput()));
@@ -355,6 +414,17 @@ describeLlmPortContract("createOpenRouterAdapter", {
 });
 
 describe("createFakeLlmPort", () => {
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
+    "rejects a delay outside the integer timer range: %o",
+    (delayMs) => {
+      expect(() => createFakeLlmPort({ delayMs })).toThrow(RangeError);
+    },
+  );
+
+  it.each([0, 2_147_483_647])("accepts a boundary delay of %i", (delayMs) => {
+    expect(() => createFakeLlmPort({ delayMs })).not.toThrow();
+  });
+
   it("fails with ERR_LLM_INVALID_OUTPUT when no response was configured", async () => {
     const error = failureOf(await ask(createFakeLlmPort()));
 

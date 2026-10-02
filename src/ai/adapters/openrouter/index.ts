@@ -1,8 +1,9 @@
 import type * as z from "zod";
 
-import { err, ok, type Result } from "../../../core/result";
+import { err, type Result } from "../../../core/result";
 import { abortedLlmError, asError, LlmError } from "../../errors";
 import type { LlmPort, LlmRequest } from "../../port";
+import { validateOutput } from "../../validation";
 import { requestSignal, resolveDeadlineMs } from "./deadline";
 import { providerError, transportError } from "./errors";
 import { buildRequestBody, CHAT_COMPLETIONS_URL, readCompletion } from "./request";
@@ -28,10 +29,10 @@ export interface OpenRouterAdapterOptions {
    */
   readonly apiKey: string | undefined;
 
-  /** @see DEFAULT_MODEL */
+  /** A nonblank model id, trimmed at construction. @see DEFAULT_MODEL */
   readonly model?: string;
 
-  /** @see DEFAULT_MAX_TOKENS */
+  /** A positive safe integer, rejected at construction otherwise. @see DEFAULT_MAX_TOKENS */
   readonly maxTokens?: number;
 
   /**
@@ -76,10 +77,18 @@ function parseJson(text: string): { readonly value: unknown } | undefined {
  * `safeParse` would throw rather than fail on an async refinement.
  */
 export function createOpenRouterAdapter(options: OpenRouterAdapterOptions): LlmPort {
-  const { apiKey, model = DEFAULT_MODEL, maxTokens = DEFAULT_MAX_TOKENS } = options;
+  const model = (options.model ?? DEFAULT_MODEL).trim();
+  if (model === "") {
+    throw new TypeError("model must be a nonblank OpenRouter model id.");
+  }
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) {
+    throw new RangeError("maxTokens must be a positive safe integer.");
+  }
   const deadlineMs = resolveDeadlineMs(options.deadlineMs);
   const send = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
-  const key = apiKey === undefined || apiKey.trim() === "" ? undefined : apiKey;
+  const trimmedKey = options.apiKey?.trim();
+  const key = trimmedKey === "" ? undefined : trimmedKey;
 
   return {
     async generate<TSchema extends z.ZodType>(
@@ -152,6 +161,17 @@ export function createOpenRouterAdapter(options: OpenRouterAdapterOptions): LlmP
             ),
           );
         case "text":
+          if (
+            completion.finishReason === "length" ||
+            completion.finishReason === "content_filter"
+          ) {
+            return err(
+              new LlmError(
+                "ERR_LLM_INVALID_OUTPUT",
+                `The model did not complete its answer (finish_reason: ${completion.finishReason}).`,
+              ),
+            );
+          }
           break;
       }
 
@@ -167,24 +187,7 @@ export function createOpenRouterAdapter(options: OpenRouterAdapterOptions): LlmP
         );
       }
 
-      const parsed = await request.schema.safeParseAsync(answer.value);
-      if (!parsed.success) {
-        return err(
-          new LlmError(
-            "ERR_LLM_INVALID_OUTPUT",
-            "The model output did not match the requested schema.",
-            { cause: parsed.error },
-          ),
-        );
-      }
-
-      // Against the composed `signal`: validation is async, so a deadline or
-      // a caller's abort can land while it runs. See `LlmPort`.
-      if (signal.aborted) {
-        return err(abortedLlmError(signal.reason));
-      }
-
-      return ok(parsed.data);
+      return validateOutput(request.schema, answer.value, signal);
     },
   };
 }

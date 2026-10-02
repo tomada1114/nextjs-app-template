@@ -172,7 +172,7 @@ describe("the import scanner the zone assertions run on", () => {
   it.each([
     [
       "src/ai/adapters/fake/index.ts",
-      ["zod", "../../../core/result", "../../errors", "../../port"],
+      ["zod", "../../../core/result", "../../errors", "../../port", "../../validation"],
     ],
     [
       "src/server/handlers/ask.ts",

@@ -71,10 +71,11 @@ export interface LlmPort {
    * async `refine`/`transform` keeps the call open after the raw answer has
    * already arrived — and `signal`, or whatever bound an adapter composes over
    * it, can fire while that validation is still running. An implementation
-   * re-checks the signal once validation resolves and reports `ERR_LLM_TIMEOUT`
-   * rather than the parsed value when it fired, even though the parse itself
-   * succeeded: the deadline bounds the whole call, and validation is part of
-   * it, not a step that happens after the call is already over.
+   * settles with `ERR_LLM_TIMEOUT` as soon as that signal fires, without
+   * waiting for validation to resolve. A refinement's own work cannot be
+   * cancelled by Zod; a late result or rejection must not change the outcome
+   * or escape as an unhandled rejection. The deadline bounds the whole call,
+   * including validation.
    */
   generate<TSchema extends z.ZodType>(
     request: LlmRequest<TSchema>,
