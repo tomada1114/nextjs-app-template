@@ -6,9 +6,6 @@ import type { ReactElement, ReactNode } from "react";
 
 import { LOCALES, type Locale } from "../../i18n/locales";
 
-/** Keep locale pages static while the root 404 can localize unmatched paths. */
-export const dynamic = "force-static";
-
 export function generateStaticParams(): { locale: Locale }[] {
   return LOCALES.map((locale) => ({ locale }));
 }
@@ -28,12 +25,6 @@ export async function generateMetadata({
   return {
     title: t("title"),
     description: t("description"),
-    alternates: {
-      canonical: `/${locale}`,
-      languages: Object.fromEntries(
-        LOCALES.map((alternateLocale) => [alternateLocale, `/${alternateLocale}`]),
-      ),
-    },
   };
 }
 

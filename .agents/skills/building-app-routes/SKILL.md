@@ -38,12 +38,12 @@ answer is almost never a file under `src/app/`.
 
 ## The Server / Client boundary
 
-Every file under `src/app/` is a Server Component until one says `"use client"`. This
-template ships one such file, `src/app/[locale]/error.tsx`, because an error boundary
-must be one. `src/app/[locale]/page.tsx` calls `useLocale` and `useTranslations` and
-still runs on the server, because `next-intl` publishes a `react-server` export
-condition and those hooks resolve to a server implementation there. A hook is therefore
-not evidence that a file is a Client Component — the directive is, and nothing else is.
+Every file under `src/app/` is a Server Component until one says `"use client"`. The
+template's error boundaries are Client Components because recovery needs an event
+handler. `src/app/[locale]/page.tsx` calls `useLocale` and `useTranslations` and still
+runs on the server, because `next-intl` publishes a `react-server` export condition and
+those hooks resolve to a server implementation there. A hook is therefore not evidence
+that a file is a Client Component — the directive is, and nothing else is.
 
 - Add `"use client"` to the smallest file that actually needs the client: the one owning
   state, an effect, a browser API, or a DOM event handler. Pass it data as props from
@@ -83,6 +83,12 @@ unprefixed pathname — `next/link` produces a URL with no locale, which costs a
 redirect round trip and drops the locale the reader was on. Then run `pnpm build` and
 open the page. **BACKGROUND:** `localizing-ui` for the catalog the page reads its
 strings from.
+
+Static rendering is a page's choice, not the shared layout's: only the home page opts
+into `force-static`. Keeping it off the locale layout lets a new sibling page read
+cookies or headers. The layout supplies title and description defaults; URL-specific
+canonical and language alternates belong with the page they identify, so a child never
+inherits the home's URL.
 
 ## A Route Handler is one re-export line
 

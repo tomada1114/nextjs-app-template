@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import HomePage from "../src/app/[locale]/page";
 import en from "../messages/en.json";
+import ja from "../messages/ja.json";
 
 vi.mock("next-intl/server", () => ({
   setRequestLocale: () => undefined,
@@ -21,11 +22,11 @@ vi.mock("next-intl/server", () => ({
 // `LocaleLayout` itself — is explicitly out of scope; this test never renders
 // it.
 
-async function renderHomePage(): Promise<void> {
+async function renderHomePage(locale: "en" | "ja" = "en"): Promise<void> {
   await act(async () => {
     render(
-      <NextIntlClientProvider locale="en" messages={en}>
-        <HomePage params={Promise.resolve({ locale: "en" })} />
+      <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : ja}>
+        <HomePage params={Promise.resolve({ locale })} />
       </NextIntlClientProvider>,
     );
     await Promise.resolve();
@@ -33,6 +34,25 @@ async function renderHomePage(): Promise<void> {
 }
 
 describe("HomePage", () => {
+  it.each(["en", "ja"] as const)(
+    "identifies the current %s language without relying on color",
+    async (locale) => {
+      await renderHomePage(locale);
+      const english = screen.getByRole("link", {
+        name: (locale === "en" ? en : ja).LocaleSwitcher.en,
+      });
+      const japanese = screen.getByRole("link", {
+        name: (locale === "en" ? en : ja).LocaleSwitcher.ja,
+      });
+      expect(locale === "en" ? english : japanese).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(locale === "en" ? japanese : english).not.toHaveAttribute("aria-current");
+      expect(english).toHaveAttribute("lang", "en");
+      expect(japanese).toHaveAttribute("lang", "ja");
+    },
+  );
   it("renders under jsdom", () => {
     // Proves the `component` vitest project actually runs under jsdom, and
     // that `tests/**/*.test.ts` (the `unit`/`automation` projects) does not:
