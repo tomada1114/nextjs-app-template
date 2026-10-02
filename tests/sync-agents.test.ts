@@ -4,6 +4,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -158,6 +159,24 @@ describe("diffTrees", () => {
 });
 
 describe("syncTrees", () => {
+  it.each(["source", "mirror"] as const)(
+    "refuses a linked %s root before changing either tree",
+    (linked) => {
+      const { source, mirror } = makeTrees();
+      const link = path.join(makeWorkspace("sync-linked-root"), "linked");
+      symlinkSync(linked === "source" ? source : mirror, link, "dir");
+      writeFileSync(path.join(mirror, "skill", "SKILL.md"), "keep this content\n");
+      const before = diffTrees(source, mirror);
+
+      expect(() =>
+        syncTrees(
+          linked === "source" ? link : source,
+          linked === "mirror" ? link : mirror,
+        ),
+      ).toThrow(SyncAgentsError);
+      expect(diffTrees(source, mirror)).toEqual(before);
+    },
+  );
   it("repairs every kind of drift and leaves the trees identical", () => {
     const { source, mirror } = makeTrees();
     writeFileSync(path.join(source, "skill", "NOTES.md"), "notes\n");
@@ -287,6 +306,31 @@ describe("main", () => {
     mkdirSync(path.join(root, SOURCE_DIRECTORY, "skill"), { recursive: true });
     writeFileSync(path.join(root, SOURCE_DIRECTORY, "skill", "SKILL.md"), "# Skill\n");
   }
+
+  it.each([".agents", ".claude"])(
+    "refuses a linked %s parent without changing the target",
+    (parent) => {
+      const errorSpy = vi
+        .spyOn(consoleModule, "error")
+        .mockImplementation(() => undefined);
+      vi.spyOn(consoleModule, "log").mockImplementation(() => undefined);
+      const root = makeRoot();
+      const outside = makeRoot();
+      mkdirSync(path.join(outside, "skills", "skill"), { recursive: true });
+      const target = path.join(outside, "skills", "skill", "SKILL.md");
+      writeFileSync(target, "# Outside\n");
+      symlinkSync(outside, path.join(root, parent), "dir");
+      if (parent === ".claude") {
+        seedSource(root);
+      }
+
+      expect(main([], root)).toBe(2);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/ERR_AGENTS_UNSUPPORTED_ENTRY/),
+      );
+      expect(readFileSync(target, "utf8")).toBe("# Outside\n");
+    },
+  );
 
   it("returns 2 and reports an unknown option", () => {
     const errorSpy = vi

@@ -16,6 +16,7 @@
 import console from "node:console";
 import {
   copyFileSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -56,6 +57,28 @@ export class SyncAgentsError extends Error {
 }
 
 /**
+ * Refuse a linked skills directory before a read or write follows it.
+ * @param {string} directory - Absolute directory path; may be absent.
+ * @param {string} label - Repository-relative name for an actionable report.
+ * @returns {void}
+ */
+function assertUnlinkedDirectory(directory, label) {
+  try {
+    if (lstatSync(directory).isSymbolicLink()) {
+      throw new SyncAgentsError(
+        "ERR_AGENTS_UNSUPPORTED_ENTRY",
+        `${label} is a symlink.\nExpected: a real directory, so synchronizing cannot overwrite its link target.\nNext: replace the link with a real directory before running \`pnpm agents:sync\`.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+}
+
+/**
  * List every regular file under a directory, as paths relative to it.
  *
  * @param {string} directory - Absolute path to walk; may be absent.
@@ -68,6 +91,7 @@ export class SyncAgentsError extends Error {
  * rather than only indirectly through {@link diffTrees}.
  */
 export function listFiles(directory, label) {
+  assertUnlinkedDirectory(directory, label);
   /** @type {string[]} */
   const files = [];
   /** @type {(current: string, prefix: string) => void} */
@@ -264,6 +288,10 @@ export function main(argv, root = ROOT) {
   const sourceDirectory = path.join(root, SOURCE_DIRECTORY);
   const mirrorDirectory = path.join(root, MIRROR_DIRECTORY);
   try {
+    for (const relative of [SOURCE_DIRECTORY, MIRROR_DIRECTORY]) {
+      const parent = path.dirname(relative);
+      assertUnlinkedDirectory(path.join(root, parent), parent);
+    }
     assertSourceDirectory(sourceDirectory);
     if (check) {
       const differences = diffTrees(sourceDirectory, mirrorDirectory);

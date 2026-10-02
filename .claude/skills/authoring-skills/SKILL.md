@@ -39,8 +39,9 @@ failing to load. **Does not own:** the general `scripts/**` import and typing co
 - No file below a skill root may itself be named `SKILL.md`. A nested one registers as a
   second, nameless skill in both hosts. Name reference files for their content instead
   (`failure-modes.md`, not another `SKILL.md`).
-- No symlinks anywhere under either tree — `scripts/sync-agents.mjs` rejects any entry
-  that is not a plain file or directory.
+- No symlinks at either root or anywhere under either tree; the CLI also refuses a
+  linked `.agents/` or `.claude/` parent, so it cannot overwrite another checkout's
+  skills. Enforced by: `scripts/sync-agents.mjs`.
 
 ## Frontmatter
 
