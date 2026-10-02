@@ -65,10 +65,12 @@ What this repository does today, and nothing more:
 - **Dependency review on every pull request.** `dependency-review.yml` fails a pull
   request that introduces a dependency with a known advisory of moderate severity or
   above, or one under a denied copyleft license.
-- **A weekly audit and history scan.** `security-audit.yml` runs
-  `pnpm audit --prod --audit-level=moderate` and a full-history gitleaks scan every
-  week. The audit fails closed: an audit service it cannot reach is a red run, not a
-  green one.
+- **Credential scanning before merge and a weekly audit.** `security-audit.yml` runs a
+  redacted full-history gitleaks scan on every pull request, including intermediate
+  commits that later deleted a leaked key. The committed `main` ruleset requires that
+  check. Scheduled and manual runs scan history too and run
+  `pnpm audit --prod --audit-level=moderate`. The audit fails closed: an audit service
+  it cannot reach is a red run, not a green one.
 - **A pre-commit secret guard.** `lefthook`'s pre-commit hook runs
   `scripts/check-staged.mjs`, which refuses a staged `.env*` or `secrets/**` path and a
   credential in a staged file's content, including on the commit that concludes a

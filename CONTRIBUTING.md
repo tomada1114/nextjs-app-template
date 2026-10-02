@@ -12,12 +12,16 @@ corepack pnpm@11.18.0 install --frozen-lockfile
 pnpm check:quick
 ```
 
-The first command must report a Node version at or above what `.node-version` states,
-which itself must satisfy `package.json`'s `devEngines.runtime.version` —
+Use the Node 24 version in `.node-version`; the running version must satisfy
+`package.json`'s `devEngines.runtime.version`, which excludes other major versions —
 `.node-version` is what a version manager and CI's `node-version-file` install, and
 `devEngines` is what `pnpm install` then verifies. `devEngines.runtime.onFail` is an
 intentional hard error, and nothing in this repository runs on another Node, so there is
 no occasion to reach for the `--config.runtime-on-fail=ignore` override.
+
+Keep `@types/node` on the runtime's major version. The runtime contract test checks that
+alignment, and Dependabot leaves major upgrades for a deliberate runtime change while
+continuing minor and patch updates.
 
 The install writes the Git hooks too, and nothing above has to ask for it: `lefthook`
 ships its own `postinstall`, which `pnpm-workspace.yaml` allowlists, so every non-CI
@@ -38,6 +42,9 @@ and removing the hooks by hand after the install. `LEFTHOOK=0` is a fourth way, 
 an on-screen one — it leaves the hook installed and this check green while disabling the
 gate at every commit; AGENTS.md's "Enforcement layers" explains why nothing here catches
 it.
+
+For local page and API work, follow the [README quick start](README.md#quick-start),
+including the example API call that checks the setup.
 
 Useful focused commands are `pnpm check:source`, `pnpm test`, and `pnpm test:coverage`.
 Neither of the last two is the whole suite: both filter out the `smoke` project, which
