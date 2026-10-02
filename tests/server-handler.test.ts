@@ -138,7 +138,59 @@ describe("the ask handler", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toStrictEqual(ANSWER);
+  });
+
+  it.each([{ invalid: [0xff] }, { invalid: [0xc3, 0x28] }, { invalid: [0xe3, 0x81] }])(
+    "rejects malformed UTF-8 bytes $invalid without asking the model",
+    async ({ invalid }) => {
+      const seen: CapturedRequest[] = [];
+      const handler = createAskHandler({
+        llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+      });
+      const encoder = new TextEncoder();
+      const body = Uint8Array.from([
+        ...encoder.encode('{"prompt":"'),
+        ...invalid,
+        ...encoder.encode('"}'),
+      ]);
+      const response = await handler(new Request(ENDPOINT, { method: "POST", body }));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "ERR_BAD_REQUEST" },
+      });
+      expect(seen).toEqual([]);
+    },
+  );
+
+  it("decodes multi-byte text split across body chunks without changing it", async () => {
+    const prompt = "\u65e5\u672c\u8a9e \u{1F600}";
+    const bytes = new TextEncoder().encode(JSON.stringify({ prompt }));
+    const seen: CapturedRequest[] = [];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of bytes) {
+          controller.enqueue(Uint8Array.of(byte));
+        }
+        controller.close();
+      },
+    });
+    const init: StreamingRequestInit = { method: "POST", body: stream, duplex: "half" };
+    const handler = createAskHandler({
+      llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+    });
+
+    expect((await handler(new Request(ENDPOINT, init))).status).toBe(200);
+    expect(seen[0]?.prompt).toBe(prompt);
+  });
+
+  it("prevents malformed-request failures from being cached", async () => {
+    const handler = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) });
+    const response = await handler(postRequest("not JSON"));
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("passes the prompt to the port with its surrounding whitespace trimmed", async () => {
@@ -263,6 +315,92 @@ describe("the ask handler", () => {
       error: { code: "ERR_BAD_REQUEST" },
     });
     expect(seen).toStrictEqual([]);
+  });
+
+  it.each(["already", "in flight"] as const)(
+    "stops reading an upload when its signal was aborted %s",
+    async (when) => {
+      vi.useFakeTimers();
+      const seen: CapturedRequest[] = [];
+      const abort = new AbortController();
+      let finishBody: () => void = () => undefined;
+      const cancellation = { done: false };
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          finishBody = () => {
+            controller.close();
+          };
+        },
+        cancel() {
+          cancellation.done = true;
+        },
+      });
+      const init: StreamingRequestInit = {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+        signal: abort.signal,
+      };
+      const request = new Request(ENDPOINT, init);
+      if (when === "already") {
+        abort.abort();
+      }
+      let outcome: Response | undefined;
+      const pending = createAskHandler({
+        llm: capturing(createFakeLlmPort({ response: ANSWER }), seen),
+      })(request);
+      void pending.then((response) => {
+        outcome = response;
+      });
+      try {
+        if (when === "in flight") {
+          abort.abort();
+        }
+        await vi.advanceTimersByTimeAsync(0);
+        expect(outcome?.status).toBe(400);
+        expect(cancellation.done).toBe(true);
+        expect(request.body?.locked).toBe(false);
+        expect(seen).toEqual([]);
+      } finally {
+        if (!cancellation.done) {
+          finishBody();
+        }
+        await pending;
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("answers an oversized upload without waiting for its cancellation hook", async () => {
+    vi.useFakeTimers();
+    let finishCancellation: () => void = () => undefined;
+    const cancellation = new Promise<void>((resolve) => {
+      finishCancellation = resolve;
+    });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(MAX_REQUEST_BODY_BYTES + 1));
+      },
+      cancel: () => cancellation,
+    });
+    const init: StreamingRequestInit = { method: "POST", body: stream, duplex: "half" };
+    const request = new Request(ENDPOINT, init);
+    let outcome: Response | undefined;
+    const pending = createAskHandler({ llm: createFakeLlmPort({ response: ANSWER }) })(
+      request,
+    );
+    void pending.then((response) => {
+      outcome = response;
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(outcome?.status).toBe(413);
+      expect(request.body?.locked).toBe(false);
+    } finally {
+      finishCancellation();
+      await pending;
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a request that carries no body at all", async () => {
