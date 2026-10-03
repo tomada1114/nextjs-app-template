@@ -136,15 +136,18 @@ their reports name what they moved there.
 
 ### The final confirmation
 
-If `<runstate>/holding/` or `<runstate>/deferred.md` holds anything from this run, it is
-offered here — after `cleanup_run.sh` and after the step 10 report text, so the report
-is already on screen while the prompt waits, as the run's last tool call: one command
-covering every holding directory this run filled plus anything in `deferred.md` — e.g.
-`rm -rf <runstate>/holding/42 <runstate>/holding/57` — so the user answers one prompt,
-not one per issue. List exactly what it covers in the report just above it (each held
-path with its original location, each deferred command with its reason), so the user
-approves something they can see. Delete only this run's holding directories, never
-`<runstate>/holding/` wholesale — an earlier run's holdings are the user's to decide on.
+After `cleanup_run.sh`, remove only the holding directories this run filled with
+`pnpm clean:holding 42 57` (or `run` for a run-level holding). It derives the same
+repository runstate as preflight, accepts only issue numbers or `run`, and refuses
+targets whose real location escapes that repository's holding area. Use the same
+`AGENT_SKILL_STATE_DIR` override as the run, when one was set. Report every removed or
+already-absent path and its original location. Never delete `<runstate>/holding/`
+wholesale or name a holding from an earlier run.
+
+Other commands in `<runstate>/deferred.md` keep the single end-of-run confirmation:
+after the step 10 report text, list each exact command and why it was deferred, then
+request approval once as the run's last tool call. Reuse approval already recorded in
+the conversation when it covers those commands.
 
 Declined, or the host refuses the call → leave everything where it is. The report
 already names the paths; that is the complete outcome, not a failure to retry. Nothing
