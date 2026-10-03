@@ -330,6 +330,10 @@ export default defineConfig([
           selector: "NewExpression[callee.name='Date'][arguments.length=0]",
           message: "Pass the current time or a clock into core as an argument.",
         },
+        {
+          selector: "CallExpression[callee.name='Date']",
+          message: "Calling Date reads the current clock; pass the time into core.",
+        },
       ],
       "no-restricted-imports": [
         "error",

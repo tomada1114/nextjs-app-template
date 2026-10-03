@@ -412,6 +412,7 @@ describe("core purity is enforced by the effective ESLint rules", () => {
     ["crypto.randomUUID()", "no-restricted-properties"],
     ["process.env", "no-restricted-properties"],
     ["new Date()", "no-restricted-syntax"],
+    ["Date()", "no-restricted-syntax"],
   ])("rejects %s in core", async (expression, rule) => {
     const results = await eslint.lintText(
       `export function probe(): unknown { return ${expression}; }`,
