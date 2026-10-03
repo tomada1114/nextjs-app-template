@@ -1,0 +1,7 @@
+# Owner-approved exception for the locally patched braces@3.0.3.
+# Local pnpm patch: patches/braces@3.0.3.patch (upstream micromatch/braces PR #72).
+# Regression proof: tests/braces-patch.test.ts exercises ESLint's installed copy.
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-10-16
+reason = "braces@3.0.3 is locally patched to cap parser and AST walker depth at 100. No fixed upstream release is published. Keep all other advisories enabled; remove this exception and the patch when a fixed release passes the install policy."

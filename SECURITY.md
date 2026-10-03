@@ -101,6 +101,11 @@ regression tests. The lockfile retains version `3.0.3`, so a version-based scann
 still flag the advisory after the fix is applied. Replace the patched dependency with a
 fixed upstream release once one satisfies the supply-chain policy.
 
+The owner-approved exception in `osv-scanner.toml` suppresses only `GHSA-vfj7-8cjw-p6xm`
+and its aliases until 2026-10-16. All other advisories remain enabled, and the exception
+expires automatically. Remove the exception with the local patch when the fixed upstream
+release can be installed.
+
 ## Responsible disclosure
 
 This project follows coordinated disclosure: the details of a vulnerability become
