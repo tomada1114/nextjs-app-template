@@ -161,10 +161,7 @@ export function createOpenRouterAdapter(options: OpenRouterAdapterOptions): LlmP
             ),
           );
         case "text":
-          if (
-            completion.finishReason === "length" ||
-            completion.finishReason === "content_filter"
-          ) {
+          if (completion.finishReason !== "stop") {
             return err(
               new LlmError(
                 "ERR_LLM_INVALID_OUTPUT",

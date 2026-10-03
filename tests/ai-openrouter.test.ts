@@ -42,7 +42,7 @@ function respondWith(
 }
 
 /** A `200` chat completion whose single choice carries `content` verbatim. */
-function completion(content: string | null, finishReason = "stop"): unknown {
+function completion(content: string | null, finishReason: unknown = "stop"): unknown {
   return {
     id: "gen-test",
     object: "chat.completion",
@@ -195,8 +195,16 @@ describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabu
 });
 
 describe("createOpenRouterAdapter reads a 200 that is not an answer", () => {
-  it.each(["length", "content_filter"])(
-    "refuses a partial answer even when its JSON is valid (%s)",
+  it.each([
+    "length",
+    "content_filter",
+    "tool_calls",
+    "function_call",
+    "future_reason",
+    null,
+    13,
+  ])(
+    "refuses unfinished or unrecognized answers even when their JSON is valid (%s)",
     async (finishReason) => {
       const { fetch } = respondWith(
         200,
@@ -205,6 +213,13 @@ describe("createOpenRouterAdapter reads a 200 that is not an answer", () => {
       expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
     },
   );
+
+  it("refuses valid JSON when the provider omits its finish reason", async () => {
+    const { fetch } = respondWith(200, {
+      choices: [{ message: { content: '{"answer":"partial"}' } }],
+    });
+    expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
+  });
 
   it("keeps an unknown finish reason out of log messages", async () => {
     const privateText = "private request content in finish reason";
