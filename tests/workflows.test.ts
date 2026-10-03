@@ -3155,7 +3155,7 @@ describe("the development runtime contract fails closed", () => {
     expect(manifest.devEngines?.runtime?.onFail).toBe("error");
   });
 
-  it("checks Node APIs against the development runtime's major version", () => {
+  it("checks Node APIs against the development runtime's major and minor", () => {
     const runtime = parseVersionTriple(
       readFileSync(path.join(repoRoot, ".node-version"), "utf8").trim(),
     );
@@ -3163,7 +3163,21 @@ describe("the development runtime contract fails closed", () => {
       (manifest.devDependencies?.["@types/node"] ?? "").replace(/^\D+/, ""),
     );
     expect(runtime).toBeDefined();
-    expect(nodeTypes?.[0]).toBe(runtime?.[0]);
+    expect(nodeTypes?.slice(0, 2)).toEqual(runtime?.slice(0, 2));
+  });
+
+  it("keeps Node declarations within the runtime minor on patch updates", () => {
+    expect(manifest.devDependencies?.["@types/node"]).toMatch(/^~\d+\.\d+\.\d+$/);
+  });
+
+  it("requires an installed runtime that implements the declared Node APIs", () => {
+    const minimum = parseVersionTriple(
+      (manifest.devEngines?.runtime?.version ?? "").replace(/^\D+/, ""),
+    );
+    const nodeTypes = parseVersionTriple(
+      (manifest.devDependencies?.["@types/node"] ?? "").replace(/^\D+/, ""),
+    );
+    expect(minimum?.slice(0, 2)).toEqual(nodeTypes?.slice(0, 2));
   });
 
   it("keeps .node-version at or above the devEngines runtime minimum", () => {
