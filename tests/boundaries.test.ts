@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 // `eslint.config.mjs` states the zone edges as `no-restricted-imports`
@@ -398,6 +399,132 @@ describe("src/core/ is framework-free", () => {
 
   it.each(forbidden)("imports no %s", (pkg) => {
     expect(packageOffenders(modulesIn("src/core"), pkg)).toStrictEqual([]);
+  });
+});
+
+describe("core purity is enforced by the effective ESLint rules", () => {
+  const eslint = new ESLint({ cwd: repoRoot });
+  const corePath = path.join(repoRoot, "src/core/result.ts");
+
+  it.each([
+    ["Date.now()", "no-restricted-properties"],
+    ["Math.random()", "no-restricted-properties"],
+    ["crypto.randomUUID()", "no-restricted-properties"],
+    ["process.env", "no-restricted-properties"],
+    ["new Date()", "no-restricted-syntax"],
+    ["Date()", "no-restricted-syntax"],
+  ])("rejects %s in core", async (expression, rule) => {
+    const results = await eslint.lintText(
+      `export function probe(): unknown { return ${expression}; }`,
+      { filePath: corePath },
+    );
+    expect(
+      results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+    ).toContain(rule);
+  });
+
+  it.each([
+    "export function probe(): Date { return new Date(0); }",
+    "export function probe(now: Date): number { return now.getTime(); }",
+  ])("allows deterministic core code: %s", async (source) => {
+    const results = await eslint.lintText(source, { filePath: corePath });
+    expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+  });
+
+  it.each(["enum Probe { Value }", 'export * from "./result";'])(
+    "keeps the existing syntax restriction for %s",
+    async (source) => {
+      const results = await eslint.lintText(source, { filePath: corePath });
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-syntax");
+    },
+  );
+
+  it("leaves the caller free to read a clock outside core", async () => {
+    const results = await eslint.lintText(
+      "export function probe(): number { return Date.now(); }",
+      { filePath: path.join(repoRoot, "src/server/env.ts") },
+    );
+    expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+  });
+
+  describe.each(["node:process", "process"])("ambient imports from %s", (module) => {
+    it.each([
+      ["import { env }", "env"],
+      ["import { env as settings }", "settings"],
+      ["import runtime", "runtime.env"],
+      ["import * as runtime", "runtime.env"],
+    ])("rejects %s in core", async (declaration, expression) => {
+      const results = await eslint.lintText(
+        `${declaration} from "${module}"; export function probe(): unknown { return ${expression}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+  });
+
+  describe.each(["node:crypto", "crypto"])("random imports from %s", (module) => {
+    it.each([
+      "randomBytes",
+      "randomInt",
+      "randomFill",
+      "randomFillSync",
+      "generateKey",
+      "generateKeySync",
+      "generateKeyPair",
+      "generateKeyPairSync",
+      "generatePrime",
+      "generatePrimeSync",
+      "createDiffieHellman",
+      "createECDH",
+      "getRandomValues",
+      "webcrypto",
+      "subtle",
+    ])("rejects the entropy-capable export %s", async (name) => {
+      const results = await eslint.lintText(
+        `import { ${name} } from "${module}"; export function probe(): unknown { return ${name}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+
+    it.each([
+      'import { createHmac }; export function probe(value: string, key: string): string { return createHmac("sha256", key).update(value).digest("hex"); }',
+      'import { hash }; export function probe(value: string): string { return hash("sha256", value); }',
+      "import { timingSafeEqual }; export function probe(a: Uint8Array, b: Uint8Array): boolean { return timingSafeEqual(a, b); }",
+    ])("allows the reviewed deterministic helper: %s", async (template) => {
+      const source = template.replace("};", `} from "${module}";`);
+      const results = await eslint.lintText(source, { filePath: corePath });
+      expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+    });
+
+    it.each([
+      ["import { randomUUID }", "randomUUID()"],
+      ["import { randomUUID as makeId }", "makeId()"],
+      ["import runtime", "runtime.randomUUID()"],
+      ["import * as runtime", "runtime.randomUUID()"],
+    ])("rejects %s in core", async (declaration, expression) => {
+      const results = await eslint.lintText(
+        `${declaration} from "${module}"; export function probe(): string { return ${expression}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+
+    it("allows a named deterministic hash implementation", async () => {
+      const results = await eslint.lintText(
+        `import { createHash } from "${module}"; export function probe(value: string): string { return createHash("sha256").update(value).digest("hex"); }`,
+        { filePath: corePath },
+      );
+      expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+    });
   });
 });
 

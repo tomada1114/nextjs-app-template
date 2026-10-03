@@ -122,11 +122,11 @@ client component belongs in (`building-app-routes`); compile-time assertions wit
 
 ## What a module may import
 
-- `node:*` is not restricted anywhere under `src/`. `@types/node` is a devDependency and
-  `tsconfig.json` declares no `types` array, so the Node types are in scope, and
-  `eslint.config.mjs` names the protocol nowhere. No module under `src/` imports one
-  today, but that is a description of this tree, not a rule to defend — the restriction
-  older prose here claimed never existed in this repository.
+- Node built-ins have no blanket import ban under `src/`. `@types/node` supplies their
+  types. The core block in `eslint.config.mjs` restricts imports exposing environment
+  reads and random identifiers, including default and namespace imports, for both
+  `node:` and bare module names. Crypto admits only reviewed deterministic helpers by
+  name; read the effective core allowlist for the exact permitted exports.
 - What is real is the zone boundary. `src/core/**` may not import the framework or a
   vendor SDK; `src/app/**` and `src/server/**` reach the AI layer only through
   `src/ai/index.ts`; `src/ai/port.ts` may not import an adapter. AGENTS.md's
@@ -146,14 +146,15 @@ client component belongs in (`building-app-routes`); compile-time assertions wit
 ## Core logic
 
 The import boundary keeps the framework out of `src/core/**`; these rules keep what is
-left testable without one. No gate enforces them — a `Date.now()` in core passes lint,
-typecheck and every test.
+left testable without one. The core block in `eslint.config.mjs` enforces the clock,
+randomness and `process.env` restrictions; `tests/boundaries.test.ts` exercises its
+effective rules so deleting a restriction fails the suite.
 
 - Core is handed what the outside world supplies; it never reads it. The current time
   (`now: Date`, or `clock: () => Date` when one call needs several readings),
   randomness, configuration, and the result of any I/O arrive as arguments. So no
-  `Date.now()`, argument-less `new Date()`, `Math.random()`, `crypto.randomUUID()`,
-  `process.env`, `fetch` or file read under `src/core/`.
+  `Date.now()`, `Date()`, argument-less `new Date()`, `Math.random()`,
+  `crypto.randomUUID()`, `process.env`, `fetch` or file read under `src/core/`.
 - The caller supplies them: a handler under `src/server/handlers/`, or the composition
   root beside it, is where the clock is read, and `src/server/env.ts` stays the one
   reader of `process.env`.
