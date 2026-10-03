@@ -3024,6 +3024,7 @@ describe("the Dependabot cooldown agrees with the pnpm install cooldown", () => 
 // --- agreement with package.json and .node-version ---------------------------
 
 interface Manifest {
+  devDependencies?: Record<string, string>;
   private?: boolean;
   engines?: { node?: string };
   packageManager?: string;
@@ -3076,6 +3077,22 @@ describe("workflow regression checks for repository automation", () => {
     expect(source).not.toContain("--ignore-registry-errors");
     expect(source).toContain("for attempt in 1 2 3");
     expect(source).toContain("exit 1");
+  });
+
+  it("scans credentials on pull requests as well as the weekly audit", () => {
+    const source = workflowSource("security-audit.yml");
+    const lines = scan(source);
+    expect(triggerNames(lines).map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["pull_request", "schedule", "workflow_dispatch"]),
+    );
+    const job = jobsOf(lines).find(({ name }) => name === "secret-scan");
+    expect(job).toBeDefined();
+    expect(
+      job?.body.filter(({ indent, text }) => indent === 4 && text.startsWith("if:")),
+    ).toEqual([]);
+    expect(job?.body.map(({ text }) => text)).toContain("fetch-depth: 0");
+    const commands = runCommands(source).map(({ command }) => command);
+    expect(commands).toContain("gitleaks detect --source . --no-banner --redact");
   });
 
   it("publishes nothing, so it declares no Node floor and no job to verify one", () => {
@@ -3136,6 +3153,31 @@ function compareVersionTriples(
 describe("the development runtime contract fails closed", () => {
   it("treats the Node 24 requirement as an error", () => {
     expect(manifest.devEngines?.runtime?.onFail).toBe("error");
+  });
+
+  it("checks Node APIs against the development runtime's major and minor", () => {
+    const runtime = parseVersionTriple(
+      readFileSync(path.join(repoRoot, ".node-version"), "utf8").trim(),
+    );
+    const nodeTypes = parseVersionTriple(
+      (manifest.devDependencies?.["@types/node"] ?? "").replace(/^\D+/, ""),
+    );
+    expect(runtime).toBeDefined();
+    expect(nodeTypes?.slice(0, 2)).toEqual(runtime?.slice(0, 2));
+  });
+
+  it("keeps Node declarations within the runtime minor on patch updates", () => {
+    expect(manifest.devDependencies?.["@types/node"]).toMatch(/^~\d+\.\d+\.\d+$/);
+  });
+
+  it("requires an installed runtime that implements the declared Node APIs", () => {
+    const minimum = parseVersionTriple(
+      (manifest.devEngines?.runtime?.version ?? "").replace(/^\D+/, ""),
+    );
+    const nodeTypes = parseVersionTriple(
+      (manifest.devDependencies?.["@types/node"] ?? "").replace(/^\D+/, ""),
+    );
+    expect(minimum?.slice(0, 2)).toEqual(nodeTypes?.slice(0, 2));
   });
 
   it("keeps .node-version at or above the devEngines runtime minimum", () => {

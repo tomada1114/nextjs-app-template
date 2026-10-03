@@ -425,10 +425,12 @@ git's sequencer without running pre-commit at all — unlike a plain `git commit
 rebase stop or `git merge --continue`, where `check:staged` and `agents:check` still
 run. Only CI and the `main` ruleset stand in the way of these changes, and CI does not
 cover the whole hook: no workflow re-runs the staged secret guard
-(`scripts/check-staged.mjs`) on a pull request. A secret in such a commit is found only
-after the fact, by `security-audit.yml`'s weekly `secret-scan` job over the full history
-— or at push time by GitHub's own secret scanning and push protection, where the
-repository has them on.
+(`scripts/check-staged.mjs`) on a pull request. `security-audit.yml` instead runs a
+redacted full-history gitleaks scan on every pull request, catching leaks even when a
+later commit removed them; the committed `main` ruleset requires that job. Scheduled and
+manual runs scan history too. The detectors have different rules, so this is another net
+rather than an equivalent of the staged guard. GitHub's secret scanning and push
+protection can also catch a secret at push time where enabled.
 
 `scripts/lib/guard/` is the rule engine `scripts/check-staged.mjs` (the pre-commit
 layer) uses to decide whether a staged path or its content is secret-shaped. That is the

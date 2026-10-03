@@ -25,6 +25,10 @@ updates:
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Coordinate Node type majors and minors with the runtime; newer declarations can
+      # admit APIs this project's runtime does not implement.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       # Routine updates arrive as one reviewable PR. Majors are deliberately
       # left out of every group so each gets its own PR and is reviewed against

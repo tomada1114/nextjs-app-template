@@ -5,15 +5,25 @@ import { err, ok, type Result } from "../core/result";
  *
  * @remarks
  * A Route Handler has nothing in front of it — `src/proxy.ts` matches no `api`
- * path — and a self-hosted `next start` enforces no payload limit of its own,
- * which is the deployment this template has to be safe in. 64 KiB is small
- * enough that concurrent requests cannot exhaust memory between them, and
- * comfortably above the largest body an endpoint here accepts: a
+ * path — and a self-hosted `next start` enforces no payload limit of its own.
+ * This bounds memory per request; deployments still need their own shared
+ * throughput policy. It leaves headroom above the largest accepted body: a
  * maximum-length prompt reaches at most about 48 KiB of JSON, since the
  * longest escape a character can take is six bytes. Lowering it under that
  * headroom would make a request the schema calls legal unreachable.
  */
 export const MAX_REQUEST_BODY_BYTES = 65_536;
+
+/** JSON responses may carry request content and must not be stored by a cache. */
+export function jsonResponse(
+  body: unknown,
+  status: number,
+  headers: HeadersInit = {},
+): Response {
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("cache-control", "no-store");
+  return Response.json(body, { status, headers: responseHeaders });
+}
 
 /**
  * The failure body every non-2xx answer carries.
@@ -30,7 +40,7 @@ export function failure(
   message: string,
   headers: HeadersInit = {},
 ): Response {
-  return Response.json({ error: { code, message } }, { status, headers });
+  return jsonResponse({ error: { code, message } }, status, headers);
 }
 
 /**
@@ -109,13 +119,20 @@ async function readBodyWithin(
   }
 
   const reader = request.body.getReader();
-  const decoder = new TextDecoder();
+  const cancel = (): void => {
+    // A source's asynchronous cleanup must not delay a decided refusal.
+    void reader.cancel().catch(() => undefined);
+  };
+  request.signal.addEventListener("abort", cancel, { once: true });
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   let text = "";
   let bytes = 0;
 
   try {
+    request.signal.throwIfAborted();
     for (;;) {
       const chunk = await reader.read();
+      request.signal.throwIfAborted();
       if (chunk.done) {
         return ok(text + decoder.decode());
       }
@@ -130,6 +147,7 @@ async function readBodyWithin(
   } catch {
     return err("unreadable");
   } finally {
+    request.signal.removeEventListener("abort", cancel);
     // Tell the sender to stop rather than draining the rest of the body. The
     // rejection is swallowed on purpose: cancelling a stream that has already
     // errored rejects with that same error, and letting it out here would turn
@@ -141,6 +159,7 @@ async function readBodyWithin(
     // crossed reads the whole 413 — it only sees its own *next* write fail.
     // A client that treats that write error as fatal without reading the
     // response never sees the code, and nothing on this side can change that.
-    await reader.cancel().catch(() => undefined);
+    cancel();
+    reader.releaseLock();
   }
 }

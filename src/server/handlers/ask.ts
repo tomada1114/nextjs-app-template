@@ -4,7 +4,7 @@ import * as z from "zod";
 
 import type { LlmErrorCode, LlmPort } from "../../ai/index";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "../../i18n/locales";
-import { failure, readJsonBody } from "../http";
+import { failure, jsonResponse, readJsonBody } from "../http";
 
 /**
  * What the handler needs from the outside world.
@@ -190,6 +190,6 @@ export function createAskHandler(
       );
     }
 
-    return Response.json(result.value, { status: 200 });
+    return jsonResponse(result.value, 200);
   };
 }

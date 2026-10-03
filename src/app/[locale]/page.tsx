@@ -1,12 +1,34 @@
 import { hasLocale, useTranslations } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { use, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 
 import { LOCALES } from "../../i18n/locales";
 import { Link } from "../../i18n/navigation";
+
+// Keep this page static without stripping request data from future siblings.
+export const dynamic = "force-static";
+
+/** Canonical URLs describe this page, rather than every child of the layout. */
+export async function generateMetadata({
+  params,
+}: Readonly<{ params: Promise<{ locale: string }> }>): Promise<Metadata> {
+  const { locale } = await params;
+  if (!hasLocale(LOCALES, locale)) {
+    notFound();
+  }
+  return {
+    alternates: {
+      canonical: `/${locale}`,
+      languages: Object.fromEntries(
+        LOCALES.map((candidate) => [candidate, `/${candidate}`]),
+      ),
+    },
+  };
+}
 
 /**
  * The one page this template ships, translated.
@@ -51,7 +73,13 @@ export default function HomePage({
           {LOCALES.map((candidate) => (
             <li key={candidate}>
               <Button asChild variant={candidate === locale ? "default" : "outline"}>
-                <Link href="/" locale={candidate} hrefLang={candidate}>
+                <Link
+                  href="/"
+                  locale={candidate}
+                  hrefLang={candidate}
+                  lang={locale}
+                  aria-current={candidate === locale ? "page" : undefined}
+                >
                   {switcher(candidate)}
                 </Link>
               </Button>

@@ -45,6 +45,24 @@ function readKey(value: unknown, key: string): unknown {
     : undefined;
 }
 
+it("pins the effective React lint version to the declared runtime version", async () => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+  );
+  const declared = readKey(readKey(manifest, "dependencies"), "react");
+  if (typeof declared !== "string") {
+    throw new TypeError("React must be declared.");
+  }
+  const majorMinor = /^\D*(\d+\.\d+)/.exec(declared)?.[1];
+  expect(majorMinor).toBeDefined();
+  const config: unknown = await eslint.calculateConfigForFile(
+    path.join(repoRoot, "src/app/[locale]/page.tsx"),
+  );
+  expect(readKey(readKey(readKey(config, "settings"), "react"), "version")).toBe(
+    majorMinor,
+  );
+});
+
 /** The `exclude` list of vitest.config.ts's `unit` project. */
 function unitProjectExclude(): readonly string[] {
   const projects = readKey(readKey(vitestConfig, "test"), "projects");

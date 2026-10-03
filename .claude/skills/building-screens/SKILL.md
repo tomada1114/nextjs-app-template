@@ -69,8 +69,11 @@ a layout.
   `<html>`, so a `src/app/error.tsx` brings its own shell as `src/app/not-found.tsx`
   does. One thrown by `src/app/layout.tsx` reaches only `src/app/global-error.tsx`,
   which replaces the root layout: it renders its own `<html>` and `<body>`, has no
-  provider above it, and does not get `globals.css`. Decide that copy and styling
-  deliberately rather than assuming the shell is there.
+  provider above it, and does not inherit `globals.css`. The template's root boundary
+  reads catalog copy directly, using the URL's locale after hydration and the default
+  locale on the server. Its global boundary reuses that document and imports the
+  stylesheet explicitly, so recovery depends on neither the failed provider nor the
+  failed layout.
 
 ## Not found and empty
 

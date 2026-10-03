@@ -22,22 +22,36 @@ it, which a test keeps true rather than a convention.
 
 ## Quick start
 
-```sh
-pnpm install
-cp .env.example .env   # then set OPENROUTER_API_KEY and API_ACCESS_KEY in it
-pnpm dev
-```
+Use Node.js 24 (the version in `.node-version`) and Corepack. The first run needs no
+provider account, credential file, or network call to a model:
 
-Without both keys, `POST /api/ask` refuses to load: every request to it answers `500`
-and the server log names the missing variable, while the pages still render. To run it
-with neither — nothing billed, every answer a fixed sentence — start it as
-`LLM_ADAPTER=fake pnpm dev` instead, or set `LLM_ADAPTER=fake` in `.env`. That is never
-inferred from a missing key: a deployment that lost its key fails rather than quietly
-answering from the fake.
+```sh
+corepack enable
+corepack pnpm@11.18.0 install --frozen-lockfile
+LLM_ADAPTER=fake pnpm dev
+```
 
 Then open <http://localhost:3000>, which redirects to the locale your browser asks for —
 `/en` or `/ja`. The page it renders is `src/app/[locale]/page.tsx`, and the text on it
 comes from `messages/en.json` and `messages/ja.json`.
+
+Exercise the endpoint while that fake server is running:
+
+```sh
+curl --fail-with-body http://localhost:3000/api/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Hello","locale":"en"}'
+```
+
+Every answer is a fixed sentence and nothing is billed. `fake` is an explicit switch,
+never inferred from a missing key: a deployment that lost its key fails rather than
+quietly answering from the fake.
+
+To use a real model, copy `.env.example` to `.env`, set `OPENROUTER_API_KEY` and
+`API_ACCESS_KEY` there, and run `pnpm dev` without `LLM_ADAPTER=fake`. Never commit the
+credential file. Without both keys, `POST /api/ask` refuses to load: every request to it
+answers `500` and the server log names the missing variable, while the pages still
+render.
 
 There is one API route, `POST /api/ask`, which takes
 `{ "prompt": "...", "locale": "en" }` and answers `{ "answer": "..." }`. The `locale` is
@@ -46,19 +60,35 @@ route answers through the OpenRouter adapter, with `LLM_MODEL` naming any OpenRo
 model id and the adapter's own default used when it is unset;
 `src/server/composition.ts` is the single place that decides which adapter is behind it.
 
-Because every answer is billed, the endpoint is closed. `src/server/composition.ts`
+Because provider answers are billed, the endpoint is closed. `src/server/composition.ts`
 declares that the adapter it wires bills a provider, and `readServerEnv` then requires
 `OPENROUTER_API_KEY` and `API_ACCESS_KEY` — a deployment that pays for its answers
 refuses to load the route rather than serving anyone who finds the URL — after which it
 answers `401` unless the request carries that key as `Authorization: Bearer <value>`.
 Under `LLM_ADAPTER=fake` nothing is billed and neither key is required. That is
-authentication and nothing more: this template ships no rate limit.
+authentication and nothing more: this template ships no rate limit. Before deploying a
+billed adapter, enforce a shared throughput policy at an edge or gateway ahead of the
+app. An access key alone does not cap spending.
 
 What the route does bound is the size of a request. The `prompt` is trimmed and must be
 1 to 8000 characters, and the body is refused with `413` once it crosses 64 KiB while it
 is being read — before the model is asked, on either path. Both ceilings are constants:
 `MAX_PROMPT_LENGTH` in `src/server/handlers/ask.ts` and `MAX_REQUEST_BODY_BYTES` in
-`src/server/http.ts`.
+`src/server/http.ts`. Bodies must be valid UTF-8 JSON; all endpoint responses carry
+`Cache-Control: no-store`.
+
+## Extending the app
+
+Add pages under `src/app/[locale]/` and use the locale-aware `Link` from
+`src/i18n/navigation.ts`. The home page opts into static rendering; the shared layout
+leaves new pages free to read cookies or headers. Put canonical URLs and language
+alternates on each page, since inheriting the home's URL would identify a different page
+to crawlers.
+
+New model adapters implement `LlmPort` and run the existing contract suite. New
+endpoints keep their Web-standard handler under `src/server/handlers/` and wire it in
+`composition.ts`; no framework is needed to test a handler. The existing fake adapter
+and recorded provider responses keep ordinary checks offline.
 
 ## Starting a new app from this template
 

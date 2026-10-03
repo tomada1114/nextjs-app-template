@@ -42,7 +42,7 @@ function respondWith(
 }
 
 /** A `200` chat completion whose single choice carries `content` verbatim. */
-function completion(content: string | null, finishReason = "stop"): unknown {
+function completion(content: string | null, finishReason: unknown = "stop"): unknown {
   return {
     id: "gen-test",
     object: "chat.completion",
@@ -83,6 +83,48 @@ function sentBody(calls: readonly Call[]): unknown {
   }
   return JSON.parse(raw);
 }
+
+describe("createOpenRouterAdapter configuration", () => {
+  it.each([1, Number.MAX_SAFE_INTEGER])(
+    "accepts a token ceiling of %i",
+    (maxTokens) => {
+      expect(() =>
+        createOpenRouterAdapter({ apiKey: "test-key", maxTokens }),
+      ).not.toThrow();
+    },
+  );
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("rejects an invalid token ceiling at construction: %o", (maxTokens) => {
+    expect(() => createOpenRouterAdapter({ apiKey: "test-key", maxTokens })).toThrow(
+      RangeError,
+    );
+  });
+
+  it.each(["", "   "])("rejects a blank model at construction: %o", (model) => {
+    expect(() => createOpenRouterAdapter({ apiKey: "test-key", model })).toThrow(
+      TypeError,
+    );
+  });
+
+  it("normalizes surrounding whitespace in the key and model", async () => {
+    const { fetch, calls } = respondWith(200, completion('{"answer":"x"}'));
+    const result = await createOpenRouterAdapter({
+      apiKey: " test-key ",
+      model: " vendor/model ",
+      fetch,
+    }).generate({ schema: SCHEMA, prompt: "?", outputLanguage: "en" });
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.init.headers).toMatchObject({ authorization: "Bearer test-key" });
+    expect(sentBody(calls)).toMatchObject({ model: "vendor/model" });
+  });
+});
 
 describe("createOpenRouterAdapter without a credential", () => {
   it.each([undefined, "", "   "])(
@@ -153,6 +195,37 @@ describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabu
 });
 
 describe("createOpenRouterAdapter reads a 200 that is not an answer", () => {
+  it.each([
+    "length",
+    "content_filter",
+    "tool_calls",
+    "function_call",
+    "future_reason",
+    null,
+    13,
+  ])(
+    "refuses unfinished or unrecognized answers even when their JSON is valid (%s)",
+    async (finishReason) => {
+      const { fetch } = respondWith(
+        200,
+        completion('{"answer":"partial"}', finishReason),
+      );
+      expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
+    },
+  );
+
+  it("refuses valid JSON when the provider omits its finish reason", async () => {
+    const { fetch } = respondWith(200, {
+      choices: [{ message: { content: '{"answer":"partial"}' } }],
+    });
+    expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
+  });
+
+  it("keeps an unknown finish reason out of log messages", async () => {
+    const privateText = "private request content in finish reason";
+    const { fetch } = respondWith(200, completion(null, privateText));
+    expect(failureOf(await ask(fetch)).message).not.toContain(privateText);
+  });
   it.each([
     ["a body that is not JSON at all", "not json at all", "ERR_LLM_UNAVAILABLE"],
     ["a JSON array", [], "ERR_LLM_UNAVAILABLE"],
@@ -347,6 +420,28 @@ describe("createOpenRouterAdapter bounds the whole call", () => {
     // `AbortSignal.timeout`'s own reason names the adapter's deadline, not a
     // caller's, as the thing that fired.
     expect((error.cause as Error).name).toBe("TimeoutError");
+  });
+
+  it("enforces its deadline while an async schema refinement is unfinished", async () => {
+    let release: (valid: boolean) => void = () => undefined;
+    const refinement = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    const schema = SCHEMA.refine(() => refinement);
+    const { fetch } = respondWith(200, completion('{"answer":"x"}'));
+    try {
+      const error = failureOf(
+        await createOpenRouterAdapter({
+          apiKey: "test-key",
+          deadlineMs: 25,
+          fetch,
+        }).generate({ schema, prompt: "?", outputLanguage: "en" }),
+      );
+      expect(error.code).toBe("ERR_LLM_TIMEOUT");
+      expect((error.cause as Error).name).toBe("TimeoutError");
+    } finally {
+      release(true);
+    }
   });
 
   it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(

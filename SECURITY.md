@@ -65,10 +65,12 @@ What this repository does today, and nothing more:
 - **Dependency review on every pull request.** `dependency-review.yml` fails a pull
   request that introduces a dependency with a known advisory of moderate severity or
   above, or one under a denied copyleft license.
-- **A weekly audit and history scan.** `security-audit.yml` runs
-  `pnpm audit --prod --audit-level=moderate` and a full-history gitleaks scan every
-  week. The audit fails closed: an audit service it cannot reach is a red run, not a
-  green one.
+- **Credential scanning before merge and a weekly audit.** `security-audit.yml` runs a
+  redacted full-history gitleaks scan on every pull request, including intermediate
+  commits that later deleted a leaked key. The committed `main` ruleset requires that
+  check. Scheduled and manual runs scan history too and run
+  `pnpm audit --prod --audit-level=moderate`. The audit fails closed: an audit service
+  it cannot reach is a red run, not a green one.
 - **A pre-commit secret guard.** `lefthook`'s pre-commit hook runs
   `scripts/check-staged.mjs`, which refuses a staged `.env*` or `secrets/**` path and a
   credential in a staged file's content, including on the commit that concludes a
@@ -81,6 +83,28 @@ Dependabot alerts and security updates, private vulnerability reporting itself, 
 `main` ruleset that `pnpm repo:ruleset` applies from `.github/rulesets/main.json`.
 AGENTS.md's "GitHub settings a new repository must enable" lists them and why each
 matters.
+
+## Patched dependencies
+
+`braces@3.0.3`, reached through ESLint's Next.js plugin and `fast-glob`, has a local
+pnpm patch for [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+(CVE-2026-93687). No fixed release is published as of 2026-10-02. The patch follows
+[upstream PR #72](https://github.com/micromatch/braces/pull/72) at commit
+`d0d575e55e74a4e0218e5248fafb79efc3e54ebb`: parsing caps combined brace and parenthesis
+nesting at 100, and the recursive compiler, expander and stringifier enforce the same
+cap for caller-supplied ASTs. A caller may select a stricter cap, but cannot raise it.
+
+`tests/braces-patch.test.ts` resolves the package that ESLint actually loads and checks
+deep patterns, direct ASTs, the safe boundary and ordinary file globs. pnpm applies the
+patch on every install; a missing or inapplicable patch fails the install or these
+regression tests. The lockfile retains version `3.0.3`, so a version-based scanner can
+still flag the advisory after the fix is applied. Replace the patched dependency with a
+fixed upstream release once one satisfies the supply-chain policy.
+
+The owner-approved exception in `osv-scanner.toml` suppresses only `GHSA-vfj7-8cjw-p6xm`
+and its aliases until 2026-10-16. All other advisories remain enabled, and the exception
+expires automatically. Remove the exception with the local patch when the fixed upstream
+release can be installed.
 
 ## Responsible disclosure
 

@@ -210,7 +210,7 @@ export default defineConfig([
       // the version skips detection entirely. Keep this in step with the
       // `react` major/minor in package.json, and drop it once
       // eslint-plugin-react declares eslint 10 in its peer range.
-      react: { version: "19.2" },
+      react: { version: "19.3" },
     },
   },
   {

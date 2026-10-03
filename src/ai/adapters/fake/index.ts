@@ -1,8 +1,9 @@
 import type * as z from "zod";
 
-import { err, ok, type Result } from "../../../core/result";
+import { err, type Result } from "../../../core/result";
 import { abortedLlmError, LlmError, type LlmErrorCode } from "../../errors";
 import type { LlmPort, LlmRequest } from "../../port";
+import { validateOutput } from "../../validation";
 
 /**
  * How a {@link createFakeLlmPort} instance answers every request it receives.
@@ -34,7 +35,8 @@ export interface FakeLlmPortOptions {
    * @remarks
    * Only reason to set it is to leave a window in which a test can abort a
    * request that is already in flight. It defaults to `0`, which answers on the
-   * next microtask.
+   * next microtask. Must be an integer in `0..2_147_483_647`; rejected at
+   * construction otherwise, before a timer can silently clamp it.
    */
   readonly delayMs?: number;
 }
@@ -83,6 +85,9 @@ function settle(
  */
 export function createFakeLlmPort(options: FakeLlmPortOptions = {}): LlmPort {
   const { response, failWith, delayMs = 0 } = options;
+  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 2_147_483_647) {
+    throw new RangeError("delayMs must be an integer in 0..2_147_483_647.");
+  }
 
   return {
     async generate<TSchema extends z.ZodType>(
@@ -102,30 +107,7 @@ export function createFakeLlmPort(options: FakeLlmPortOptions = {}): LlmPort {
         );
       }
 
-      // `safeParseAsync`, not `safeParse`: a schema carrying an async
-      // `refine`/`transform` makes the synchronous form *throw* rather than
-      // return a failed result, which would break the port's promise never to
-      // throw for an expected failure. The async form handles both shapes, and
-      // this is the reference an adapter copies.
-      const parsed = await request.schema.safeParseAsync(response);
-      if (!parsed.success) {
-        return err(
-          new LlmError(
-            "ERR_LLM_INVALID_OUTPUT",
-            "The model output did not match the requested schema.",
-            { cause: parsed.error },
-          ),
-        );
-      }
-
-      // Validation is async, so the signal can fire while it is still running.
-      // See `LlmPort.generate`'s TSDoc for why a successful parse does not
-      // override that.
-      if (request.signal?.aborted === true) {
-        return err(abortedLlmError(request.signal.reason));
-      }
-
-      return ok(parsed.data);
+      return validateOutput(request.schema, response, request.signal);
     },
   };
 }

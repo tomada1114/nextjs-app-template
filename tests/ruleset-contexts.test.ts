@@ -344,6 +344,12 @@ describe(".github/rulesets/main.json", () => {
   const ruleset = readRuleset();
   const checks = requiredChecks(ruleset);
 
+  it("requires credential scanning before a pull request can merge", () => {
+    expect(checks.map((check) => check.context)).toContain(
+      "Scan history for leaked credentials",
+    );
+  });
+
   it("requires every context from a job that reports on every pull request", () => {
     const reporting = committedReportingNames();
     const unmatched = checks

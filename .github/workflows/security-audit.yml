@@ -1,6 +1,7 @@
 name: Security audit
 
 on:
+  pull_request:
   schedule:
     # Weekly. An advisory published after a PR merged is found here, not by the
     # PR-time dependency review.
@@ -18,12 +19,14 @@ defaults:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # A manual dispatch queues behind the scheduled run rather than cancelling it.
-  cancel-in-progress: false
+  # PR updates supersede their scan; scheduled and manual audits run to completion.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   audit:
     name: Audit production dependencies
+    # Dependency review covers PR additions; this audit catches later advisories.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -72,10 +75,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The whole point of this job is to catch what predates the
-          # staged-content pre-commit check — a shallow checkout would only
-          # ever see the latest commit, which `scripts/check-staged.mjs`
-          # already covers on every commit going forward.
+          # Include intermediate commits too: deleting a leaked key in a later
+          # commit does not remove it from the PR's history.
           fetch-depth: 0
 
       # Installed as a checksum-pinned binary rather than through a
@@ -91,8 +92,7 @@ jobs:
           tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
 
-      # No commit range is passed: on workflow_dispatch/schedule (this job's
-      # only triggers) there is no meaningful before/after pair, so this
-      # scans the full history of the checked-out ref instead.
+      # Full history also covers commits made through the API or with hooks absent.
+      # Redaction keeps any finding out of the public job log.
       - name: Scan git history for secrets
         run: gitleaks detect --source . --no-banner --redact
