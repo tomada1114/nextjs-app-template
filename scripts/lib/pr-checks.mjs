@@ -2,7 +2,7 @@
 // level, an ecosystem, a status-check rollup, and the files two PRs contest.
 //
 // They live here rather than beside their only caller,
-// `.agents/skills/merge-dependabot/scripts/survey-prs.mjs`, because a `.mjs`
+// `.agents/skills/merging-dependency-prs/scripts/survey-prs.mjs`, because a `.mjs`
 // bundled inside a skill sits outside `coverage.include` and is therefore
 // measured by no floor at all — so a skill script stays a thin dispatcher and
 // anything with real branching moves under `scripts/`, where `scripts/**`'s
@@ -19,6 +19,19 @@ const BUMP =
 
 // A range like `^10.7` has no patch component, so that group stays optional.
 const VERSION = /(\d+)\.(\d+)(?:\.(\d+))?/;
+
+/**
+ * Read the version components that determine bump risk.
+ * @param {string | undefined} value - Version or range from a bot title.
+ * @returns {{ major: number, minor: number } | undefined} Parsed components.
+ */
+function versionParts(value) {
+  if (value === undefined) return undefined;
+  const match = VERSION.exec(value);
+  return match === null
+    ? undefined
+    : { major: Number(match[1]), minor: Number(match[2]) };
+}
 
 // The only conclusions that let a pull request through the survey's merge
 // gate. This is an allow-list on purpose, and it is the whole point of the
@@ -62,27 +75,41 @@ export function parseVersions(title) {
 }
 
 /**
- * Classify a bump as major, minor or patch.
+ * Classify a bump's risk, treating a pre-1.0 minor change as major.
  *
  * @param {string | undefined} from - Version before the bump.
  * @param {string | undefined} to - Version after the bump.
  * @returns {string} `major`, `minor`, `patch`, or `unknown` when unparsable.
  */
 export function semverLevel(from, to) {
-  if (from === undefined || to === undefined) {
+  const before = versionParts(from);
+  const after = versionParts(to);
+  if (before === undefined || after === undefined) {
     return "unknown";
   }
-  const before = VERSION.exec(from);
-  const after = VERSION.exec(to);
-  if (before === null || after === null) {
-    return "unknown";
-  }
-  const part = (/** @type {RegExpExecArray} */ match, /** @type {number} */ index) =>
-    Number(match[index] ?? "0");
-  if (part(before, 1) !== part(after, 1)) {
+  if (before.major !== after.major) {
     return "major";
   }
-  return part(before, 2) === part(after, 2) ? "patch" : "minor";
+  if (before.minor === after.minor) return "patch";
+  return before.major === 0 ? "major" : "minor";
+}
+
+/**
+ * Mark the pre-1.0 minor changes that require major-bump review in the survey.
+ * @param {string | undefined} from - Version before the bump.
+ * @param {string | undefined} to - Version after the bump.
+ * @returns {boolean} Whether both versions are 0.x with different minor numbers.
+ */
+export function isPreOneMinorBump(from, to) {
+  const before = versionParts(from);
+  const after = versionParts(to);
+  return (
+    before !== undefined &&
+    after !== undefined &&
+    before.major === 0 &&
+    after.major === 0 &&
+    before.minor !== after.minor
+  );
 }
 
 /**

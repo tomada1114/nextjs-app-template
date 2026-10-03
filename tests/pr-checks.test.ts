@@ -4,12 +4,13 @@ import {
   checkSummary,
   contestedFiles,
   ecosystemOf,
+  isPreOneMinorBump,
   parseVersions,
   semverLevel,
 } from "../scripts/lib/pr-checks.mjs";
 
 // Pure-function coverage for the classifiers behind
-// `.agents/skills/merge-dependabot/scripts/survey-prs.mjs`. Nothing here does
+// `.agents/skills/merging-dependency-prs/scripts/survey-prs.mjs`. Nothing here does
 // I/O — the script keeps the `gh` call and the printing — so this suite stays
 // in the `unit` project, the same precedent as tests/guard-rules.test.ts.
 //
@@ -185,9 +186,14 @@ describe("semverLevel", () => {
     ["1.2.3", "2.0.0", "major"],
     ["1.2.3", "1.3.0", "minor"],
     ["1.2.3", "1.2.4", "patch"],
+    ["0.4.0", "0.5.0", "major"],
+    ["0.0.3", "0.1.0", "major"],
+    ["0.4.0", "0.4.1", "patch"],
+    ["0.4.0", "1.0.0", "major"],
     // A range with no patch component still classifies on the two it has.
     ["^10.6", "^10.7", "minor"],
     ["^10.6", "^11.0", "major"],
+    ["^0.4", "^0.5", "major"],
   ])("classifies %s → %s as %s", (from, to, expected) => {
     expect(semverLevel(from, to)).toBe(expected);
   });
@@ -199,6 +205,23 @@ describe("semverLevel", () => {
     ["an unparsable `to`", "1.2.3", "latest"],
   ])("reports %s as unknown", (_label, from, to) => {
     expect(semverLevel(from, to)).toBe("unknown");
+  });
+});
+
+describe("the pre-1.0 minor survey flag", () => {
+  it.each([
+    ["0.4.0", "0.5.0", true],
+    ["^0.4", "^0.5", true],
+    ["0.4.0", "0.4.1", false],
+    ["0.4.0", "1.0.0", false],
+    ["1.4.0", "0.5.0", false],
+    ["1.4.0", "1.5.0", false],
+    [undefined, "0.5.0", false],
+    ["0.4.0", undefined, false],
+    ["latest", "0.5.0", false],
+    ["0.4.0", "latest", false],
+  ])("flags %s → %s as %s", (from, to, expected) => {
+    expect(isPreOneMinorBump(from, to)).toBe(expected);
   });
 });
 

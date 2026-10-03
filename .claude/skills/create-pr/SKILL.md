@@ -15,8 +15,8 @@ description: >-
 **Owns:** opening a pull request for the current branch, or updating the one already
 open for it — the preconditions, the gate run before it, the title, the body, and the
 push. **Does not own:** shipping an issue end to end through CI and merge
-(`shipping-issues`); landing a bot PR (`merge-dependabot`); making the commits the PR
-carries.
+(`shipping-issues`); landing a bot PR (`merging-dependency-prs`); making the commits the
+PR carries.
 
 **Invoking this skill is the sign-off for exactly these remote writes, for this
 invocation only:** pushing the current branch to `origin`, `gh pr create` for it, and
