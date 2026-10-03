@@ -73,14 +73,14 @@ Pending, missing or unrecognized results hold the PR.
 
 Present one concrete plan that names:
 
-- Every selected PR and its landing mode, exact packages and target ranges, every
-  major/0.x minor, the release-note review, and any framework-family completion.
+- Every selected PR, its reviewed head and diff, landing mode, exact packages and target
+  ranges, every major/0.x minor, the release-note review, and any family completion.
 - Branch creation, commits and pushes, PR creation/update, which PRs will merge, and
   which originals and branches will close or be deleted after a combined merge.
 - Every planned `@dependabot rebase` comment, with its target PR, and every CI rerun,
   with its run/job ID and reason. Use a bot's supported route only for that bot.
 - The rebases that an earlier approved merge may force on the remaining approved PRs.
-  The one approval covers those necessary rebases too; recheck the new head and CI.
+  The one approval covers those necessary rebases too; Step 4 revalidates each new head.
 - Which cases are held for a separate decision, and whether the run stops at an open
   verified combined PR or at a merge.
 
@@ -100,10 +100,15 @@ regenerated lockfile against the approved PR diffs and family completion: elimin
 unapproved package changes with the owning tool, never by hand-editing the lockfile. If
 that cannot be done inside the approved plan, stop and retain the evidence.
 
+Record the head covered by every review. Any changed head, including a bot rebase,
+invalidates the old-head evidence: repeat Step 2's complete diff, release-note,
+Action-pin and lockfile review before proceeding. Compare the new content with the
+approved plan; hold a change outside that scope for fresh approval. This applies to
+individual PRs and combined branches, even when the rebase itself was already approved.
+
 Run the repository's local gate, then recheck the exact published head's CI, feedback,
-and required approvals before merging. A known correction or bot rebase invalidates the
-old-head evidence. Resolve only settled mechanical failures in scope; a migration or
-other judgment call is held for the human.
+and required approvals before merging. Resolve only settled mechanical failures in
+scope; a migration or other judgment call is held for the human.
 
 Close superseded originals with a pointer only after the combined PR is confirmed
 merged. If it is left open or abandoned, the originals stay open too.

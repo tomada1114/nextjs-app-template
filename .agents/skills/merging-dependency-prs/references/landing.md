@@ -6,12 +6,14 @@ that recorded scope and follow AGENTS.md's Git/GitHub routing and safety rules.
 ## Individual PRs
 
 Process approved PRs in ascending number, one at a time. Immediately before each merge,
-verify its current head, the complete required check set, feedback and required
-approvals. Confirm the merged state and landed commit afterwards.
+verify its current head, repeat SKILL.md's Step 2 review if that head changed, and check
+the complete required check set, feedback and required approvals. Confirm the merged
+state and landed commit afterwards.
 
 An earlier approved merge can leave a later approved PR behind the base. Request the
-necessary bot rebase covered by the plan, then observe the changed head and new checks.
-For a Dependabot PR, the planned comment is:
+necessary bot rebase covered by the plan, then observe the changed head. Apply Step 4's
+review and approval-scope comparison before accepting its new checks. For a Dependabot
+PR, the planned comment is:
 
 ```text
 @dependabot rebase

@@ -1,7 +1,12 @@
 # Reviewing dependency PRs
 
 Read this before approving any PR at Step 2 — this is the point of the gate, not a
-formality:
+formality. Step 4 repeats this review whenever a head changes:
+
+- Read the complete current diff, including manifests and the generated lockfile's
+  resolved versions, sources, integrity values and transitive changes. For an approved
+  plan, verify the content still fits its packages, ranges and family completion; follow
+  the [lockfile procedure](landing.md#review-the-lockfile) for unapproved movement.
 
 - GitHub Actions bumps must remain **SHA-pinned with a version comment**. A diff that
   replaces a SHA pin with a floating tag is a regression — hold it.
