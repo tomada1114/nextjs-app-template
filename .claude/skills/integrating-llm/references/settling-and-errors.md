@@ -40,11 +40,22 @@ restated here. What this skill owns is the mapping a new adapter must reproduce,
 out in `src/ai/adapters/openrouter/errors.ts`:
 
 - The axis is **what a caller can do about it** — never which provider produced it, and
-  never the status class it arrived in. That is why `400`, `422` and OpenRouter's
-  moderation `403` become `ERR_LLM_INVALID_OUTPUT`: the only request this adapter builds
-  is the caller's own schema and prompt, so a rejected one is re-prompted, not retried
-  or reconfigured. `401` and `402` (no credits) are fixed in the account —
-  `ERR_LLM_AUTH`.
+  never the status class it arrived in. OpenRouter's stable
+  `error.metadata.error_type: "not_found"` means a missing resource
+  (https://openrouter.ai/docs/api_reference/errors-and-debugging#typed-error-codes,
+  checked 2026-10-03). This adapter's text-only request references no remote file or
+  image, so that type with matching `400` or `404` status and body code becomes
+  `ERR_LLM_CONFIG` for its configured model. When the typed discriminator is absent, the
+  legacy example (`error.code: 400`, `error.message: "Invalid model specified"`) remains
+  a compatibility fallback (https://openrouter.ai/docs/api_reference/streaming, checked
+  2026-10-03). Other `400` bodies retain `ERR_LLM_INVALID_OUTPUT`: the status alone does
+  not distinguish configuration from per-request rejection. The handler returns `500`
+  and logs a fixed hint naming `LLM_MODEL`, without the provider's text or an
+  environment value. `422` and the moderation refusal `403` remain
+  `ERR_LLM_INVALID_OUTPUT`; `401` and `402` (no credits) are fixed in the account —
+  `ERR_LLM_AUTH`. The documented example is replayed by
+  `tests/fixtures/llm/openrouter/invalid-model-400.json`, with its source and explicit
+  hand-written provenance; it is not a live recording.
 - Anything unrecognised falls to `ERR_LLM_UNAVAILABLE`, whose remedy — try again later —
   is the safe suggestion for a failure nobody has classified yet. A `200` that carries
   an `error` object instead of a completion is mapped by the same table.

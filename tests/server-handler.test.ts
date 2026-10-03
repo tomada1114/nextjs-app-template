@@ -3,12 +3,12 @@ import type * as z from "zod";
 
 import {
   createFakeLlmPort,
-  type LlmError,
+  LlmError,
   type LlmErrorCode,
   type LlmPort,
   type LlmRequest,
 } from "../src/ai/index";
-import type { Result } from "../src/core/result";
+import { err, type Result } from "../src/core/result";
 import { createAskHandler } from "../src/server/handlers/ask";
 
 /**
@@ -498,6 +498,7 @@ describe("the ask handler", () => {
 
   it.each([
     ["ERR_LLM_AUTH", 500],
+    ["ERR_LLM_CONFIG", 500],
     ["ERR_LLM_RATE_LIMIT", 429],
     ["ERR_LLM_TIMEOUT", 504],
     ["ERR_LLM_INVALID_OUTPUT", 502],
@@ -518,6 +519,32 @@ describe("the ask handler", () => {
       });
     },
   );
+
+  it("logs the model configuration hint without exposing provider content", async () => {
+    let logged = "";
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      logged += String(chunk);
+      return true;
+    });
+    const providerText = "marker-provider-content-do-not-log";
+    const handler = createAskHandler({
+      llm: {
+        generate: () =>
+          Promise.resolve(err(new LlmError("ERR_LLM_CONFIG", providerText))),
+      },
+    });
+
+    const response = await handler(postRequest(JSON.stringify({ prompt: "Hi" })));
+
+    expect(logged).toContain("LLM_MODEL");
+    expect(logged).not.toContain(providerText);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "ERR_LLM_CONFIG",
+        message: "The language model could not answer this request.",
+      },
+    });
+  });
 
   it("reports an answer that does not match the schema as ERR_LLM_INVALID_OUTPUT", async () => {
     const handler = createAskHandler({

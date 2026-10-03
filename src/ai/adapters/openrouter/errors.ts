@@ -1,4 +1,33 @@
+import * as z from "zod";
+
 import { abortedLlmError, asError, LlmError, type LlmErrorCode } from "../../errors";
+
+/** The provider's typed error envelope, with the legacy message retained. */
+const providerErrorSchema = z.object({
+  error: z.object({
+    code: z.union([z.literal(400), z.literal(404)]),
+    message: z.string(),
+    metadata: z.object({ error_type: z.string().optional() }).optional(),
+  }),
+});
+
+/** This text-only request references no remote resource except its configured model. */
+function isInvalidModelError(status: number, body: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const result = providerErrorSchema.safeParse(parsed);
+    if (!result.success || result.data.error.code !== status) {
+      return false;
+    }
+    const error = result.data.error;
+    const errorType = error.metadata?.error_type;
+    return errorType === undefined
+      ? status === 400 && error.message === "Invalid model specified"
+      : errorType === "not_found";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The port code an OpenRouter status maps to.
@@ -9,10 +38,9 @@ import { abortedLlmError, asError, LlmError, type LlmErrorCode } from "../../err
  *
  * - `401` (bad key) and `402` (no credits left) are fixed in the account, not
  *   by asking again — `ERR_LLM_AUTH`.
- * - `400`, `422` and `403` reject the request's own content. `403` is
- *   OpenRouter's moderation refusal of the input, not a permission error, and
- *   the only request this adapter builds is the caller's schema and prompt, so
- *   all three are re-prompted — `ERR_LLM_INVALID_OUTPUT`.
+ * - Other `400`, `422` and the moderation refusal `403` retain the caller's
+ *   content-rejection remedy — `ERR_LLM_INVALID_OUTPUT`. `providerError`
+ *   separately recognizes the documented invalid-model configuration error.
  * - `408` is the upstream giving up on this request — `ERR_LLM_TIMEOUT`.
  * - `429` — `ERR_LLM_RATE_LIMIT`.
  *
@@ -52,7 +80,11 @@ export function providerError(status: number | undefined, body: string): LlmErro
     status === undefined
       ? "The LLM provider reported an error without a status."
       : `The LLM provider returned status ${String(status)}.`;
-  return new LlmError(codeForStatus(status), message, {
+  const code =
+    (status === 400 || status === 404) && isInvalidModelError(status, body)
+      ? "ERR_LLM_CONFIG"
+      : codeForStatus(status);
+  return new LlmError(code, message, {
     cause: new Error(`OpenRouter error response: ${body}`),
   });
 }

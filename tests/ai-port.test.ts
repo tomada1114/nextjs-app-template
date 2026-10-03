@@ -75,6 +75,7 @@ export interface LlmPortContractHarness {
  */
 const ALL_CODES = [
   "ERR_LLM_AUTH",
+  "ERR_LLM_CONFIG",
   "ERR_LLM_RATE_LIMIT",
   "ERR_LLM_TIMEOUT",
   "ERR_LLM_INVALID_OUTPUT",
@@ -371,6 +372,7 @@ describeLlmPortContract("createFakeLlmPort", {
  */
 const OPENROUTER_FIXTURE_FOR_CODE = {
   ERR_LLM_AUTH: "auth-401",
+  ERR_LLM_CONFIG: "invalid-model-400",
   ERR_LLM_RATE_LIMIT: "rate-limit-429",
   ERR_LLM_UNAVAILABLE: "unavailable-502",
   ERR_LLM_INVALID_OUTPUT: "invalid-output",

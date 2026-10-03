@@ -91,6 +91,7 @@ const askAnswerSchema = z.object({
  */
 const STATUS_BY_LLM_CODE = {
   ERR_LLM_AUTH: 500,
+  ERR_LLM_CONFIG: 500,
   ERR_LLM_RATE_LIMIT: 429,
   ERR_LLM_TIMEOUT: 504,
   ERR_LLM_INVALID_OUTPUT: 502,
@@ -183,6 +184,9 @@ export function createAskHandler(
     });
 
     if (!result.ok) {
+      if (result.error.code === "ERR_LLM_CONFIG") {
+        process.stderr.write("Check LLM_MODEL and adapter request settings.\n");
+      }
       return failure(
         STATUS_BY_LLM_CODE[result.error.code],
         result.error.code,
