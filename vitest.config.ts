@@ -33,6 +33,7 @@ const automationTests = [
   "tests/ai-vendor-swap.test.ts",
   "tests/apply-ruleset.test.ts",
   "tests/boundaries.test.ts",
+  "tests/braces-patch.test.ts",
   "tests/check-staged.test.ts",
   "tests/ci-sync.test.ts",
   "tests/ci-watch.test.ts",

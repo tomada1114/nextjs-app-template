@@ -84,6 +84,23 @@ Dependabot alerts and security updates, private vulnerability reporting itself, 
 AGENTS.md's "GitHub settings a new repository must enable" lists them and why each
 matters.
 
+## Patched dependencies
+
+`braces@3.0.3`, reached through ESLint's Next.js plugin and `fast-glob`, has a local
+pnpm patch for [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+(CVE-2026-93687). No fixed release is published as of 2026-10-02. The patch follows
+[upstream PR #72](https://github.com/micromatch/braces/pull/72) at commit
+`d0d575e55e74a4e0218e5248fafb79efc3e54ebb`: parsing caps combined brace and parenthesis
+nesting at 100, and the recursive compiler, expander and stringifier enforce the same
+cap for caller-supplied ASTs. A caller may select a stricter cap, but cannot raise it.
+
+`tests/braces-patch.test.ts` resolves the package that ESLint actually loads and checks
+deep patterns, direct ASTs, the safe boundary and ordinary file globs. pnpm applies the
+patch on every install; a missing or inapplicable patch fails the install or these
+regression tests. The lockfile retains version `3.0.3`, so a version-based scanner can
+still flag the advisory after the fix is applied. Replace the patched dependency with a
+fixed upstream release once one satisfies the supply-chain policy.
+
 ## Responsible disclosure
 
 This project follows coordinated disclosure: the details of a vulnerability become

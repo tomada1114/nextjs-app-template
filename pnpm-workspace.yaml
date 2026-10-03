@@ -94,3 +94,11 @@ peerDependencyRules:
     eslint-plugin-import>eslint: "10"
     eslint-plugin-jsx-a11y>eslint: "10"
     eslint-plugin-react>eslint: "10"
+
+# GHSA-vfj7-8cjw-p6xm / CVE-2026-93687 has no published fixed release.
+# Bound brace/parenthesis parsing and all AST walkers to a safe depth, based on
+# micromatch/braces PR #72 at d0d575e55e74a4e0218e5248fafb79efc3e54ebb.
+# tests/braces-patch.test.ts resolves and exercises the copy ESLint loads.
+# Remove this exact-version patch when a fixed release passes the install policy.
+patchedDependencies:
+  braces@3.0.3: patches/braces@3.0.3.patch
