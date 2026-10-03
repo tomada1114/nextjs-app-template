@@ -150,7 +150,7 @@ describe("createOpenRouterAdapter without a credential", () => {
 
 describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabulary", () => {
   it.each([
-    [400, "ERR_LLM_INVALID_OUTPUT"],
+    [400, "ERR_LLM_CONFIG"],
     [401, "ERR_LLM_AUTH"],
     // Out of credits: fixed in the account, not by asking again.
     [402, "ERR_LLM_AUTH"],
@@ -468,6 +468,7 @@ describe("the committed OpenRouter fixtures", () => {
   const OUTCOMES = {
     success: "ok",
     "invalid-output": "ERR_LLM_INVALID_OUTPUT",
+    "invalid-model-400": "ERR_LLM_CONFIG",
     "auth-401": "ERR_LLM_AUTH",
     "rate-limit-429": "ERR_LLM_RATE_LIMIT",
     "unavailable-502": "ERR_LLM_UNAVAILABLE",

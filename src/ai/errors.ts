@@ -4,13 +4,14 @@
  * @remarks
  * The vocabulary is deliberately about what a caller can *do*, not about which
  * provider produced it: retry later (`ERR_LLM_RATE_LIMIT`,
- * `ERR_LLM_UNAVAILABLE`), fix configuration (`ERR_LLM_AUTH`), give up on this
+ * `ERR_LLM_UNAVAILABLE`), fix configuration (`ERR_LLM_AUTH`, `ERR_LLM_CONFIG`), give up on this
  * request (`ERR_LLM_TIMEOUT`), or re-prompt (`ERR_LLM_INVALID_OUTPUT`). A new
  * member is a change to what every adapter promises, so it is added here once
  * rather than per adapter.
  */
 export type LlmErrorCode =
   | "ERR_LLM_AUTH"
+  | "ERR_LLM_CONFIG"
   | "ERR_LLM_RATE_LIMIT"
   | "ERR_LLM_TIMEOUT"
   | "ERR_LLM_INVALID_OUTPUT"

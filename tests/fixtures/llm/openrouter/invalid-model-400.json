@@ -1,0 +1,11 @@
+{
+  "source": "https://openrouter.ai/docs/api_reference/streaming#errors-before-the-response-is-committed",
+  "provenance": "Hand-written from the documented JSON error example; not a live recording.",
+  "status": 400,
+  "body": {
+    "error": {
+      "code": 400,
+      "message": "Invalid model specified"
+    }
+  }
+}

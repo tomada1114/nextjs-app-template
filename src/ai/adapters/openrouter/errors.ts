@@ -9,10 +9,11 @@ import { abortedLlmError, asError, LlmError, type LlmErrorCode } from "../../err
  *
  * - `401` (bad key) and `402` (no credits left) are fixed in the account, not
  *   by asking again — `ERR_LLM_AUTH`.
- * - `400`, `422` and `403` reject the request's own content. `403` is
- *   OpenRouter's moderation refusal of the input, not a permission error, and
- *   the only request this adapter builds is the caller's schema and prompt, so
- *   all three are re-prompted — `ERR_LLM_INVALID_OUTPUT`.
+ * - `400` rejects request parameters (including the configured model), not a
+ *   generated answer — `ERR_LLM_CONFIG`. OpenRouter's documented JSON error
+ *   example is replayed by `invalid-model-400.json`.
+ * - `422` and the moderation refusal `403` reject the request's content —
+ *   `ERR_LLM_INVALID_OUTPUT`.
  * - `408` is the upstream giving up on this request — `ERR_LLM_TIMEOUT`.
  * - `429` — `ERR_LLM_RATE_LIMIT`.
  *
@@ -26,6 +27,7 @@ export function codeForStatus(status: number | undefined): LlmErrorCode {
     case 402:
       return "ERR_LLM_AUTH";
     case 400:
+      return "ERR_LLM_CONFIG";
     case 403:
     case 422:
       return "ERR_LLM_INVALID_OUTPUT";
