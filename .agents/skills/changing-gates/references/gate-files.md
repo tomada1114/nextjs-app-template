@@ -275,8 +275,8 @@ Traps that have cost time here:
   boundary decision — a new zone, or a second module at the root of `src/`.
 - `vitest.config.ts` runs four projects — `unit`, `component` (jsdom), `automation`,
   `smoke` — and coverage is collected once for the whole run, never per project. `smoke`
-  is the one the default run filters out (`--project='!smoke'` in `test`,
-  `test:coverage`, `test:watch` and `test:related`), because it serves `pnpm build`'s
+  is omitted from the positive `unit`, `component`, `automation` lists in `test`,
+  `test:coverage`, `test:watch` and `test:related`, because it serves `pnpm build`'s
   output and there is none in ci.yml's `test` job. Which project a file joins, and the
   value of any threshold, are `placing-tests`. What belongs here is that `extends: true`
   is what carries the shared `allowOnly`/restore/unstub settings into a project: a
