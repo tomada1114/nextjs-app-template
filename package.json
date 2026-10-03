@@ -40,10 +40,11 @@
     "repo:ruleset": "node scripts/apply-ruleset.mjs",
     "check:staged": "node scripts/check-staged.mjs",
     "check:quick": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
-    "check:source": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:smoke && pnpm run test:coverage && pnpm run test:skills",
+    "check:source": "pnpm run hooks:verify && pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test:smoke && pnpm run test:coverage && pnpm run test:skills",
     "fix": "eslint . --fix && prettier --write .",
     "prepare": "node scripts/verify-hooks.mjs",
-    "hooks:install": "lefthook install"
+    "hooks:install": "lefthook install",
+    "hooks:verify": "node scripts/verify-hooks.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

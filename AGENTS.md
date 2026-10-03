@@ -77,6 +77,7 @@ pnpm test:smoke    # serves the last `pnpm build` with `next start` and asserts 
 pnpm test:skills   # the shipping-issues skill's Python script tests (needs python3; ~2 min)
 pnpm agents:sync   # regenerate .claude/skills/ from .agents/skills/
 pnpm agents:check  # fail when the two skill trees have drifted apart
+pnpm hooks:verify  # verify the installed Git hooks; first in check:source
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
@@ -411,7 +412,9 @@ have the hook, which every failure message names; and hooks removed by hand afte
 `LEFTHOOK=0` is not among them: it leaves the hook installed and `verify-hooks` green
 while disabling the gate at every commit it is set for — "Two consequences" below is
 where that invisibility, and why nothing here closes it, is explained once.
-`pnpm hooks:install` is the repair, not a setup step.
+`pnpm hooks:install` is the repair, not a setup step. The same verifier starts
+`check:source` through `pnpm hooks:verify`, so a hook removed after installation fails
+the full local gate before its source tools run.
 
 No third layer sits under those two: this repository ships no declarative,
 tool-call-aware permission list (a Claude Code `permissions.allow`/`permissions.deny` or

@@ -40,7 +40,8 @@ file rather than named in the test, so a third job counts the day it lands — a
 when a step on either side has no counterpart on the other.
 
 The exceptions are two maps, one per direction, each value a stated reason rather than a
-comment: `CHECK_SOURCE_ONLY_EXCEPTIONS`, empty today, and `CI_ONLY_EXCEPTIONS`, which
+comment: `CHECK_SOURCE_ONLY_EXCEPTIONS` holds `hooks:verify`: it checks the developer
+checkout, CI installs no hook, and the verifier skips under `CI`. `CI_ONLY_EXCEPTIONS`
 holds `test`. That one is ci.yml's `Run tests without coverage` step, the
 `matrix.os != 'ubuntu-latest'` branch that keeps coverage collected exactly once should
 a second OS join the matrix; `check:source` runs `test:coverage`, the same suite plus
@@ -48,11 +49,12 @@ the coverage floors, so a local run is not missing a gate. Adding an entry to ei
 is a claim to argue in the PR, and a stale one fails the suite — each key has to still
 name a real step on its own side.
 
-A new gate is therefore three edits, not one: the package script, the `check:source`
-composition, and the matching `ci.yml` step — and the suite now fails if either of the
-last two is skipped, whichever way round. What it does not judge is _which_ job a CI
-step lands in: steps are collected across all jobs, so a check that belongs in `static`
-but sits in `test` satisfies both directions. That one is still read by a human.
+A gate without a documented source-only exception is therefore three edits: the package
+script, the `check:source` composition, and the matching `ci.yml` step. The suite fails
+if either of the last two is skipped, whichever way round. What it does not judge is
+_which_ job a CI step lands in: steps are collected across all jobs, so a check that
+belongs in `static` but sits in `test` satisfies both directions. That one is still read
+by a human.
 
 ## Gate files
 

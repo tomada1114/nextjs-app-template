@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import consoleModule from "node:console";
 import {
   chmodSync,
@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -488,5 +489,57 @@ describe("package.json's prepare script", () => {
 
   it("keeps hooks:install as the manual repair", () => {
     expect(packageScript("hooks:install")).toBe("lefthook install");
+  });
+
+  it("verifies installed hooks before running any source-gate tools", () => {
+    expect(packageScript("check:source").split(" && ")[0]).toBe(
+      "pnpm run hooks:verify",
+    );
+  });
+
+  it("exposes the verification command separately from hook installation", () => {
+    expect(packageScript("hooks:verify")).toBe("node scripts/verify-hooks.mjs");
+  });
+
+  it("stops check:source when an installed hook disappears and verifies its repair", () => {
+    const env = isolatedEnv();
+    const root = makeRepository(env);
+    addLefthook(root);
+    mkdirSync(path.join(root, "scripts", "lib"), { recursive: true });
+    copyFileSync(
+      path.join(repoRoot, "scripts", "verify-hooks.mjs"),
+      path.join(root, "scripts", "verify-hooks.mjs"),
+    );
+    copyFileSync(
+      path.join(repoRoot, "scripts", "lib", "git-env.mjs"),
+      path.join(root, "scripts", "lib", "git-env.mjs"),
+    );
+    symlinkSync(
+      path.join(repoRoot, "node_modules", ".bin"),
+      path.join(root, "node_modules", ".bin"),
+      "dir",
+    );
+    writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({
+        name: "verify-hooks-fixture",
+        private: true,
+        type: "module",
+        scripts: {
+          "check:source": packageScript("check:source"),
+          "hooks:verify": packageScript("hooks:verify"),
+          "hooks:install": packageScript("hooks:install"),
+        },
+      }),
+    );
+    const options = { cwd: root, env, encoding: "utf8" } as const;
+    expect(spawnSync("pnpm", ["run", "hooks:install"], options).status).toBe(0);
+    const hook = path.join(root, ".git", "hooks", "pre-commit");
+    renameSync(hook, path.join(root, "saved-pre-commit"));
+    const missing = spawnSync("pnpm", ["run", "check:source"], options);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("ERR_HOOKS_NOT_INSTALLED");
+    expect(spawnSync("pnpm", ["run", "hooks:install"], options).status).toBe(0);
+    expect(spawnSync("pnpm", ["run", "hooks:verify"], options).status).toBe(0);
   });
 });
