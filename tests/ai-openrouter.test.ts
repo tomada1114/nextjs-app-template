@@ -150,7 +150,7 @@ describe("createOpenRouterAdapter without a credential", () => {
 
 describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabulary", () => {
   it.each([
-    [400, "ERR_LLM_CONFIG"],
+    [400, "ERR_LLM_INVALID_OUTPUT"],
     [401, "ERR_LLM_AUTH"],
     // Out of credits: fixed in the account, not by asking again.
     [402, "ERR_LLM_AUTH"],
@@ -168,6 +168,34 @@ describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabu
     const { fetch } = respondWith(status, { error: { code: status, message: "no" } });
 
     expect(failureOf(await ask(fetch)).code).toBe(code);
+  });
+
+  it.each([
+    "not json",
+    null,
+    [],
+    { message: "Invalid model specified" },
+    { error: null },
+    { error: [] },
+    { error: "Invalid model specified" },
+    { error: { code: 400, message: 123 } },
+    { error: { code: 400, message: "Invalid response format" } },
+    { error: { code: 422, message: "Invalid model specified" } },
+  ])(
+    "does not label unrelated or malformed HTTP 400 body %j as model configuration",
+    async (body) => {
+      const { fetch } = respondWith(400, body);
+
+      expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
+    },
+  );
+
+  it("recognizes the documented model error inside an HTTP 200 error envelope", async () => {
+    const { fetch } = respondWith(200, {
+      error: { code: 400, message: "Invalid model specified" },
+    });
+
+    expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_CONFIG");
   });
 
   it("keeps the provider's own error text off the message but on cause", async () => {
