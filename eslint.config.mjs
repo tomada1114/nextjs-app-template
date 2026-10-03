@@ -299,6 +299,38 @@ export default defineConfig([
     name: "boundaries/core-is-framework-free-and-imports-no-zone",
     files: ["src/core/**/*.ts", "src/core/**/*.tsx"],
     rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Date",
+          property: "now",
+          message: "Pass the current time or a clock into core as an argument.",
+        },
+        {
+          object: "Math",
+          property: "random",
+          message: "Pass randomness into core as an argument.",
+        },
+        {
+          object: "crypto",
+          property: "randomUUID",
+          message: "Generate the identifier outside core and pass it in.",
+        },
+        {
+          object: "process",
+          property: "env",
+          message: "Read configuration in src/server/env.ts and pass it into core.",
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        NO_ENUM,
+        NO_EXPORT_STAR,
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message: "Pass the current time or a clock into core as an argument.",
+        },
+      ],
       "no-restricted-imports": [
         "error",
         {

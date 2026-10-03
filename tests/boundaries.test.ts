@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 // `eslint.config.mjs` states the zone edges as `no-restricted-imports`
@@ -398,6 +399,53 @@ describe("src/core/ is framework-free", () => {
 
   it.each(forbidden)("imports no %s", (pkg) => {
     expect(packageOffenders(modulesIn("src/core"), pkg)).toStrictEqual([]);
+  });
+});
+
+describe("core purity is enforced by the effective ESLint rules", () => {
+  const eslint = new ESLint({ cwd: repoRoot });
+  const corePath = path.join(repoRoot, "src/core/result.ts");
+
+  it.each([
+    ["Date.now()", "no-restricted-properties"],
+    ["Math.random()", "no-restricted-properties"],
+    ["crypto.randomUUID()", "no-restricted-properties"],
+    ["process.env", "no-restricted-properties"],
+    ["new Date()", "no-restricted-syntax"],
+  ])("rejects %s in core", async (expression, rule) => {
+    const results = await eslint.lintText(
+      `export function probe(): unknown { return ${expression}; }`,
+      { filePath: corePath },
+    );
+    expect(
+      results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+    ).toContain(rule);
+  });
+
+  it.each([
+    "export function probe(): Date { return new Date(0); }",
+    "export function probe(now: Date): number { return now.getTime(); }",
+  ])("allows deterministic core code: %s", async (source) => {
+    const results = await eslint.lintText(source, { filePath: corePath });
+    expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+  });
+
+  it.each(["enum Probe { Value }", 'export * from "./result";'])(
+    "keeps the existing syntax restriction for %s",
+    async (source) => {
+      const results = await eslint.lintText(source, { filePath: corePath });
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-syntax");
+    },
+  );
+
+  it("leaves the caller free to read a clock outside core", async () => {
+    const results = await eslint.lintText(
+      "export function probe(): number { return Date.now(); }",
+      { filePath: path.join(repoRoot, "src/server/env.ts") },
+    );
+    expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
   });
 });
 

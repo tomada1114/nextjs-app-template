@@ -146,8 +146,9 @@ client component belongs in (`building-app-routes`); compile-time assertions wit
 ## Core logic
 
 The import boundary keeps the framework out of `src/core/**`; these rules keep what is
-left testable without one. No gate enforces them — a `Date.now()` in core passes lint,
-typecheck and every test.
+left testable without one. The core block in `eslint.config.mjs` enforces the clock,
+randomness and `process.env` restrictions; `tests/boundaries.test.ts` exercises its
+effective rules so deleting a restriction fails the suite.
 
 - Core is handed what the outside world supplies; it never reads it. The current time
   (`now: Date`, or `clock: () => Date` when one call needs several readings),
