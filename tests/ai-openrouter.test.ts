@@ -198,6 +198,63 @@ describe("createOpenRouterAdapter maps an OpenRouter status onto the port vocabu
     expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_CONFIG");
   });
 
+  it.each([
+    [400, 400],
+    [404, 404],
+    [200, 400],
+    [200, 404],
+  ])(
+    "uses the stable not_found type with HTTP %i and error code %i",
+    async (status, code) => {
+      const marker = "private model details with changed provider wording";
+      const { fetch } = respondWith(status, {
+        error: { code, message: marker, metadata: { error_type: "not_found" } },
+      });
+      const error = failureOf(await ask(fetch));
+
+      expect(error.code).toBe("ERR_LLM_CONFIG");
+      expect(error.message).not.toContain(marker);
+      expect((error.cause as Error).message).toContain(marker);
+    },
+  );
+
+  it.each(["invalid_request", "invalid_prompt", "future_error_type"])(
+    "does not override the stable %s type with legacy message text",
+    async (errorType) => {
+      const { fetch } = respondWith(400, {
+        error: {
+          code: 400,
+          message: "Invalid model specified",
+          metadata: { error_type: errorType },
+        },
+      });
+
+      expect(failureOf(await ask(fetch)).code).toBe("ERR_LLM_INVALID_OUTPUT");
+    },
+  );
+
+  it.each([
+    [400, 422],
+    [404, 400],
+    [422, 422],
+    [403, 403],
+  ])(
+    "leaves HTTP %i with unrelated or inconsistent code %i alone",
+    async (status, code) => {
+      const { fetch } = respondWith(status, {
+        error: {
+          code,
+          message: "Missing resource",
+          metadata: { error_type: "not_found" },
+        },
+      });
+
+      expect(failureOf(await ask(fetch)).code).toBe(
+        status === 404 ? "ERR_LLM_UNAVAILABLE" : "ERR_LLM_INVALID_OUTPUT",
+      );
+    },
+  );
+
   it("keeps the provider's own error text off the message but on cause", async () => {
     const marker = "marker-5d0e7a-do-not-quote-this-provider-text";
     const { fetch } = respondWith(400, { error: { code: 400, message: marker } });

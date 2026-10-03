@@ -2,19 +2,28 @@ import * as z from "zod";
 
 import { abortedLlmError, asError, LlmError, type LlmErrorCode } from "../../errors";
 
-/** The invalid-model JSON error OpenRouter documents; not a prose heuristic. */
-const invalidModelErrorSchema = z.object({
+/** The provider's typed error envelope, with the legacy message retained. */
+const providerErrorSchema = z.object({
   error: z.object({
-    code: z.literal(400),
-    message: z.literal("Invalid model specified"),
+    code: z.union([z.literal(400), z.literal(404)]),
+    message: z.string(),
+    metadata: z.object({ error_type: z.string().optional() }).optional(),
   }),
 });
 
-/** Recognize only the documented configuration failure, leaving other 400s alone. */
-function isInvalidModelError(body: string): boolean {
+/** This text-only request references no remote resource except its configured model. */
+function isInvalidModelError(status: number, body: string): boolean {
   try {
     const parsed: unknown = JSON.parse(body);
-    return invalidModelErrorSchema.safeParse(parsed).success;
+    const result = providerErrorSchema.safeParse(parsed);
+    if (!result.success || result.data.error.code !== status) {
+      return false;
+    }
+    const error = result.data.error;
+    const errorType = error.metadata?.error_type;
+    return errorType === undefined
+      ? status === 400 && error.message === "Invalid model specified"
+      : errorType === "not_found";
   } catch {
     return false;
   }
@@ -72,7 +81,7 @@ export function providerError(status: number | undefined, body: string): LlmErro
       ? "The LLM provider reported an error without a status."
       : `The LLM provider returned status ${String(status)}.`;
   const code =
-    status === 400 && isInvalidModelError(body)
+    (status === 400 || status === 404) && isInvalidModelError(status, body)
       ? "ERR_LLM_CONFIG"
       : codeForStatus(status);
   return new LlmError(code, message, {
