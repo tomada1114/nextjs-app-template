@@ -18,11 +18,11 @@ import { readText, repoRoot, walk } from "./repo-tree";
 // works through. A new app replaces each site the inventory names below and
 // deletes that row from EXPECTED_INVENTORY; it is finished when the list is
 // empty and this suite is green — an empty list then means no identity string
-// of this template survived. `starting-an-app` owns the order and the values
-// to write in; this file owns the list.
+// or open product/design decision of this template survived. `starting-an-app`
+// owns the order and the values to write in; this file owns the list.
 
 /**
- * Every string that names *this template* rather than a project built from it.
+ * Every template identity string or marker for a decision a new app must settle.
  *
  * @remarks
  * `you@example.com` and `your-name` are listed although nothing carries them
@@ -62,13 +62,15 @@ import { readText, repoRoot, walk } from "./repo-tree";
  * plurals rather than this template's identity. `starting-an-app` sends a
  * renaming project to that copy by hand instead.
  *
- * The last entry is not an identity string but a decision the template leaves
- * open on purpose: the design direction. `src/app/globals.css` ships stock
+ * The last two entries are decisions the template leaves open on purpose:
+ * the design direction and the product. `src/app/globals.css` ships stock
  * shadcn/ui tokens and `designing-ui` an empty lock, both carrying this
  * marker, so a project that renamed everything still reports that its screens
  * are being built against a direction nobody chose. It is listed here rather
  * than in a suite of its own because this inventory is already the checklist
  * a new app works through, and a second list is one a new app never runs.
+ * AGENTS.md's Product section carries the product marker until the new app
+ * describes its purpose, core actions and non-goals, immediately after renaming.
  */
 const PLACEHOLDERS = [
   "my-package",
@@ -82,6 +84,7 @@ const PLACEHOLDERS = [
   "An App Router skeleton.",
   "App Router のひな形です。",
   "DESIGN DIRECTION: UNSETTLED",
+  "PRODUCT: UNDESCRIBED",
 ] as const;
 
 /**
@@ -95,7 +98,7 @@ const PLACEHOLDERS = [
  * copyright holder — and two the copy a visitor reads: the localized metadata
  * and `HomePage.title` keys in each catalog. Everything else in
  * the tree — the rest of `src/`, `tests/`, `scripts/`, the skills, the
- * workflows, `CONTRIBUTING.md`, `AGENTS.md` — must name nothing of the sort,
+ * workflows, `CONTRIBUTING.md`, `AGENTS.md` — must name no identity string,
  * so the rename is a bounded edit to seven files rather than a
  * repository-wide search that can miss one. Three of the rows are the
  * template's real repository slug rather than a blank, deliberately: the CI
@@ -103,7 +106,8 @@ const PLACEHOLDERS = [
  * `SECURITY.md`'s — have to resolve *while this repository is the template*,
  * and a fork replaces them like any other row.
  *
- * The design-direction rows sit outside that count: the stylesheet and both
+ * The product and design-direction rows sit outside that count: AGENTS.md
+ * carries the product marker; the stylesheet and both
  * copies of `designing-ui` carry the marker until a new app settles its
  * direction, which `starting-an-app` sequences after the rename.
  */
@@ -111,6 +115,7 @@ const EXPECTED_INVENTORY = [
   ".agents/skills/designing-ui/SKILL.md: DESIGN DIRECTION: UNSETTLED",
   ".claude/skills/designing-ui/SKILL.md: DESIGN DIRECTION: UNSETTLED",
   ".github/ISSUE_TEMPLATE/config.yml: tomada1114/nextjs-app-template",
+  "AGENTS.md: PRODUCT: UNDESCRIBED",
   "LICENSE: Your Name",
   "README.md: A short description.",
   "README.md: Your Name",

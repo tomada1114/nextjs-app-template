@@ -214,6 +214,8 @@ const EDITED_DOCUMENT_FILES = [
   ".agents/skills/localizing-ui/SKILL.md",
   ".agents/skills/managing-dependencies/SKILL.md",
   ".agents/skills/starting-an-app/SKILL.md",
+  ".agents/skills/starting-an-app/references/locales.md",
+  ".agents/skills/starting-an-app/references/rename.md",
   ".agents/skills/type-testing/SKILL.md",
   ".agents/skills/writing-tests/SKILL.md",
   ".agents/skills/writing-typescript/SKILL.md",

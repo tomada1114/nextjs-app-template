@@ -34,6 +34,20 @@ no published `engines.node` floor — `.node-version` and `devEngines.runtime` c
 Node 24 development runtime instead. pnpm 11 is the package manager, used through
 Corepack.
 
+## Product
+
+PRODUCT: UNDESCRIBED
+
+This template leaves its product open. In a new app, fill these TODOs after the rename,
+then remove the marker and its row in `tests/placeholders.test.ts`. The marker stays in
+the template itself, like the design-direction marker below.
+
+- **What it is, and who it is for** — TODO: one paragraph describing the app and its
+  intended users.
+- **The core actions** — TODO: the one or two things a user does most.
+- **Non-goals** — TODO: what the app deliberately does not do. Moving a non-goal into
+  scope is a human's decision.
+
 ## Before the first screen
 
 The template ships no design direction. `src/app/globals.css` carries shadcn/ui's stock
