@@ -32,6 +32,14 @@ picking whichever version is higher.
 
 Apply one approved change at a time with its owning tool:
 
+The npm commands below apply only to existing direct manifest entries. A lockfile-only
+indirect update has no dependency section or direct range to preserve: hold it out of
+the combined plan as Step 2 requires. If one is discovered after approval, stop that
+update and report it; do not promote the package to a direct dependency, copy its
+lockfile entries by hand, or silently switch its approved landing mode. The add commands
+save direct entries to `dependencies` or `devDependencies`
+([pnpm add](https://pnpm.io/cli/add), checked 2026-10-02).
+
 ```bash
 pnpm add '<package>@<approved-range>'
 pnpm add -D '<dev-package>@<approved-range>'

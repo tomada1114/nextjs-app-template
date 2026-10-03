@@ -8,6 +8,10 @@ formality. Step 4 repeats this review whenever a head changes:
   plan, verify the content still fits its packages, ranges and family completion; follow
   the [lockfile procedure](landing.md#review-the-lockfile) for unapproved movement.
 
+- Identify lockfile-only indirect npm updates before planning. Step 2 holds them out of
+  a combined batch because its `pnpm add` procedure cannot preserve their shape; they
+  must never become new direct entries merely to reproduce a lockfile diff.
+
 - GitHub Actions bumps must remain **SHA-pinned with a version comment**. A diff that
   replaces a SHA pin with a floating tag is a regression — hold it.
   `tests/workflows.test.ts` asserts this, so such a PR should already be red.

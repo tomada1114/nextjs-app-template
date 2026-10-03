@@ -58,6 +58,12 @@ companion packages and target ranges in the plan. Adding a package still needs t
 separate dependency decision that `managing-dependencies` owns. A framework major needs
 the migration decision in "Stop and ask" before it becomes eligible.
 
+Classify npm updates as direct manifest changes or lockfile-only indirect changes.
+`pnpm add` cannot reproduce the latter without adding a direct dependency. They may use
+individual mode when its conditions hold; otherwise hold them before choosing the
+combined scope, and exclude them from its approval plan and superseded closures. A
+different reproduction procedure needs its own concrete plan before execution.
+
 ## Step 3: Choose a mode and get approval
 
 Merge individually only when at most three eligible PRs have no contested paths and each
