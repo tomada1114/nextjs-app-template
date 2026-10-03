@@ -334,6 +334,19 @@ export default defineConfig([
       "no-restricted-imports": [
         "error",
         {
+          paths: [
+            ...["node:process", "process"].map((name) => ({
+              name,
+              importNames: ["env", "default"],
+              message: "Read configuration in src/server/env.ts and pass it into core.",
+            })),
+            ...["node:crypto", "crypto"].map((name) => ({
+              name,
+              importNames: ["randomUUID", "default"],
+              message:
+                "Generate the identifier outside core and pass it in; import deterministic crypto functions by name.",
+            })),
+          ],
           patterns: [
             {
               group: [

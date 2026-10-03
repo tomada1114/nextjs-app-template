@@ -447,6 +447,48 @@ describe("core purity is enforced by the effective ESLint rules", () => {
     );
     expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
   });
+
+  describe.each(["node:process", "process"])("ambient imports from %s", (module) => {
+    it.each([
+      ["import { env }", "env"],
+      ["import { env as settings }", "settings"],
+      ["import runtime", "runtime.env"],
+      ["import * as runtime", "runtime.env"],
+    ])("rejects %s in core", async (declaration, expression) => {
+      const results = await eslint.lintText(
+        `${declaration} from "${module}"; export function probe(): unknown { return ${expression}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+  });
+
+  describe.each(["node:crypto", "crypto"])("random imports from %s", (module) => {
+    it.each([
+      ["import { randomUUID }", "randomUUID()"],
+      ["import { randomUUID as makeId }", "makeId()"],
+      ["import runtime", "runtime.randomUUID()"],
+      ["import * as runtime", "runtime.randomUUID()"],
+    ])("rejects %s in core", async (declaration, expression) => {
+      const results = await eslint.lintText(
+        `${declaration} from "${module}"; export function probe(): string { return ${expression}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+
+    it("allows a named deterministic hash implementation", async () => {
+      const results = await eslint.lintText(
+        `import { createHash } from "${module}"; export function probe(value: string): string { return createHash("sha256").update(value).digest("hex"); }`,
+        { filePath: corePath },
+      );
+      expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+    });
+  });
 });
 
 describe("src/components/ is UI: no server-only", () => {
