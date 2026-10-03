@@ -23,8 +23,8 @@ import vitestConfig from "../vitest.config.js";
 // exit code, so an exit-status assertion passes on a run where the tool never
 // started — which is what the minimum-Node CI leg does to a nested `pnpm exec`.
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const source = ".agents/skills/merge-dependabot";
-const mirror = ".claude/skills/merge-dependabot";
+const source = ".agents/skills/merging-dependency-prs";
+const mirror = ".claude/skills/merging-dependency-prs";
 const fixtures = "tests/fixtures/";
 
 type RuleSetting = number | readonly [number, ...unknown[]];

@@ -44,10 +44,10 @@ after a rebase or a manual conflict resolution.
 
 **This is not a regression.** The bump itself is untested, not broken.
 
-**Fix:** the PR cannot be merged as-is. Take it through the combined-PR path (SKILL.md
-Step 4b) and run `pnpm install --lockfile-only` there. Only after the lockfile is
-regenerated does CI actually test the new version, so treat the combined PR's CI run as
-the first real signal for these bumps.
+**Fix:** the PR cannot be merged as-is. Take it through the combined-PR path
+([combined-PR procedure](landing.md#combined-pr)) and run `pnpm install --lockfile-only`
+there. Only after the lockfile is regenerated does CI actually test the new version, so
+treat the combined PR's CI run as the first real signal for these bumps.
 
 ## F3 — Cooldown rejection (`minimumReleaseAge`)
 
@@ -120,9 +120,10 @@ Not a CI failure. `BEHIND` means main moved; `DIRTY` means a real conflict.
 gh pr comment <number> --body "@dependabot rebase"
 ```
 
-Dependabot rebases within a minute or two, then checks re-run. If it conflicts
-repeatedly — which is common once two npm PRs are open, since both touch
-`pnpm-lock.yaml` — fold the PR into the combined branch and resolve there.
+After the bot updates the head, repeat Step 4's review and approval-scope comparison
+before accepting the new checks. An accepted comment is not proof of a completed rebase.
+If repeated conflicts remain, take the PR through the approved combined-branch route; do
+not widen the approved scope silently.
 
 ## F8 — Check never reports
 
@@ -150,25 +151,3 @@ the classifier declining to vouch for the check, not a report that the check fai
 `PASSING` is an allow-list of `SUCCESS`, `NEUTRAL` and `SKIPPED`, and everything else is
 held deliberately. A state that ought to pass and does not is a bug in
 `scripts/lib/pr-checks.mjs`, not a reason to merge past it.
-
-## Security review checklist
-
-Read this before approving any PR at Step 2 — this is the point of the gate, not a
-formality:
-
-- GitHub Actions bumps must remain **SHA-pinned with a version comment**. A diff that
-  replaces a SHA pin with a floating tag is a regression — hold it.
-  `tests/workflows.test.ts` asserts this, so such a PR should already be red.
-- For a major bump, read the upstream release notes before approving:
-  `gh release view <tag> --repo <owner>/<repo>` or the changelog link in the PR body.
-- Treat a **minor bump of a `0.x` package as a major** one — pre-1.0 tools ship breaking
-  changes in minor releases. The survey script labels these `minor`; you still read the
-  release notes.
-- Confirm the `Review new dependencies` check passed on the PR — it is the advisory gate
-  for new and changed dependencies.
-- A bump that changes `pnpm-workspace.yaml`, `eslint.config.mjs`, or anything under
-  `.github/workflows/` is changing _what_ runs rather than _which version_ runs, and
-  deserves a closer read.
-- Never let a bump relax a `pnpm-workspace.yaml` supply-chain setting or add an
-  `allowBuilds` entry to make an install succeed — see `managing-dependencies` for what
-  each setting closes off. Each is a supply-chain decision, not a merge conflict.

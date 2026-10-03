@@ -14,7 +14,7 @@ description: >
 # Managing Dependencies
 
 **Owns:** whether a package may exist in this repository at all, and what happens at
-install time. **Does not own:** landing an existing bot PR (`merge-dependabot`).
+install time. **Does not own:** landing an existing bot PR (`merging-dependency-prs`).
 
 This repository is a private application. Nothing here is packed, published, or consumed
 as a tarball, so a dependency is judged by what it costs to install and to run — never
@@ -123,7 +123,7 @@ ships, not noise.
   and nothing downstream can tell that apart from a real resolution. Regenerate instead,
   with `pnpm install --lockfile-only` when you want the lockfile without the install.
 - Dev dependencies are kept current by bot PRs plus the lockfile, not by hand.
-  **REQUIRED:** `merge-dependabot` to land one.
+  **REQUIRED:** `merging-dependency-prs` to land one.
 
 ## Families move together
 
@@ -271,4 +271,5 @@ Do not "upgrade typescript to latest." Raising this ceiling is a coordinated upg
 
 ## Handoff
 
-**REQUIRED:** `merge-dependabot` for landing an already-open bot PR against these rules.
+**REQUIRED:** `merging-dependency-prs` for landing an already-open bot PR against these
+rules.

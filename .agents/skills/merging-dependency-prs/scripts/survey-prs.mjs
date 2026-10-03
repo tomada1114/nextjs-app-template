@@ -2,7 +2,7 @@
 // Survey open Dependabot PRs and emit a triage table.
 //
 // Usage:
-//   node .agents/skills/merge-dependabot/scripts/survey-prs.mjs [--json]
+//   node .agents/skills/merging-dependency-prs/scripts/survey-prs.mjs [--json]
 //
 // Requires the `gh` CLI, authenticated against the current repository.
 // Read-only: this script never mutates PR or branch state, and it is the only
@@ -21,6 +21,7 @@ import {
   checkSummary,
   contestedFiles,
   ecosystemOf,
+  isPreOneMinorBump,
   parseVersions,
   semverLevel,
 } from "../../../../scripts/lib/pr-checks.mjs";
@@ -37,6 +38,7 @@ import {
  * @property {string | undefined} from - Version before the bump.
  * @property {string | undefined} to - Version after the bump.
  * @property {string} level - `major`, `minor`, `patch` or `unknown`.
+ * @property {boolean} preOneMinor - A 0.x minor change treated as major risk.
  * @property {string} ecosystem - `github_actions`, `npm` or `other`.
  * @property {string} mergeState - GitHub's mergeStateStatus.
  * @property {string} checks - `PASSING`, `FAILING`, `PENDING` or `NONE`.
@@ -136,6 +138,7 @@ function collect() {
       from,
       to,
       level: semverLevel(from, to),
+      preOneMinor: isPreOneMinorBump(from, to),
       ecosystem: ecosystemOf(branch),
       mergeState: readString(pull, "mergeStateStatus") ?? "?",
       checks: state,
@@ -164,6 +167,9 @@ function report(rows) {
         `${row.level.padEnd(7)} checks=${row.checks.padEnd(8)} merge=${row.mergeState}`,
     );
     console.log(`        ${row.title}`);
+    if (row.preOneMinor) {
+      console.log("        FLAG: 0.x minor change; review and approve as major.");
+    }
     if (row.failingChecks.length > 0) {
       console.log(`        FAILING: ${row.failingChecks.join(", ")}`);
     }
