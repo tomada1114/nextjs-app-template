@@ -69,7 +69,7 @@ dependency, changed supply-chain decision or weakened check is not such a fix.
 
 Commit with the normal hook, inspect the committed tree, and push only the approved
 branch. Open or update its PR against the recorded default branch with a Conventional
-Commit title and `.github/pull_request_template.md`. Include the exact approved original
+Commit title and `.github/PULL_REQUEST_TEMPLATE.md`. Include the exact approved original
 PRs, package versions and family completion, the lockfile review, executed checks,
 release-note findings, and the approved stopping point.
 
