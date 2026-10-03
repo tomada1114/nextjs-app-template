@@ -60,10 +60,10 @@ another's content.
   demand. `authoring-skills` owns how one is written, mirrored, and checked.
 - `.env.example` — every environment name the process reads, shipped with an empty
   value. It is the file to open when the question is what exists.
-- TSDoc in `src/**` — a published symbol's contract. The language-model port's request
-  and response types are where this matters most: they are what an adapter author reads
-  instead of reading the adapter that happens to ship. `writing-typescript` owns what
-  the comment says; this skill owns only whether one is owed.
+- TSDoc in `src/**` — a published symbol's contract. An interface several
+  implementations share is where this matters most: it is what an implementation author
+  reads instead of reading the implementation that happens to ship. `writing-typescript`
+  owns what the comment says; this skill owns only whether one is owed.
 
 There is no `CHANGELOG.md` and no `docs/` tree here. A pull request explains itself in a
 line or two, and `.github/PULL_REQUEST_TEMPLATE.md` owns that — do not reinstate either.
