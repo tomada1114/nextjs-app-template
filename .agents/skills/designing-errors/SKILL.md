@@ -2,7 +2,7 @@
 name: designing-errors
 description: >
   Covers the shape of an error type and the vocabulary of its `code` string, in both
-  src/** — LlmError and the ERR_LLM_* codes src/ai/errors.ts declares — and scripts/**,
+  src/** - LlmError and the ERR_LLM_* codes src/ai/errors.ts declares - and scripts/**,
   where a stage prefix such as ERR_AGENTS_* or ERR_LABELS_* is reported on stderr. Use
   when adding or changing an Error subclass, choosing or renaming an ERR_* code,
   deciding what an error may carry and what it must never carry (a credential, a prompt,

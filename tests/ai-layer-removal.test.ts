@@ -44,9 +44,14 @@ const AUTHORED_SKILLS_ROOT = ".agents/skills/";
  * committed file, and `pnpm agents:sync` will not remove a skill the source
  * tree no longer has unless the source is deleted first.
  */
-const REMOVED_PATHS = [
+const REMOVED_SKILL_ROOTS = [
   ".agents/skills/integrating-llm",
   ".claude/skills/integrating-llm",
+];
+
+const REMOVED_PATHS = [
+  ...REMOVED_SKILL_ROOTS,
+  ...withMirror([".agents/skills/starting-an-app/references/removing-ai.md"]),
   "src/ai",
   "src/app/api",
   "src/server/composition.ts",
@@ -121,28 +126,18 @@ const AI_LAYER_SYMBOLS = [
  * The bare name of every skill the removal deletes.
  *
  * @remarks
- * Derived from `REMOVED_PATHS` rather than typed again, because forgetting to
- * type it again is the bug this list exists to close: a skill goes on
- * `REMOVED_PATHS` by path, but `authoring-skills` requires a sibling skill to
- * be cross-referenced *by name, never by path*, so the path entry alone misses
- * every reference written the way the repository mandates. Deriving from a
- * hand-written constant is not the derivation `withMirror` warns against —
- * that one is about reading the tree, or importing `scripts/sync-agents.mjs`,
- * which would make the expected value agree with the thing under test.
- *
- * Only the authored `.agents/skills/` half is read; the `.claude/skills/`
- * entry beside it names the same skill. The *first* segment is the name, so an
- * entry written as a file or a subdirectory rather than as the skill directory
- * — `.agents/skills/foo/SKILL.md` — still yields `foo` rather than nothing.
- * Taking the last segment there would yield `SKILL.md`, and rejecting it would
- * reopen this list's own hole for the next skill removed: the guard below
- * cannot catch that, because a name never derived leaves the list unchanged.
+ * Derived from the full `REMOVED_SKILL_ROOTS` entries rather than typed again.
+ * Sibling skills refer to one another by name, so paths alone miss those references.
+ * Only a whole removed skill contributes its name: deleting an individual reference
+ * under a surviving skill must not classify that skill itself as removed.
+ * `REMOVED_PATHS` includes those same roots alongside individual removed files.
+ * Only the authored half supplies the name; the mirror names the same skill.
  */
 const REMOVED_SKILL_NAMES = [
   ...new Set(
-    REMOVED_PATHS.filter((removed) => removed.startsWith(AUTHORED_SKILLS_ROOT)).map(
-      (removed) => removed.slice(AUTHORED_SKILLS_ROOT.length).split("/")[0] ?? "",
-    ),
+    REMOVED_SKILL_ROOTS.filter((removed) =>
+      removed.startsWith(AUTHORED_SKILLS_ROOT),
+    ).map((removed) => removed.slice(AUTHORED_SKILLS_ROOT.length).split("/")[0] ?? ""),
   ),
 ].filter((name) => name !== "");
 
@@ -209,10 +204,12 @@ const EDITED_CODE_FILES = [
  */
 const EDITED_DOCUMENT_FILES = [
   ".agents/skills/building-app-routes/SKILL.md",
+  ".agents/skills/building-app-routes/references/handlers.md",
   ".agents/skills/changing-gates/SKILL.md",
+  ".agents/skills/changing-gates/references/gate-files.md",
   ".agents/skills/designing-errors/SKILL.md",
   ".agents/skills/localizing-ui/SKILL.md",
-  ".agents/skills/managing-dependencies/SKILL.md",
+  ".agents/skills/managing-dependencies/references/verification.md",
   ".agents/skills/starting-an-app/SKILL.md",
   ".agents/skills/starting-an-app/references/locales.md",
   ".agents/skills/starting-an-app/references/rename.md",
@@ -362,6 +359,13 @@ describe("the AI layer can be removed whole", () => {
     // A literal an author wrote, so the derivation is checked rather than
     // trusted, and a second removed skill fails here until it is acknowledged.
     expect(REMOVED_SKILL_NAMES).toStrictEqual(["integrating-llm"]);
+  });
+
+  it("records every whole removed skill in the root inventory", () => {
+    const roots = REMOVED_PATHS.filter((removed) =>
+      /^\.(?:agents|claude)\/skills\/[^/]+$/u.test(removed),
+    );
+    expect(roots).toStrictEqual(REMOVED_SKILL_ROOTS);
   });
 
   it("catches a skill whose only mention of the layer is a by-name cross-reference", () => {

@@ -1,9 +1,9 @@
 ---
 name: building-screens
 description: >
-  Covers the states a screen under src/app/[locale]/ renders and a test covers —
+  Covers the states a screen under src/app/[locale]/ renders and a test covers -
   loading.tsx or a Suspense fallback, error.tsx with retry, not-found.tsx and
-  notFound(), an empty state, a failed form action keeping its input — and the
+  notFound(), an empty state, a failed form action keeping its input - and the
   accessibility each one owes: accessible names from the catalog, keyboard reach, focus,
   live regions, nothing by color alone, and getByRole queries. Use when building a
   screen or a form, adding an error.tsx, loading.tsx or global-error.tsx, writing an

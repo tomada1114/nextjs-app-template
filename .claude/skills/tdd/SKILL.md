@@ -1,8 +1,8 @@
 ---
 name: tdd
 description: >
-  Use when changing behavior under src/ — adding a function, a handler branch or a
-  component state, or fixing a bug — to settle the order of work: which zone the code
+  Use when changing behavior under src/ - adding a function, a handler branch or a
+  component state, or fixing a bug - to settle the order of work: which zone the code
   goes in, the failing test before the implementation, proving with pnpm exec vitest run
   that it fails for the right reason, the smallest change that turns it green,
   refactoring with the gates on, the regression test a bug fix starts from, and landing
