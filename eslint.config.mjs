@@ -346,9 +346,10 @@ export default defineConfig([
             })),
             ...["node:crypto", "crypto"].map((name) => ({
               name,
-              importNames: ["randomUUID", "default"],
+              // Unknown crypto exports stay out until their determinism is reviewed.
+              allowImportNames: ["createHash", "createHmac", "hash", "timingSafeEqual"],
               message:
-                "Generate the identifier outside core and pass it in; import deterministic crypto functions by name.",
+                "Use only reviewed deterministic crypto helpers in core; pass ambient randomness as an argument.",
             })),
           ],
           patterns: [

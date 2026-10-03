@@ -468,6 +468,42 @@ describe("core purity is enforced by the effective ESLint rules", () => {
 
   describe.each(["node:crypto", "crypto"])("random imports from %s", (module) => {
     it.each([
+      "randomBytes",
+      "randomInt",
+      "randomFill",
+      "randomFillSync",
+      "generateKey",
+      "generateKeySync",
+      "generateKeyPair",
+      "generateKeyPairSync",
+      "generatePrime",
+      "generatePrimeSync",
+      "createDiffieHellman",
+      "createECDH",
+      "getRandomValues",
+      "webcrypto",
+      "subtle",
+    ])("rejects the entropy-capable export %s", async (name) => {
+      const results = await eslint.lintText(
+        `import { ${name} } from "${module}"; export function probe(): unknown { return ${name}; }`,
+        { filePath: corePath },
+      );
+      expect(
+        results.flatMap((result) => result.messages.map((message) => message.ruleId)),
+      ).toContain("no-restricted-imports");
+    });
+
+    it.each([
+      'import { createHmac }; export function probe(value: string, key: string): string { return createHmac("sha256", key).update(value).digest("hex"); }',
+      'import { hash }; export function probe(value: string): string { return hash("sha256", value); }',
+      "import { timingSafeEqual }; export function probe(a: Uint8Array, b: Uint8Array): boolean { return timingSafeEqual(a, b); }",
+    ])("allows the reviewed deterministic helper: %s", async (template) => {
+      const source = template.replace("};", `} from "${module}";`);
+      const results = await eslint.lintText(source, { filePath: corePath });
+      expect(results.flatMap((result) => result.messages)).toStrictEqual([]);
+    });
+
+    it.each([
       ["import { randomUUID }", "randomUUID()"],
       ["import { randomUUID as makeId }", "makeId()"],
       ["import runtime", "runtime.randomUUID()"],

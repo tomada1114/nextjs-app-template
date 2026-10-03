@@ -125,8 +125,8 @@ client component belongs in (`building-app-routes`); compile-time assertions wit
 - Node built-ins have no blanket import ban under `src/`. `@types/node` supplies their
   types. The core block in `eslint.config.mjs` restricts imports exposing environment
   reads and random identifiers, including default and namespace imports, for both
-  `node:` and bare module names. Deterministic named crypto functions remain available;
-  read the effective core rules for the exact restricted exports.
+  `node:` and bare module names. Crypto admits only reviewed deterministic helpers by
+  name; read the effective core allowlist for the exact permitted exports.
 - What is real is the zone boundary. `src/core/**` may not import the framework or a
   vendor SDK; `src/app/**` and `src/server/**` reach the AI layer only through
   `src/ai/index.ts`; `src/ai/port.ts` may not import an adapter. AGENTS.md's
