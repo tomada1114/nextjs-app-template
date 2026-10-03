@@ -16,10 +16,14 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * `check:source` steps that need not appear as a `ci.yml` step of their own.
- * Empty today; the mechanism stays ready, and an entry is a claim to argue in
- * the pull request that adds it.
+ * Each entry is a reasoned exception, checked below for stale or empty claims.
  */
-const CHECK_SOURCE_ONLY_EXCEPTIONS = new Map<string, string>();
+const CHECK_SOURCE_ONLY_EXCEPTIONS = new Map<string, string>([
+  [
+    "hooks:verify",
+    "CI never installs Git hooks and verify-hooks skips under CI; this gate checks the developer checkout before its source tools run.",
+  ],
+]);
 
 /**
  * `ci.yml` steps that need not appear in `check:source` — a check a local run
