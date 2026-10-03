@@ -69,44 +69,9 @@ other.
 
 ## Verifying a dependency change before it lands
 
-A manifest and lockfile change is verified by a real install and a real run, never by a
-test that mocks a package manager at its subprocess boundary. Run, in order:
-
-```bash
-pnpm install            # regenerates pnpm-lock.yaml; must succeed under the policy below
-pnpm check:quick        # format, lint, typecheck, tests
-pnpm build              # next build — the App Router entry points and the framework's
-                        # own build pipeline, which no unit test exercises
-pnpm test:coverage      # the coverage floors, which a swapped dependency can move
-```
-
-The last three are together what `pnpm check:source` runs, so one green run of that
-covers them all. One narrower run is worth naming, because the gate reports its failure
-only as a wall of output: the suite for the module that actually consumes the bumped
-package, run on its own.
-
-```bash
-pnpm exec vitest run tests/<module>.test.ts
-```
-
-A `zod` bump surfaces first in whichever contract suite parses with it; a `react` bump
-in the component tests. No suite reaches a live service either way:
-`tests/ai-port.test.ts`'s contract suite runs `describeLlmPortContract` against both the
-fake adapter and, through `tests/llm-replay.ts`'s replayed fixtures under
-`tests/fixtures/llm/`, the OpenRouter adapter — a `zod` bump that changes the JSON
-Schema it sends or the way it parses an answer shows up there first — and
-`tests/ai-openrouter.test.ts` covers the adapter's remaining edge cases the same way,
-some against those same fixtures and the rest against a synthetic `fetch`. The adapter
-speaks plain `fetch` and has no vendor SDK to bump, so nothing about a provider ever
-arrives as a dependency change; re-recording a fixture is never something a bump does on
-its way through — recording is a deliberate local run under `LLM_RECORD=1` with a real
-credential, and it costs money. `integrating-llm` owns that procedure.
-
-Two checks run only on the PR. The `Dependency review` workflow fails on a new advisory
-or a denied license, and the weekly production audit above is now a gate that can
-actually fail: with runtime `dependencies` no longer empty, `pnpm audit --prod` is no
-longer the no-op it was, so a red one is a finding about a package this application
-ships, not noise.
+Follow [the verification procedure](references/verification.md) for a real install, the
+consuming module's suite, the full gate, and the PR-only dependency review. A manifest
+or lockfile change is never verified by mocking the package manager.
 
 ## Range vs. pin, and how a change lands
 
@@ -160,95 +125,15 @@ scoped to one exact version, not to the package forever.
 
 ## Supply-chain settings, as consequences
 
-`pnpm-workspace.yaml` holds the values; this is what each one means when it fires. Read
-the file for the current values rather than trusting a number copied here.
+`pnpm-workspace.yaml` owns the values. Read
+[their consequences](references/supply-chain.md) when an install or run fails; preserve
+the protections rather than quieting the failure.
 
-- `strictDepBuilds` plus `allowBuilds`: an install-time lifecycle script from a
-  dependency nobody has ruled on fails the install **on purpose** — that is the intended
-  outcome, not a bug to route around. A Next.js dependency tree reaches several packages
-  that want to run one, so this is a case-by-case review now rather than a single
-  standing exception. Three questions settle an entry: what the script actually does
-  (download a binary, compile native code, probe for a prebuilt one); whether anything
-  this repository runs needs its result, or it belongs to a feature never turned on; and
-  whether the package already ships a prebuilt platform binary as an optional
-  dependency, making the script a fallback rather than the only path. `false` is as much
-  a decision as `true` — it records that the script was reviewed and refused, so the
-  next install failure is not answered with a reflexive `true`. Read the file's comments
-  for the ruling each entry carries; adding a `true` one carries the same review weight
-  as adding a new dependency.
-- `strictPeerDependencies`: a peer range declared by an installed dependency and left
-  unmet or conflicting is a hard install failure, not a warning. This is what makes the
-  TypeScript ceiling below an enforced constraint instead of an advisory one. The only
-  sanctioned way past it is a `peerDependencyRules.allowedVersions` entry naming one
-  `parent>child` edge, and adding one asserts the package really does work against the
-  version it did not declare — it is not a way to quiet an inconvenient failure.
-  `overrides` is the same shape of exception for a resolved version, with the same
-  burden: prefer naming the single `parent>child` edge, say why, and say what would let
-  it be dropped. A package-wide override is the exception to that, and needs its own
-  reason in the comment — that several independent edges reach the bad version, so an
-  edge list would be incomplete the moment a new transitive dependency reopens it.
-- `minimumReleaseAgeStrict` and `minimumReleaseAgeIgnoreMissingTime` close two specific
-  bypasses of the cooldown above: an already-lockfiled version skipping the check, and
-  registry metadata with no publish time being treated as old enough, respectively.
-- `trustPolicy`, `trustLockfile`, and `blockExoticSubdeps` are independent supply-chain
-  protections, not part of the cooldown: they reject a provenance/trusted-publisher
-  regression, refuse to trust the trust metadata recorded in a contributor's lockfile,
-  and refuse transitive dependencies fetched from git or arbitrary tarball URLs,
-  respectively.
-- `verifyDepsBeforeRun: error`: a `pnpm run` whose `node_modules` no longer matches the
-  lockfile fails instead of letting a gate pass against stale dependencies. The fix is
-  `pnpm install`, never a weaker value.
-- `pmOnFail: download`: a local pnpm that does not satisfy `devEngines.packageManager`
-  makes the install fetch the pinned one rather than fail. It is the only convenience
-  here rather than a gate — it changes which pnpm resolves the lockfile, never what the
-  policy above admits.
+## The one dependency outside pnpm
 
-When one of these fires, find out why the install is actually failing; AGENTS.md holds
-the prohibition on relaxing it.
-
-## The one dependency outside pnpm's graph
-
-`.mcp.json` runs `next-devtools-mcp` through `pnpm dlx`, straight from the npm registry,
-with no `package.json` entry and no `pnpm-lock.yaml` line. Every protection above is a
-`pnpm`-install-time mechanism, so none of it reaches this file: no lockfile pins the
-resolved version, `minimumReleaseAge` never sees a `dlx` fetch, and `pnpm audit` never
-walks a graph this file is not part of. Left unpinned (`next-devtools-mcp@latest`), the
-same commit runs a different tool depending on when it happens to be fetched — no
-lockfile, no cooldown, no review record, for a server that runs inside real development
-sessions.
-
-The command is `pnpm dlx`, never `npx` — that choice is load-bearing, not stylistic.
-`npx` is npm's own runner, so it evaluates this repository's `package.json`
-`devEngines.packageManager` (`pnpm@…`) before doing anything else; npm sees itself as
-the running manager and aborts with `EBADDEVENGINES`. An MCP client always launches the
-server with the project root as its cwd, so `npx` fails from every real launch, not just
-occasionally. `pnpm dlx` never evaluates that check. Do not "simplify" this back to
-`npx` — the failure it reintroduces reports `devEngines`, not `.mcp.json`, so it reads
-as unrelated to this line and is easy to chase in the wrong file.
-
-The fix is a manual substitute for what the lockfile does automatically elsewhere:
-
-- Pin an exact version in the `args` array (`next-devtools-mcp@<version>`) — never
-  `@latest` and never a `^`/`~` range. A range here has no lockfile to freeze its
-  resolution, so it would still float to whatever is newest each time `pnpm dlx` runs;
-  only an exact string is reproducible outside pnpm's graph.
-- Resolve the version by hand with `npm view next-devtools-mcp version`, and check how
-  recently it was published with `npm view next-devtools-mcp time --json` before
-  adopting it — the cooldown above exists for exactly this reason (a freshly published
-  version installed unreviewed), and nothing enforces it here, so apply it by eye:
-  prefer a version that has been out for at least the `minimumReleaseAge` window over
-  the newest one.
-- Verify the pinned version actually starts **from the repository root**, not from a
-  temp directory or any other cwd: run it there and send it an `initialize` request over
-  stdio (or otherwise confirm the MCP client connects to it) — a crash or a malformed
-  response is the whole of what "starts" means for a version with no test suite of its
-  own here. Verifying from anywhere else can pass while the pin is broken for every real
-  MCP client, which always launches from the project root — that gap is exactly how the
-  `npx` form above shipped broken and unnoticed.
-- Bumping is a manual PR by whoever notices the pin is stale or hits a bug fixed
-  upstream — there is no bot PR for this one, unlike every dependency `package.json`
-  declares. The PR that bumps it repeats the two steps above: resolve and age-check the
-  new version, then verify it starts, from the repository root.
+Follow [the MCP server procedure](references/mcp-servers.md) for the manually pinned
+`.mcp.json` server: it is outside pnpm's lockfile and bot updates. Adding a server still
+needs the dependency sign-off above.
 
 ## TypeScript version ceiling
 

@@ -1,7 +1,7 @@
 ---
 name: writing-tests
 description: >
-  Use when writing or reviewing a test under tests/ — a .test.ts or a .test.tsx — or
+  Use when writing or reviewing a test under tests/ - a .test.ts or a .test.tsx - or
   adding the regression test a src/ bug fix needs: naming an it() after behavior,
   driving a handler factory with new Request(), rendering a page under jsdom with
   NextIntlClientProvider, running the LlmPort contract suite against an adapter,

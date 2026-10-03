@@ -64,8 +64,9 @@ check.
   which owns the limit.
 
 `tests/skills-frontmatter.test.ts` enforces the two-key shape, the `name` match, the
-length cap, and the English-only rule; it is the one check that would otherwise have no
-gate at all — see "Why this needs its own test" below.
+length cap, the English-only and ASCII description rules, and the body-line budget. It
+is the one check that would otherwise have no gate at all — see "Why this needs its own
+test" below.
 
 ## When a new skill is warranted
 
@@ -118,7 +119,9 @@ procedure and the lists of files it edits.
 
 ## Size and structure
 
-- Target 150 body lines per `SKILL.md`, never exceed 200.
+- Target 150 body lines per `SKILL.md`. Enforced maximum: the body-line budget in
+  `tests/skills-frontmatter.test.ts`, counting physical lines after frontmatter, blanks
+  and horizontal rules included.
 - A `references/*.md` file stays under 400 lines and is linked with a relative path one
   level deep, never with `@` and never as an absolute path.
 

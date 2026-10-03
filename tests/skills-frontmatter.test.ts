@@ -36,6 +36,9 @@ const NON_ENGLISH_SCRIPT = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffe
 /** Long enough for two sentences; short enough to survive host truncation. */
 const DESCRIPTION_LIMIT = 600;
 
+/** Physical body lines, including blanks, after the closing frontmatter. */
+const BODY_LINE_LIMIT = 200;
+
 function listSkillNames(): string[] {
   return readdirSync(skillsDirectory, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -144,6 +147,15 @@ function readSkill(name: string): Record<string, string> {
   );
 }
 
+/** Count physical body lines without counting a final newline as another line. */
+function countBodyLines(source: string): number {
+  parseFrontmatter(source);
+  const lines = source.split("\n");
+  const body = lines.slice(lines.indexOf("---", 1) + 1);
+  if (body.at(-1) === "") body.pop();
+  return body.length;
+}
+
 /** Every path under a skill directory, relative to that directory. */
 function listSkillFiles(name: string): string[] {
   const root = path.join(skillsDirectory, name);
@@ -191,6 +203,16 @@ describe("the authored skill tree", () => {
     expect(readSkill(name)["description"]).not.toMatch(NON_ENGLISH_SCRIPT);
   });
 
+  it.each(skillNames)("keeps %s's description in ASCII", (name) => {
+    const description = readSkill(name)["description"] ?? "";
+    expect(description).toMatch(/^\p{ASCII}*$/u);
+  });
+
+  it.each(skillNames)("keeps %s's body within the line budget", (name) => {
+    const source = readFileSync(path.join(skillsDirectory, name, "SKILL.md"), "utf8");
+    expect(countBodyLines(source)).toBeLessThanOrEqual(BODY_LINE_LIMIT);
+  });
+
   it.each(skillNames)("keeps SKILL.md unique within %s", (name) => {
     // A SKILL.md below the skill root registers as a second, nameless skill.
     expect(
@@ -214,6 +236,18 @@ describe("AGENTS.md's Skills routing table", () => {
       expect(skillNames).toContain(name);
     },
   );
+});
+
+describe("countBodyLines", () => {
+  it.each([
+    ["", 0],
+    ["# Title", 1],
+    ["# Title\n", 1],
+    ["\n# Title\n\n", 3],
+    ["# Title\n---\nBody\n", 3],
+  ] as const)("counts physical lines in %p as %i", (body, expected) => {
+    expect(countBodyLines(`---\nname: a\n---\n${body}`)).toBe(expected);
+  });
 });
 
 describe("parseFrontmatter", () => {

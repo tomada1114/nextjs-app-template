@@ -1,8 +1,8 @@
 ---
 name: placing-tests
 description: >
-  Decides where a new test file goes — always under tests/, never beside the module it
-  covers — which of vitest.config.ts's four projects it joins (unit, component under
+  Decides where a new test file goes - always under tests/, never beside the module it
+  covers - which of vitest.config.ts's four projects it joins (unit, component under
   jsdom for a .test.tsx, the explicit automation list, or smoke for the one suite that
   serves a build), and which coverage.thresholds floor governs it. Use when adding a
   .test.ts or .test.tsx file, when a test needs a DOM, spawns a subprocess or a server,

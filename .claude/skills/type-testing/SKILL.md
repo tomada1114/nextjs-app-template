@@ -2,7 +2,7 @@
 name: type-testing
 description: >
   Covers compile-time assertions with Vitest's expectTypeOf, written in the same suite
-  as the runtime tests for the surface they check — the LlmPort request and response
+  as the runtime tests for the surface they check - the LlmPort request and response
   types in src/ai/port.ts, and the derived MessageKey union in src/i18n/messages.ts
   against the hand-written manifest in tests/messages.test.ts. Use when adding or
   reviewing a @ts-expect-error assertion, a type test for a changed exported signature
