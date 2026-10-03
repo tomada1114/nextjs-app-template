@@ -1,6 +1,8 @@
 import { fireEvent, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 import RootError from "../src/app/error";
 import GlobalError from "../src/app/global-error";
@@ -8,6 +10,49 @@ import en from "../messages/en.json";
 import ja from "../messages/ja.json";
 
 describe.each([RootError, GlobalError])("a document error boundary", (Boundary) => {
+  it("recovers using the retry prop supplied by the installed Next.js boundary", () => {
+    vi.stubGlobal("location", { pathname: "/en/failed-page" });
+    const error = new Error("private server information");
+    let failed = true;
+    const router = {
+      back: () => undefined,
+      forward: () => undefined,
+      push: () => undefined,
+      replace: () => undefined,
+      prefetch: () => undefined,
+      bfcacheId: "test-segment",
+      refresh: () => {
+        failed = false;
+      },
+    };
+    function Page() {
+      if (failed) throw error;
+      return (
+        <html lang="en">
+          <head>
+            <title>Recovered</title>
+          </head>
+          <body>
+            <h1>Recovered</h1>
+          </body>
+        </html>
+      );
+    }
+    const rendered = render(
+      <AppRouterContext.Provider value={router}>
+        <ErrorBoundary
+          errorComponent={({ retry }) => <Boundary error={error} retry={retry} />}
+        >
+          <Page />
+        </ErrorBoundary>
+      </AppRouterContext.Provider>,
+      { container: document, onCaughtError: () => undefined },
+    );
+    expect(rendered.getByRole("alert")).toHaveTextContent(en.ErrorBoundary.description);
+    fireEvent.click(rendered.getByRole("button", { name: en.ErrorBoundary.retry }));
+    expect(rendered.getByRole("heading", { name: "Recovered" })).toBeInTheDocument();
+  });
+
   it("renders on the server with no browser or translation provider", () => {
     vi.stubGlobal("location", undefined);
     const error = new Error("private server information");
