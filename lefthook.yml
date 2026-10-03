@@ -87,7 +87,8 @@ pre-commit:
           # graph, not the whole suite — CI runs the full suite on every
           # push. No glob: unlike eslint/typecheck this needs to see every
           # staged path itself to decide what is related, including a staged
-          # test file with no production-code counterpart.
+          # test file with no production-code counterpart. The positive project list
+          # omits smoke, since a commit has no production build to serve.
           - name: test:related
             run: pnpm run test:related {staged_files}
             skip: [merge, rebase]

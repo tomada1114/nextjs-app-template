@@ -65,7 +65,7 @@ const automationTests = [
 // run against a missing or stale build instead, so the build stays the
 // caller's to do exactly once. `pnpm run test:smoke` is what runs it, from
 // `check:source` and from ci.yml's `static` job immediately after `Build`; the
-// two default scripts filter it out with `--project='!smoke'`. Naming the file
+// default scripts name only unit, component and automation. Naming the file
 // here is still what keeps it out of `unit` below, whose glob would otherwise
 // collect it on a 5-second budget.
 const smokeTests = ["tests/server-smoke.test.ts"];

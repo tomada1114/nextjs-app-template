@@ -74,17 +74,17 @@ subject:
   when it cannot run without `pnpm build`'s output on disk: it starts the built
   application with `next start` and asserts over `fetch`. That is what makes it a
   project of its own rather than another automation entry — the default run
-  (`pnpm test`, `pnpm test:coverage`, and ci.yml's `test` job) filters it out with
-  `--project='!smoke'`, because there is no build there to serve and a suite that built
-  one for itself would pay for a second build in every workflow. `pnpm run test:smoke`
-  is what runs it, from `check:source` and from ci.yml's `static` job, both times
-  straight after `Build`. A test here checks the build it was handed rather than making
-  one: `tests/server-smoke.test.ts` fails with an instruction when `.next/BUILD_ID` is
-  missing, and again when it is older than `src/`, `messages/`, `next.config.ts` or
-  `postcss.config.mjs`, because a run against last commit's build passes every assertion
-  while proving nothing about the change. Adding a file here is a claim that no
-  in-process test could have asserted the same thing; prefer `automation` whenever one
-  could.
+  (`pnpm test`, `pnpm test:coverage`, and ci.yml's `test` job) names only `unit`,
+  `component` and `automation`, because there is no build there to serve and a suite
+  that built one for itself would pay for a second build in every workflow.
+  `pnpm run test:smoke` is what runs it, from `check:source` and from ci.yml's `static`
+  job, both times straight after `Build`. A test here checks the build it was handed
+  rather than making one: `tests/server-smoke.test.ts` fails with an instruction when
+  `.next/BUILD_ID` is missing, and again when it is older than `src/`, `messages/`,
+  `next.config.ts` or `postcss.config.mjs`, because a run against last commit's build
+  passes every assertion while proving nothing about the change. Adding a file here is a
+  claim that no in-process test could have asserted the same thing; prefer `automation`
+  whenever one could.
 
 The two directions fail differently, which is why `automation` is a list rather than a
 glob. Forgetting to register a test that does I/O leaves it in `unit`, where the short

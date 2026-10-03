@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import vitestConfig from "../vitest.config";
+
 // `check:source` restates, as one composite script, ground that
 // `.github/workflows/ci.yml`'s jobs also cover as separate `run:` steps (split
 // for failure attribution — a reader should see which step failed, not just
@@ -36,11 +38,8 @@ const CI_ONLY_EXCEPTIONS = new Map<string, string>([
   ],
 ]);
 
-/**
- * Extract the `pnpm run <name>` tokens out of `check:source`'s definition,
- * in order.
- */
-function checkSourceSteps(): string[] {
+/** Read a named package script, rejecting an absent or non-string command. */
+function script(name: string): string {
   const manifest: unknown = JSON.parse(
     readFileSync(path.join(repoRoot, "package.json"), "utf8"),
   );
@@ -48,14 +47,19 @@ function checkSourceSteps(): string[] {
     typeof manifest === "object" && manifest !== null && "scripts" in manifest
       ? manifest.scripts
       : undefined;
-  const checkSource =
-    typeof scripts === "object" && scripts !== null && "check:source" in scripts
-      ? scripts["check:source"]
+  const command =
+    typeof scripts === "object" && scripts !== null && name in scripts
+      ? scripts[name as keyof typeof scripts]
       : undefined;
-  if (typeof checkSource !== "string") {
-    throw new Error('package.json has no "check:source" script to check.');
+  if (typeof command !== "string") {
+    throw new Error(`package.json has no "${name}" script to check.`);
   }
-  return [...checkSource.matchAll(/pnpm run ([\w:-]+)/g)].map(
+  return command;
+}
+
+/** Extract check:source's ordered `pnpm run <name>` tokens. */
+function checkSourceSteps(): string[] {
+  return [...script("check:source").matchAll(/pnpm run ([\w:-]+)/g)].map(
     (match) => match[1] ?? "",
   );
 }
@@ -170,5 +174,37 @@ describe("check:source stays in sync with ci.yml", () => {
     ]) {
       expect(reason.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("every vitest project runs in check:source", () => {
+  const projects = vitestConfig.test?.projects ?? [];
+  const names = projects.map((project) => {
+    if (
+      typeof project !== "object" ||
+      !("test" in project) ||
+      typeof project.test.name !== "string" ||
+      project.test.name.length === 0
+    ) {
+      throw new Error("Each Vitest project must declare its test.name in the config.");
+    }
+    return project.test.name;
+  });
+  const reached = new Set(
+    checkSourceSteps()
+      .filter((name) => name.startsWith("test"))
+      .flatMap((name) =>
+        [...script(name).matchAll(/(?:^|\s)--project=([\w-]+)(?=\s|$)/g)].map(
+          (match) => match[1],
+        ),
+      ),
+  );
+
+  it("finds declared projects to check", () => {
+    expect(names.length).toBeGreaterThan(0);
+  });
+
+  it.each(names)("runs %s through a positive project filter", (name) => {
+    expect(reached, `No check:source test script selects ${name}`).toContain(name);
   });
 });
