@@ -43,15 +43,14 @@ What goes into each site:
   only what the repository does.
 - **The copyright holder** in `LICENSE`, and the same name wherever the README repeats
   it. Every fork inherits `LICENSE` verbatim, which is why the template ships a blank.
-- **The app's display name** — the `title` in `src/app/[locale]/layout.tsx`'s
-  `metadata`, which is the browser tab, and the `HomePage.title` key in
-  `messages/en.json` and `messages/ja.json`, which is the page heading. Only the catalog
-  half is per-locale — each catalog gets the name written in its own language; the
-  layout's `title`, like `description` below, is one hard-coded string.
-- **The one-line `description`** in that same `metadata` block, which renders into
-  `<meta name="description">` and so into search results and link previews. It is not
-  per-locale — the layout hard-codes one string for every locale — so there is one site,
-  not one per catalog.
+- **The app's display name** — `Metadata.title` in every catalog under `messages/`, read
+  by `generateMetadata` in `src/app/[locale]/layout.tsx` for the browser tab, and each
+  catalog's `HomePage.title`, which is the page heading. Both are per-locale; write the
+  name in each catalog's language.
+- **The one-line description** — `Metadata.description` in every catalog under
+  `messages/`, read by that same `generateMetadata` for `<meta name="description">` and
+  so for search results and link previews. Give each locale its own description; the
+  layout reads the catalogs rather than holding a literal to replace.
 
 Those are the only reader-visible strings the inventory covers. The home page's body
 text — each catalog's `HomePage.intro` and `HomePage.localeCount`, which still describe
