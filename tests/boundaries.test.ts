@@ -347,11 +347,11 @@ describe("src/ imports run one way, app → server → ai → core and app → c
     expect(zones).toStrictEqual(Object.keys(FORBIDDEN_ZONE_IMPORTS).sort());
   });
 
-  it("keeps exactly one module at the root of src/, which belongs to no zone", () => {
+  it("keeps only the declared framework entry points at the root of src/", () => {
     const atRoot = sourceModules
       .map((module) => module.file)
       .filter((file) => file.split("/").length === 2);
-    expect(atRoot).toStrictEqual(["src/proxy.ts"]);
+    expect(atRoot).toStrictEqual(["src/instrumentation.ts", "src/proxy.ts"]);
   });
 
   it.each(Object.entries(FORBIDDEN_ZONE_IMPORTS))(
@@ -469,7 +469,7 @@ describe("src/ai/port.ts does not know its adapters", () => {
 
 // --- the composition root's access gate --------------------------------------
 
-// `src/server/composition.ts` holds two declarations that have to agree:
+// The shared adapter policy and `src/server/composition.ts` have to agree:
 // `ADAPTER_BILLS_A_PROVIDER`, which is what makes `readServerEnv` demand
 // `API_ACCESS_KEY`, and the adapter it wires a few lines below. Nothing but the
 // TSDoc on both held them together, so swapping the adapter could leave
@@ -487,6 +487,7 @@ describe("src/ai/port.ts does not know its adapters", () => {
 // a guess.
 
 const COMPOSITION_ROOT = "src/server/composition.ts";
+const ADAPTER_POLICY = "src/server/adapter-policy";
 
 /**
  * Names `src/ai/index.ts` publishes that the composition root can call while
@@ -568,6 +569,10 @@ function declaredBoolean(source: string, name: string): boolean | undefined {
 }
 
 const compositionSource = readFileSync(path.join(repoRoot, COMPOSITION_ROOT), "utf8");
+const adapterPolicySource = readFileSync(
+  path.join(repoRoot, `${ADAPTER_POLICY}.ts`),
+  "utf8",
+);
 
 describe("src/server/composition.ts declares the cost of the adapter it wires", () => {
   // The reader is pinned before it is trusted, the same way SCANNER_CONTROL
@@ -657,9 +662,12 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
   });
 
   it("still declares the flag the environment read is gated on", () => {
-    expect(declaredBoolean(compositionSource, "ADAPTER_BILLS_A_PROVIDER")).toBeTypeOf(
+    expect(declaredBoolean(adapterPolicySource, "ADAPTER_BILLS_A_PROVIDER")).toBeTypeOf(
       "boolean",
     );
+    expect(
+      valueImportsOf(COMPOSITION_ROOT, compositionSource, ADAPTER_POLICY),
+    ).toContain("ADAPTER_BILLS_A_PROVIDER");
     expect(compositionSource).toContain(
       "readServerEnv({ billsAProvider: ADAPTER_BILLS_A_PROVIDER })",
     );
@@ -669,7 +677,7 @@ describe("src/server/composition.ts declares the cost of the adapter it wires", 
   // while the flag stays `false` leaves `POST /api/ask` open on an endpoint
   // that costs money to answer, which is the whole of what issue #82 closes.
   it("declares ADAPTER_BILLS_A_PROVIDER true if and only if it wires a billed adapter", () => {
-    expect(declaredBoolean(compositionSource, "ADAPTER_BILLS_A_PROVIDER")).toBe(
+    expect(declaredBoolean(adapterPolicySource, "ADAPTER_BILLS_A_PROVIDER")).toBe(
       wiresABilledAdapter(COMPOSITION_ROOT, compositionSource),
     );
   });

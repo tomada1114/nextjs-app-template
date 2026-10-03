@@ -262,6 +262,21 @@ let server: ChildProcess | undefined;
 let stopWatchingForInterrupts: (() => void) | undefined;
 let baseUrl = "";
 
+/** A real process must close within the startup budget, including its pipes. */
+async function exitsDuringStartup(child: ChildProcess): Promise<boolean> {
+  try {
+    await once(child, "close", {
+      signal: AbortSignal.timeout(READY_TIMEOUT_MS),
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /**
  * Wait until the spawned server — and not merely something on that port — is
  * answering.
@@ -388,6 +403,49 @@ afterAll(async () => {
 });
 
 describe("the built application, served by `next start`", () => {
+  it("exits at startup with the missing billed credentials named", async () => {
+    const port = await reserveEphemeralPort();
+    const child = spawn(
+      process.execPath,
+      [nextCli, "start", "--hostname", "127.0.0.1", "--port", String(port)],
+      {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          NODE_ENV: "production",
+          OPENROUTER_API_KEY: "",
+          API_ACCESS_KEY: "",
+          LLM_ADAPTER: "",
+          LLM_MODEL: "",
+          NEXT_PHASE: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
+      },
+    );
+    const removeInterruptHandlers = killServerGroupWhenInterrupted(child);
+    let output = "";
+    const collect = (chunk: Buffer): void => {
+      output += chunk.toString("utf8");
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    try {
+      expect(await exitsDuringStartup(child)).toBe(true);
+      expect(child.signalCode).toBeNull();
+      expect(child.exitCode).not.toBe(0);
+      expect(output).toContain("OPENROUTER_API_KEY");
+      expect(output).toContain("API_ACCESS_KEY");
+    } catch (error) {
+      throw new Error(`Unexpected keyless startup outcome:\n${output}`, {
+        cause: error,
+      });
+    } finally {
+      removeInterruptHandlers();
+      await stopServer(child);
+    }
+  });
+
   it("prerenders every shipped locale", () => {
     const routes = readPrerenderedRoutes();
 

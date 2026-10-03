@@ -151,14 +151,14 @@ it is a bounded edit rather than a rewrite. `tests/ai-vendor-swap.test.ts` is wh
 bound is written down and checked, so the list of places the vendor may be named lives
 there and is not restated here.
 
-Two lines of application code decide it. `src/server/composition.ts` chooses the adapter
-and keeps `ADAPTER_BILLS_A_PROVIDER` true for one that bills; `src/ai/index.ts`
-republishes whichever adapter the layer is willing to expose. `src/server/env.ts` names
-the credential and requires it, and the rest is the environment example, the
-automation-test list and the README's quick start — plus, for a vendor that ships an
-SDK, the dependency and an import ban in `eslint.config.mjs`. The seam test fails the
-moment a fourth module joins them, which is the moment the choice of vendor has escaped
-the composition root.
+The composition root chooses the adapter and keeps its shared
+`src/server/adapter-policy.ts` declaration `ADAPTER_BILLS_A_PROVIDER` true for one that
+bills; `src/ai/index.ts` republishes whichever adapter the layer is willing to expose.
+`src/server/env.ts` names the credential and requires it, and the rest is the
+environment example, the automation-test list and the README's quick start — plus, for a
+vendor that ships an SDK, the dependency and an import ban in `eslint.config.mjs`. The
+seam test fails the moment a fourth module joins them, which is the moment the choice of
+vendor has escaped the composition root.
 
 Untouched: `src/ai/port.ts`, `src/ai/errors.ts` and the fake adapter — the whole
 vendor-neutral vocabulary, and the reason the edit is bounded at all — plus the handler,

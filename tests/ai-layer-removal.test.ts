@@ -55,6 +55,8 @@ const REMOVED_PATHS = [
   "src/ai",
   "src/app/api",
   "src/server/composition.ts",
+  "src/server/adapter-policy.ts",
+  "src/instrumentation.ts",
   "src/server/handlers/ask.ts",
   "tests/ai-layer-removal.test.ts",
   "tests/ai-openrouter.test.ts",

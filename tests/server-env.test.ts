@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as z from "zod";
 
 import { readServerEnv, SERVER_ENV_NAMES } from "../src/server/env";
+import { register } from "../src/instrumentation";
 
 // `.env.example` is the one `.env*` file this repository tracks
 // (`.gitignore`), and it is the only documentation of what the application
@@ -94,6 +95,31 @@ function stubEnvironment(env: Readonly<Record<string, string | undefined>>): voi
     vi.stubEnv(name, env[name]);
   }
 }
+
+describe("the server startup hook", () => {
+  it("terminates a deployment missing billed credentials with a failure status", async () => {
+    stubEnvironment({});
+    const terminated = new Error("the process terminated");
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw terminated;
+    });
+
+    await expect(register()).rejects.toBe(terminated);
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("permits the explicitly requested fake without credentials", async () => {
+    stubEnvironment({ LLM_ADAPTER: "fake" });
+
+    await expect(register()).resolves.toBeUndefined();
+  });
+
+  it("permits a keyless production build", async () => {
+    stubEnvironment({ NEXT_PHASE: "phase-production-build" });
+
+    await expect(register()).resolves.toBeUndefined();
+  });
+});
 
 describe("readServerEnv", () => {
   it("returns the value of a variable that is set", () => {

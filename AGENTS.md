@@ -211,6 +211,12 @@ three seams:
 an adapter and a handler are joined, and the single line in this repository that names a
 vendor. That choice made anywhere else is the leak these boundaries exist to prevent.
 
+`src/instrumentation.ts` exports Next.js's startup `register` hook, which validates the
+environment before the server serves requests. It shares the composition root's billing
+declaration in `src/server/adapter-policy.ts`; changing the default adapter means
+reconsidering that declaration too. Route preloading alone cannot enforce startup health
+because Next.js swallows a module failure there.
+
 ### Rate limiting
 
 This template deliberately implements neither rate limiting nor concurrency limiting for
