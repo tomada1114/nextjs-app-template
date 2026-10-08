@@ -18,8 +18,8 @@ only records what Claude Code adds on top of them.
   lefthook's pre-commit hook. The `authoring-skills` skill holds the rest, including why
   both copies are real files rather than a symlink.
 - Hand a step to a sub-agent tier (AGENTS.md's "Sub-agents") by `subagent_type` —
-  `executor`, `architect` or `worker` — never by a bare `model`, which runs at the
-  session's default effort rather than the tier's. Inside this repository the
+  `executor`, `architect`, `scout` or `worker` — never by a bare `model`, which runs at
+  the session's default effort rather than the tier's. Inside this repository the
   definitions in `.claude/agents/` shadow same-named ones in `~/.claude/agents/`.
 - AGENTS.md's "Security and human approval" records what the committed configuration
   does declare; for Claude Code that means no permission entry is committed here or
