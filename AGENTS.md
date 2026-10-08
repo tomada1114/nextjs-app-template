@@ -289,28 +289,29 @@ names its own boundary with its neighbours.
 ## Sub-agents
 
 A skill runs every step inline by default. On a host that can hand a step to a named
-sub-agent, a step marked for a tier may go to one of three:
+sub-agent, a step marked for a tier may go to one of four:
 
-| Tier        | Effort | Takes                                                                                                                                |
-| ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `executor`  | low    | a settled spec with a clear pass/fail: implementing it, adding tests, getting a check green, bulk edits, research that only collects |
-| `architect` | high   | design judgment, review and bug finding, multi-file work, synthesis, a spec that still has holes                                     |
-| `worker`    | medium | single-shot, tool-free writing or checking from a complete brief                                                                     |
+| Tier        | Takes                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `executor`  | a settled spec with a clear pass/fail: implementing it, adding tests, getting a check green, bulk edits |
+| `architect` | design judgment, review and bug finding, multi-file work, synthesis, a spec that still has holes        |
+| `scout`     | read-only, judgment-free research, collection and enumeration that changes no files                     |
+| `worker`    | single-shot, tool-free writing or checking from a complete brief                                        |
 
-Each tier is defined once per host, and both hosts must describe the same three:
-`.claude/agents/<tier>.md` for Claude Code, which pins a model alias (`opus` for
-`executor` and `architect`, `sonnet` for `worker` — never a dated model ID, which would
-go stale) and an `effort`; and `.codex/agents/<tier>.toml` for Codex CLI, which sets
-only `model_reasoning_effort` and omits `model`, so the session's model is inherited —
-Codex CLI runs a different vendor's models, where the Claude Code choice cannot be
-mirrored. The instructions themselves are the same text in both files.
-`tests/agent-tiers.test.ts` holds the two directories to those names, efforts and
-instructions.
+Each tier is defined once per host, and both hosts must describe the same four:
+`.claude/agents/<tier>.md` for Claude Code and `.codex/agents/<tier>.toml` for Codex
+CLI, whose definition omits `model` so the session's model is inherited. The
+instructions themselves are the same text in both files. Both directories are generated
+by the `syncing-agent-tiers` skill — model and effort choices live there, not in this
+repository — and must not be edited by hand. `tests/agent-tiers.test.ts` holds the two
+directories to the same tier names and instructions.
 
-- Neither file declares a permission — no `sandbox_mode`, no tool list. A sub-agent's
-  limits are the host's and the spawning session's, not something a tier widens.
+- Neither file grants a permission — no `sandbox_mode`, no tool allow list; the only
+  tool list is `scout`'s Claude Code deny list, which narrows it to reading. A
+  sub-agent's limits are the host's and the spawning session's, not something a tier
+  widens.
 - Codex CLI loads a project's `.codex/` layers only for a trusted project; in an
-  untrusted checkout the three definitions are absent, and a step marked for a tier runs
+  untrusted checkout the four definitions are absent, and a step marked for a tier runs
   inline.
 - Codex CLI ships a built-in `worker`; `.codex/agents/worker.toml` replaces it inside
   this repository. That is intended.
