@@ -176,8 +176,9 @@ step 10; never wait on a design still in flight.
 **Once, after the last merge, script only**; `rm` is never used in the run (mid-run,
 `mv` into `<runstate>/holding/<n>/`). From the default branch, run `cleanup_run.sh` with
 **every branch this run created as `--branch <name>`** — without it every merged-PR
-branch goes, other people's included. **Deferred approvals come last, in one ask**, as
-the final tool call ([details](references/closing-out.md#cleanup-scope)).
+branch goes, other people's included. Remove only this run's holdings with
+`pnpm clean:holding <n|run> [...]` and report the paths. **Deferred approvals come last,
+in one ask**, for other commands ([details](references/closing-out.md#cleanup-scope)).
 
 ### 10. Report
 

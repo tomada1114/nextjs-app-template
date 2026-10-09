@@ -81,6 +81,7 @@ pnpm hooks:verify  # verify the installed Git hooks; first in check:source
 pnpm hooks:install # repair the Git hooks; `pnpm install` installs them already
 pnpm clean         # remove the build and tool caches (.next, coverage, .eslintcache, tsbuildinfo)
 pnpm clean:deep    # the same, plus dist/ and node_modules/ — a reinstall follows
+pnpm clean:holding <n|run> [...] # remove only named shipping-issues holding directories
 ```
 
 Reach for `pnpm clean`/`pnpm clean:deep` rather than an `rm -rf`: `scripts/clean.mjs`
