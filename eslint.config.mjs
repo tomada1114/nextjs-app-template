@@ -299,9 +299,59 @@ export default defineConfig([
     name: "boundaries/core-is-framework-free-and-imports-no-zone",
     files: ["src/core/**/*.ts", "src/core/**/*.tsx"],
     rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Date",
+          property: "now",
+          message: "Pass the current time or a clock into core as an argument.",
+        },
+        {
+          object: "Math",
+          property: "random",
+          message: "Pass randomness into core as an argument.",
+        },
+        {
+          object: "crypto",
+          property: "randomUUID",
+          message: "Generate the identifier outside core and pass it in.",
+        },
+        {
+          object: "process",
+          property: "env",
+          message: "Read configuration in src/server/env.ts and pass it into core.",
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        NO_ENUM,
+        NO_EXPORT_STAR,
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message: "Pass the current time or a clock into core as an argument.",
+        },
+        {
+          selector: "CallExpression[callee.name='Date']",
+          message: "Calling Date reads the current clock; pass the time into core.",
+        },
+      ],
       "no-restricted-imports": [
         "error",
         {
+          paths: [
+            ...["node:process", "process"].map((name) => ({
+              name,
+              importNames: ["env", "default"],
+              message: "Read configuration in src/server/env.ts and pass it into core.",
+            })),
+            ...["node:crypto", "crypto"].map((name) => ({
+              name,
+              // Unknown crypto exports stay out until their determinism is reviewed.
+              allowImportNames: ["createHash", "createHmac", "hash", "timingSafeEqual"],
+              message:
+                "Use only reviewed deterministic crypto helpers in core; pass ambient randomness as an argument.",
+            })),
+          ],
           patterns: [
             {
               group: [
