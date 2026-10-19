@@ -21,6 +21,22 @@ minimumReleaseAgeStrict: true
 # Fail closed when registry metadata has no publish time rather than assuming
 # the version is old enough.
 minimumReleaseAgeIgnoreMissingTime: false
+# Security-release exemption: next 16.4.2 carries the 2026-10-14 out-of-band
+# fixes (GHSA-673q-mjm6-r5xr, CVE-2026-96889) and is younger than the cooldown.
+# Pinned to that exact version; remove once it is older than 7 days.
+minimumReleaseAgeExclude:
+  - next@16.4.2
+  - eslint-config-next@16.4.2
+  - "@next/env@16.4.2"
+  - "@next/eslint-plugin-next@16.4.2"
+  - "@next/swc-darwin-arm64@16.4.2"
+  - "@next/swc-darwin-x64@16.4.2"
+  - "@next/swc-linux-arm64-gnu@16.4.2"
+  - "@next/swc-linux-arm64-musl@16.4.2"
+  - "@next/swc-linux-x64-gnu@16.4.2"
+  - "@next/swc-linux-x64-musl@16.4.2"
+  - "@next/swc-win32-arm64-msvc@16.4.2"
+  - "@next/swc-win32-x64-msvc@16.4.2"
 
 # Reject dependencies whose provenance / trusted-publisher level regressed
 # compared to a previously resolved version.
