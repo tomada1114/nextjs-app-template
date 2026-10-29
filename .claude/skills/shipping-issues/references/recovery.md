@@ -12,6 +12,7 @@ few of them.
 - [A sub-agent stopped before pushing](#a-sub-agent-stopped-before-pushing)
 - [The implementation missed or widened the spec](#the-implementation-missed-or-widened-the-spec)
 - [`--fix` and why it is serial-mode only](#--fix-and-why-it-is-serial-mode-only)
+- [`/code-review` cannot be launched](#code-review-cannot-be-launched)
 - [A review with no second context](#a-review-with-no-second-context)
 - [CI reports the previous commit](#ci-reports-the-previous-commit)
 - [CI fails](#ci-fails)
@@ -83,7 +84,15 @@ The review itself reads `<base>...<branch>` from the shared object store and is 
 from anywhere; only the writing half is not. So in parallel mode: review each branch
 without `--fix`, triage the whole batch, then apply each branch's accepted findings in
 that branch's own worktree with [agent-review-fix.md](agent-review-fix.md) — inline, or
-by `executor`.
+by one `executor` per branch with accepted findings (numbered `F1`, `F2`, …).
+
+## `/code-review` cannot be launched
+
+The host won't let this session run the slash command, or this is Codex CLI → fall back
+to one independent, **read-only** review against the branch using
+[agent-review.md](agent-review.md) (`architect` where the host has named sub-agents),
+triaged the same way and recorded `status=DELEGATED`. Never re-read your own diff and
+call that a review.
 
 ## A review with no second context
 

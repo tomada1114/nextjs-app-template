@@ -86,22 +86,24 @@ finding here, and route out-of-scope and `pre-existing` findings to
 [step 8](../SKILL.md#8-close-out-the-findings-the-run-turned-up) — do not re-review
 after the fix.
 
-**The default is a read-only, fresh-context diff review**: fill
-[agent-review.md](agent-review.md) and hand it to **`architect`** where the host has
-named sub-agents, or follow it inline — as a separate pass that reads the diff as a
+**On Claude Code the default is `/code-review <effort> <branch> --fix`** — effort first,
+branch second: an unrecognized first token makes the _entire_ string the target and
+silently falls back to the last effort used. Effort is `medium` for every branch, `high`
+only on the triggers in
+[cost-discipline.md#review-who-reads-the-diff](cost-discipline.md#review-who-reads-the-diff);
+never `low` (it skips test and fixture hunks and returns a false clean on a diff that
+lives under `tests/`), `xhigh`, `max` or `ultra`. `--fix` is serial-mode only
+([why](recovery.md#--fix-and-why-it-is-serial-mode-only)); in parallel mode run it
+without `--fix`. Number its findings `F1`, `F2`, … yourself before handing any over.
+
+**Fallback: a read-only, fresh-context diff review** — only when `/code-review` cannot
+be launched ([recovery](recovery.md#code-review-cannot-be-launched)) or under Codex CLI:
+fill [agent-review.md](agent-review.md) and hand it to **`architect`** where the host
+has named sub-agents, or follow it inline — as a separate pass that reads the diff as a
 change against the issue
 ([a review with no second context](recovery.md#a-review-with-no-second-context)). It
 returns findings numbered `F1`, `F2`, … and out-of-scope items `O1`, `O2`, …;
 `INTENT-MATCH: no` is read before the findings.
-
-**On Claude Code, `/code-review medium <branch>` is an alternative** — effort first,
-branch second: an unrecognized first token makes the _entire_ string the target and
-silently falls back to the last effort used. `high` only on the triggers in
-[cost-discipline.md#review-who-reads-the-diff](cost-discipline.md#review-who-reads-the-diff);
-never `low`, which skips test and fixture hunks and returns a false clean on a diff that
-lives under `tests/`, and never `ultra`. Its `--fix` is serial-mode only
-([why](recovery.md#--fix-and-why-it-is-serial-mode-only)). Number its findings `F1`,
-`F2`, … yourself before handing any over.
 
 Whatever path ran, check what the review actually read before believing an empty
 findings list: a clean verdict that names what it skipped is not a clean verdict.
@@ -131,5 +133,7 @@ the brief) — neither is clean; real-but-out-of-scope goes to step 8. Re-run th
 verification command **in `<workdir>`** only if something actually changed, then push.
 
 Record, per branch:
-`--event review --field issue=<n> --field status=<review|review+fix> --field by=<architect|inline|self|code-review-medium|code-review-high> --field findings=<n> --field skipped=<n>`
-— `skipped` counts refusals from either path.
+`--event review --field issue=<n> --field status=<code-review|code-review+agent-fix|DELEGATED> --field effort=<medium|high> --field findings=<n> --field skipped=<n>`
+(`DELEGATED`: the fallback review, `architect` or inline, ran instead; say which in
+`effort=` as `-` and in the step 10 report) — `skipped` counts refusals from either
+path.
