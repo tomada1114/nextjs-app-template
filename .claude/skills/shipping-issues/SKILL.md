@@ -112,19 +112,13 @@ first. At most 2 patch rounds on the same tier; a third miss is `NEEDS-CLARIFICA
 
 ### 4. Review the branch
 
-One pass per branch, before any PR. **On Claude Code the default is
-`/code-review <medium|high> <branch> --fix`** — effort first, then target; `medium` for
-every branch, `high` on
-[its triggers](references/cost-discipline.md#review-who-reads-the-diff); never `low`,
-`xhigh`, `max` or `ultra`. `--fix` is serial-mode only: in parallel mode review without
-`--fix`, then one `executor` per branch with accepted findings runs
-[agent-review-fix.md](references/agent-review-fix.md). **Fallback** — `/code-review`
-cannot be launched, or under Codex CLI: the read-only, fresh-context review in
-[agent-review.md](references/agent-review.md), `architect` where tiers exist, else
-inline. Number findings `F1`…, triage them against the issue, fix the accepted ones in
-the branch's own checkout, read the fix diff, push
-([details](references/implement-and-review.md#review)). Nothing waits on a review of the
-PR itself.
+One pass per branch. **Claude Code default:
+`/code-review <medium|high> <branch> --fix`** (`high` only on
+[its triggers](references/cost-discipline.md#review-who-reads-the-diff)). `--fix` is
+serial-only; in parallel mode review without it, then one `executor` per branch applies
+the accepted findings. **Fallback** (no `/code-review`, Codex CLI):
+[agent-review.md](references/agent-review.md).
+[Details](references/implement-and-review.md#review).
 
 ### 5. Open the PR
 
