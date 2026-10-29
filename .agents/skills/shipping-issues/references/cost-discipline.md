@@ -30,25 +30,29 @@ reconstruct a priority a label already carries; if a label looks wrong, fix the 
 
 Only for [step 4](../SKILL.md#4-review-the-branch)'s local pass.
 
-**The standing review is a read-only, fresh-context diff review** from
-[agent-review.md](agent-review.md): handed to `architect` where the host has named
-sub-agents — its reads stay in that agent's context, and only the numbered findings come
-back — otherwise followed inline. An inline review of a diff this session wrote itself
-is a self-review: it still runs, and the step 10 report calls it that rather than
-presenting it as independent.
-
-On Claude Code, `/code-review` is an alternative to the brief, with the effort first and
-the branch second (`/code-review medium <branch>`):
+**On Claude Code the standing review is `/code-review <effort> <branch> --fix`**, effort
+first and branch second. It forks and runs entirely outside this session's context — the
+finders' reads never reach here, only the findings do. `--fix` is serial-mode only
+([why](recovery.md#--fix-and-why-it-is-serial-mode-only)); in parallel mode review
+without it and hand each branch's accepted findings to one `executor`.
 
 | effort   | when                                                                                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `medium` | **the default** for this path                                                                                                                                              |
+| `medium` | **the default, every branch**                                                                                                                                              |
 | `high`   | the change can lose or corrode data that already exists — a migration, a storage-layer write, a released public contract real consumers are on — or the user asked for one |
 
-Diff size or file count alone is not a reason to escalate — a big mechanical rename is
-exactly the shape the default handles well. Never `ultra`: it runs in the cloud, is
-billed per use, and the prompt that defines it says explicitly that a model cannot
-launch it itself.
+Only `medium` and `high`. Diff size or file count alone is not a reason to escalate — a
+big mechanical rename is exactly the shape `medium` handles well. Never `low`, `xhigh`,
+`max` or `ultra`: `max` and `ultra` start many reviewer sub-agents (`ultra` runs in the
+cloud, billed per use), and `low` is below.
+
+**The fallback is a read-only, fresh-context diff review** from
+[agent-review.md](agent-review.md), used only when `/code-review` cannot be launched or
+under Codex CLI: handed to `architect` where the host has named sub-agents — its reads
+stay in that agent's context, and only the numbered findings come back — otherwise
+followed inline. An inline review of a diff this session wrote itself is a self-review:
+it still runs, and the step 10 report calls it that rather than presenting it as
+independent.
 
 ### Never `low`: a diff it cannot see
 
@@ -127,7 +131,7 @@ pins its own effort, which a per-spawn `model` cannot carry.
 | -------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Priority research (step 2) | `executor`                                                                                                      |
 | Implementation (step 3)    | `executor`; `architect` when [foundational](#the-foundation-exception-architect-for-what-the-backlog-builds-on) |
-| Review (step 4)            | `architect`                                                                                                     |
+| Review (step 4)            | `/code-review` on Claude Code; fallback brief to `architect`                                                    |
 | Review fix (step 4)        | `executor`                                                                                                      |
 | CI repair (step 6)         | `executor` for attempts 1–2; `architect` from attempt 3                                                         |
 | Design decision (step 8b)  | `architect`                                                                                                     |

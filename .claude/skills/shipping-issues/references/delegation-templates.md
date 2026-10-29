@@ -115,10 +115,11 @@ Prompt body: [agent-implementation.md](agent-implementation.md).
 
 ## Review (step 4)
 
-The standing review: one independent, **read-only** pass against the branch, in a
-context that did not write it — **`architect`** where tiers exist, otherwise followed
-inline. See [implement-and-review.md#review](implement-and-review.md#review), which also
-holds the optional Claude Code path.
+The **fallback** review (the default on Claude Code is `/code-review … --fix`, which
+needs no brief): one independent, **read-only** pass against the branch, in a context
+that did not write it — **`architect`** where tiers exist, otherwise followed inline.
+Used when `/code-review` cannot be launched or under Codex CLI. See
+[implement-and-review.md#review](implement-and-review.md#review).
 
 Prompt body: [agent-review.md](agent-review.md).
 

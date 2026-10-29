@@ -160,11 +160,12 @@ not a stylistic choice.
 
 - **Any issue left open behind a merged PR.** This is the failure mode the skill exists
   to prevent; it can never be implied, only stated.
-- **How each merged PR was reviewed** — by whom (an `architect` review, an inline
-  review, a self-review of a diff this session wrote, or on Claude Code `/code-review`
-  with its effort), the findings, what was fixed vs. rejected — and any `REJECTED`
-  finding this session did not resolve. A run that shipped unreviewed must not read like
-  one that passed. Never present re-reading your own diff as an independent review.
+- **How each merged PR was reviewed** — on Claude Code the local `/code-review` pass
+  with its effort (`medium`/`high`), or the fallback (an `architect` review, an inline
+  review, a self-review of a diff this session wrote), the findings, what was fixed vs.
+  rejected — and any `REJECTED` finding this session did not resolve. A run that shipped
+  unreviewed must not read like one that passed. Never present re-reading your own diff
+  as an independent review.
 - **Acceptance criteria that shipped `not-met`, and why that was accepted.** If none
   did, say the criteria were met. If the issue carried none, say that — rather than
   implying it passed a check it never had.

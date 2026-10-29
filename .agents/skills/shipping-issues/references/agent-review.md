@@ -1,8 +1,9 @@
 # Review (brief)
 
-The standing review at [SKILL.md step 4](../SKILL.md#4-review-the-branch): a read-only
-diff review in a context that did not write the change. Handed to **`architect`** where
-the host has named sub-agents; otherwise followed inline by this session.
+The fallback review at [SKILL.md step 4](../SKILL.md#4-review-the-branch), used only
+when `/code-review` cannot be launched or under Codex CLI: a read-only diff review in a
+context that did not write the change. Handed to **`architect`** where the host has
+named sub-agents; otherwise followed inline by this session.
 
 ```
 Read-only review only — do not edit, create, or delete any file (no `rm`, no

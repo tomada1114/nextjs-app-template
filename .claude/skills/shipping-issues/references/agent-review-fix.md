@@ -2,8 +2,10 @@
 
 Used at [SKILL.md step 4](../SKILL.md#4-review-the-branch) — only for findings this
 session has already read and accepted, one brief per branch that has any, handed to
-**`executor`** or followed inline in that branch's own `{workdir}`. Zero accepted
-findings → nothing to run.
+**`executor`** or followed inline in that branch's own `{workdir}`. In serial mode on
+Claude Code `/code-review … --fix` applies findings itself; this brief serves parallel
+mode (review without `--fix`) and the fallback review. Zero accepted findings → nothing
+to run.
 
 ```
 Branch {branch} implements issue #{n} in {owner}/{repo} and is, or is about to
